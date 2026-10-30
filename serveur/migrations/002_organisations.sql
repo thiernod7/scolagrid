@@ -181,7 +181,8 @@ declare
   moi uuid := auth.uid();
   org uuid;
 begin
-  if moi is null or coalesce((auth.jwt() ->> 'is_anonymous')::boolean, false) then
+  -- Les informations du jeton de connexion, telles que l'API les transmet.
+  if moi is null or coalesce((nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'is_anonymous')::boolean, false) then
     raise exception 'Connexion par téléphone requise' using errcode = '42501';
   end if;
   if (select count(*) from public.organisations where cree_par = moi) >= 5 then
