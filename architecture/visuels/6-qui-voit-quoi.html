@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Qui voit quoi</title>
+<link rel="stylesheet" href="vendor/tabler-icons.min.css">
+<style>
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--surface-0:#f5f4ef;--surface-1:#faf9f5;--surface-2:#fff;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--radius:8px;--p:#534AB7;--p-bg:#EEEDFE;--p-ink:#3C3489;--t:#1D9E75;--t-ink:#0F6E56;--t-bg:#E1F5EE}
+@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--text-muted:#888780;--surface-0:#1a1a19;--surface-1:#232322;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.2);--p:#AFA9EC;--p-bg:#3C3489;--p-ink:#CECBF6;--t:#5DCAA5;--t-ink:#9FE1CB;--t-bg:#085041}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:420px;margin:0 auto;padding:16px}
+@media (min-width:560px){main{zoom:1.25}}@media (min-width:720px){main{zoom:1.5}}@media (min-width:1000px){main{zoom:1.75}}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.back{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--text-secondary);text-decoration:none;margin-bottom:8px}
+.who{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px}
+.who button{font:inherit;font-size:11px;line-height:1.2;padding:6px 2px;border-radius:10px;border:.5px solid var(--border-strong);background:var(--surface-2);color:var(--text-secondary);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+.who button i{font-size:20px;color:var(--p)}
+.who button.on{background:var(--p-bg);border-color:var(--p);color:var(--p-ink);font-weight:500}
+.stage{position:relative}
+.srv{border:.5px solid var(--t);border-radius:16px;background:var(--surface-1);padding:8px}
+.sh{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--t-ink);padding:0 2px 6px}
+.sh i{font-size:20px}
+.sh .flt{margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:400;padding:2px 8px;border-radius:99px;background:var(--t-bg);color:var(--t-ink)}
+.sh .flt i{font-size:13px}
+.org{font-size:11px;color:var(--text-secondary);text-align:center;margin:0 0 6px}
+.sites{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.site{border:.5px solid var(--border);border-radius:10px;background:var(--surface-2);padding:6px 5px}
+.site .n{font-size:12px;font-weight:500;text-align:center;margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:3px}
+.site .n i{font-size:14px;color:var(--p)}
+.chip{position:relative;display:flex;align-items:center;gap:4px;font-size:10.5px;padding:4px 5px;border-radius:6px;background:var(--surface-1);margin-top:3px;transition:opacity .35s,background .35s}
+.chip i{font-size:14px;color:var(--t-ink);flex:none}
+.chip .c{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--text-secondary)}
+.chip.ok{background:var(--t-bg)}
+.chip.no{opacity:.32}
+.chip .lk{display:none;position:absolute;right:4px;font-size:12px;color:var(--text-muted)}
+.chip.no .lk{display:block}.chip.no .c{visibility:hidden}
+.gap{height:64px;position:relative}
+.gap svg{position:absolute;inset:0;width:100%;height:100%}
+.dev{border:.5px solid var(--p);border-radius:16px;background:var(--surface-2);padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center}
+.dev .ic{font-size:34px;color:var(--p);grid-row:span 2;display:inline-block}
+.dev .dn{font-size:13px;font-weight:500}
+.dev .db{font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px}
+.dev .db i{font-size:15px;color:#7F77DD}
+.dev .db b{font-variant-numeric:tabular-nums;color:var(--text-primary)}
+.got{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;min-height:20px}
+.got span{font-size:10.5px;padding:2px 7px;border-radius:99px;background:var(--p-bg);color:var(--p-ink)}
+.pk{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:var(--t);pointer-events:none}
+.cap{margin:12px 0 0;font-size:12.5px;line-height:1.5;color:var(--text-secondary);border-left:2px solid var(--p);padding:2px 0 2px 10px}
+.cap b{color:var(--text-primary)}
+.hint{text-align:center;font-size:12px;color:var(--text-muted);margin:10px 0 0}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="index.html"><i class="ti ti-arrow-left" aria-hidden="true"></i> Tous les visuels</a>
+<h2 class="sr-only">Animation : le serveur contient les données des trois sites d'un groupe scolaire. Selon la personne choisie (fondateur, directrice, secrétaire, enseignant), le serveur ne laisse descendre sur son appareil que les données autorisées par son rôle ; le reste reste verrouillé.</h2>
+
+<div class="who" role="tablist" id="who"></div>
+
+<div class="stage" id="stage">
+<div class="srv">
+<div class="sh"><i class="ti ti-server-2" aria-hidden="true"></i>Serveur<span class="flt"><i class="ti ti-filter" aria-hidden="true"></i>filtre par rôle</span></div>
+<p class="org">Groupe scolaire Les Palmiers</p>
+<div class="sites" id="sites"></div>
+</div>
+<div class="gap"><svg viewBox="0 0 100 64" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="0" x2="50" y2="64" stroke="var(--t)" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/></svg></div>
+<div class="dev" id="dev">
+<i class="ti ic" id="dic" aria-hidden="true"></i>
+<div class="dn" id="dn"></div>
+<div class="db"><i class="ti ti-database" aria-hidden="true"></i>Base locale : <b id="cnt">0</b> lignes</div>
+<div class="got" id="got"></div>
+</div>
+</div>
+
+<p class="cap" id="cap"></p>
+<p class="hint"><i class="ti ti-hand-finger" aria-hidden="true"></i> Choisis une personne</p>
+</main>
+<script>
+const SITES=['Kaloum','Ratoma','Matoto'];
+const KINDS=[{k:'el',n:'Élèves',i:'ti-users'},{k:'pa',n:'Paiements',i:'ti-cash'},{k:'no',n:'Notes',i:'ti-notebook'}];
+const DATA={Kaloum:{el:412,pa:940,no:3300},Ratoma:{el:538,pa:990,no:4200},Matoto:{el:297,pa:720,no:2400}};
+const P=[
+ {id:'f',n:'Fondateur',i:'ti-crown',dev:'ti-world',dn:'Navigateur, en ligne',
+  ok:s=>true,
+  cap:"<b>Le fondateur voit tout</b>, sur tous les sites, depuis la version web. Il consulte ; il ne modifie pas la caisse des sites."},
+ {id:'d',n:'Directrice Ratoma',i:'ti-user-shield',dev:'ti-device-desktop',dn:'PC direction, Ratoma',
+  ok:(s,k)=>s==='Ratoma',
+  cap:"<b>La directrice voit tout son site</b>, et rien des autres. Si elle essaie d'écrire dans un autre site, le serveur refuse."},
+ {id:'s',n:'Secrétaire Kaloum',i:'ti-user-edit',dev:'ti-device-laptop',dn:'PC secrétariat, Kaloum',
+  ok:(s,k)=>s==='Kaloum'&&k!=='no',
+  cap:"<b>La secrétaire gère élèves et paiements</b> de son site. Les notes ne descendent pas sur son poste."},
+ {id:'e',n:'Enseignant Matoto',i:'ti-chalkboard',dev:'ti-device-mobile',dn:"Téléphone de l'enseignant",
+  ok:(s,k)=>s==='Matoto'&&k!=='pa',part:{el:48,no:312},
+  cap:"<b>L'enseignant ne reçoit que ses classes</b> : ses élèves et ses notes. Pas la caisse, pas les autres classes. Son téléphone reste léger."}
+];
+const rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const stage=document.getElementById('stage'),who=document.getElementById('who');
+const fmt=n=>n.toLocaleString('fr-FR').replace(/ | /g,' ');
+const chips=[];
+SITES.forEach(s=>{
+ const d=document.createElement('div');d.className='site';
+ d.innerHTML=`<div class="n"><i class="ti ti-building-community" aria-hidden="true"></i>${s}</div>`;
+ KINDS.forEach(K=>{
+  const c=document.createElement('div');c.className='chip';
+  c.innerHTML=`<i class="ti ${K.i}" aria-hidden="true"></i>${K.n}<span class="c"></span><i class="ti ti-lock lk" aria-hidden="true"></i>`;
+  d.appendChild(c);chips.push({s,k:K.k,n:K.n,el:c});
+ });
+ document.getElementById('sites').appendChild(d);
+});
+P.forEach((p,i)=>{
+ const b=document.createElement('button');b.id='b'+p.id;b.setAttribute('role','tab');
+ b.innerHTML=`<i class="ti ${p.i}" aria-hidden="true"></i>${p.n}`;
+ b.onclick=()=>{auto=false;pick(i);};who.appendChild(b);
+});
+function center(el){let x=el.offsetWidth/2,y=el.offsetHeight/2;while(el&&el!==stage){x+=el.offsetLeft;y+=el.offsetTop;el=el.offsetParent;}return{x,y};}
+function pkt(from,to,delay,cb){
+ const a=center(from),b=center(to),p=document.createElement('div');p.className='pk';p.style.opacity=0;stage.appendChild(p);
+ const an=p.animate([{left:a.x+'px',top:a.y+'px',opacity:1},{left:b.x+'px',top:b.y+'px',opacity:1}],{duration:rm?1:850,delay:rm?0:delay,easing:'ease-in-out',fill:'backwards'});
+ an.onfinish=()=>{p.remove();cb&&cb();};
+ an.oncancel=()=>p.remove();
+ anims.push(an);
+}
+let run=0,cur=0,auto=true,anims=[];
+function pick(i){
+ cur=i;const p=P[i],my=++run;
+ anims.forEach(a=>a.cancel());anims=[];
+ P.forEach((q,j)=>document.getElementById('b'+q.id).classList.toggle('on',j===i));
+ document.getElementById('dic').className='ti ic '+p.dev;
+ document.getElementById('dn').textContent=p.dn;
+ document.getElementById('cap').innerHTML=p.cap;
+ const got=document.getElementById('got'),cnt=document.getElementById('cnt');got.innerHTML='';
+ let total=0;cnt.textContent='0';
+ const dev=document.getElementById('dic');
+ let delay=0;
+ chips.forEach(c=>{
+  const ok=p.ok(c.s,c.k),v=p.part&&p.part[c.k]!==undefined?p.part[c.k]:DATA[c.s][c.k];
+  c.el.classList.toggle('ok',ok);c.el.classList.toggle('no',!ok);
+  c.el.querySelector('.c').textContent=ok?fmt(v):'';
+  if(!ok)return;
+  const label=p.part?`${c.n} (ses classes)`:`${c.n} ${c.s}`;
+  for(let r=0;r<3;r++){
+   const last=r===2;
+   pkt(c.el,dev,delay+r*160,()=>{
+    if(my!==run)return;
+    total+=Math.round(v/3)+(last?v-3*Math.round(v/3):0);cnt.textContent=fmt(total);
+    if(last){const t=document.createElement('span');t.textContent=label;got.appendChild(t);}
+    if(!rm)dev.animate([{transform:'scale(1)'},{transform:'scale(1.12)'},{transform:'scale(1)'}],{duration:300});
+   });
+  }
+  delay+=420;
+ });
+}
+pick(0);
+setInterval(()=>{if(auto)pick((cur+1)%P.length);},7000);
+</script>
+</body>
+</html>

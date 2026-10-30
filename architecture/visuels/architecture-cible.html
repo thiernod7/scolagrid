@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Architecture cible</title>
+<link rel="stylesheet" href="vendor/tabler-icons.min.css">
+<style>
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--surface-0:#f5f4ef;--surface-1:#faf9f5;--surface-2:#fff;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--accent:#534AB7;--ok-bg:#EAF3DE;--ok:#3B6D11;--todo-bg:#FAEEDA;--todo:#854F0B;--q-bg:#EEEDFE;--q:#3C3489}
+@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--text-muted:#888780;--surface-0:#1a1a19;--surface-1:#232322;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.2);--accent:#AFA9EC;--ok-bg:#27500A;--ok:#C0DD97;--todo-bg:#633806;--todo:#FAC775;--q-bg:#3C3489;--q:#CECBF6}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.55;font-size:16px}
+main{max-width:760px;margin:0 auto;padding:16px 16px 64px}
+.back{display:inline-flex;align-items:center;gap:4px;font-size:14px;color:var(--text-secondary);text-decoration:none;margin-bottom:8px}
+h1{font-size:28px;font-weight:600;margin:8px 0 4px;letter-spacing:-.01em}
+.sub{color:var(--text-secondary);margin:0 0 24px}
+h2{font-size:20px;font-weight:600;margin:40px 0 10px;display:flex;align-items:center;gap:8px}
+h2 i{color:var(--accent);font-size:22px}
+h3{font-size:16px;font-weight:600;margin:20px 0 6px}
+p,li{color:var(--text-primary)}
+.muted{color:var(--text-secondary)}
+ul,ol{padding-left:22px;margin:6px 0 10px}
+li{margin:3px 0}
+a{color:var(--accent)}
+.tbl{overflow-x:auto;margin:10px 0 14px;border:.5px solid var(--border);border-radius:10px;background:var(--surface-2)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:.5px solid var(--border);vertical-align:top}
+th{font-weight:600;background:var(--surface-1);white-space:nowrap}
+tr:last-child td{border-bottom:none}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em;background:var(--surface-1);border:.5px solid var(--border);border-radius:4px;padding:0 4px}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.ok{background:var(--ok-bg);color:var(--ok)}
+.todo{background:var(--todo-bg);color:var(--todo)}
+.q{background:var(--q-bg);color:var(--q)}
+.card{border:.5px solid var(--border);border-radius:12px;background:var(--surface-2);padding:12px 14px;margin:10px 0}
+.principles{display:grid;gap:8px;margin:10px 0;padding:0;list-style:none}
+.principles li{display:flex;gap:10px;align-items:flex-start;border:.5px solid var(--border);border-radius:10px;background:var(--surface-2);padding:10px 12px;margin:0}
+.principles i{font-size:22px;color:var(--accent);flex:none;margin-top:1px}
+.layers{display:grid;gap:6px;margin:12px 0}
+.layer{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;border:.5px solid var(--border);border-radius:10px;background:var(--surface-2);padding:10px 12px}
+.layer i{font-size:22px;color:var(--accent)}
+.layer b{display:block;font-weight:600}
+.layer span{font-size:14px;color:var(--text-secondary)}
+.arrow{text-align:center;color:var(--text-muted);font-size:13px;margin:-2px 0}
+.cta{display:flex;align-items:center;gap:12px;padding:14px 16px;border:.5px solid var(--accent);border-radius:12px;background:var(--surface-2);color:var(--text-primary);text-decoration:none;margin:14px 0}
+.cta i{font-size:28px;color:var(--accent)}
+.cta small{display:block;color:var(--text-secondary)}
+.toc{font-size:14px;columns:2;column-gap:24px;padding-left:20px}
+@media (max-width:520px){.toc{columns:1}}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="index.html"><i class="ti ti-arrow-left" aria-hidden="true"></i> Tous les visuels</a>
+<h1>Architecture cible de Scolagrid</h1>
+<p class="sub">Les fondations à poser avant d'écrire les fonctionnalités. Version du 30 octobre 2026, à discuter. Les points marqués <span class="tag q">à valider</span> sont des hypothèses en attente de ta décision.</p>
+
+<ol class="toc">
+<li><a href="#principes">Les principes</a></li>
+<li><a href="#couches">Vue d'ensemble</a></li>
+<li><a href="#organisation">Organisation des données</a></li>
+<li><a href="#roles">Comptes, rôles et droits</a></li>
+<li><a href="#postes">Activation des postes</a></li>
+<li><a href="#conflits">Synchronisation et conflits</a></li>
+<li><a href="#evolution">Évolution de la base</a></li>
+<li><a href="#exploitation">Exploitation du serveur</a></li>
+<li><a href="#onboarding">Lien avec l'onboarding</a></li>
+<li><a href="#feuille">Feuille de route</a></li>
+<li><a href="#questions">Questions à valider</a></li>
+</ol>
+
+<a class="cta" href="6-qui-voit-quoi.html"><i class="ti ti-eye-check" aria-hidden="true"></i><span><b>Visuel animé : qui voit quoi</b><small>Choisis une personne et regarde quelles données arrivent sur son appareil</small></span></a>
+
+<h2 id="principes"><i class="ti ti-compass" aria-hidden="true"></i>1. Les principes</h2>
+<ul class="principles">
+<li><i class="ti ti-wifi-off" aria-hidden="true"></i><span><b>Hors ligne d'abord.</b> Sur chaque poste, l'app lit et écrit uniquement dans sa base locale. Le réseau sert seulement à synchroniser.</span></li>
+<li><i class="ti ti-shield-lock" aria-hidden="true"></i><span><b>Le serveur est l'arbitre.</b> Il décide qui peut lire et écrire quoi. Une règle oubliée dans l'app ne doit jamais ouvrir une faille.</span></li>
+<li><i class="ti ti-filter" aria-hidden="true"></i><span><b>Chaque poste ne reçoit que ce qu'il doit voir.</b> Un enseignant n'a ni la caisse ni les autres sites sur son téléphone.</span></li>
+<li><i class="ti ti-receipt" aria-hidden="true"></i><span><b>L'argent ne se modifie jamais, il s'annule.</b> Un paiement erroné est corrigé par une ligne d'annulation. Il n'y a donc ni conflit, ni trou dans la caisse.</span></li>
+<li><i class="ti ti-refresh" aria-hidden="true"></i><span><b>Tout se rejoue.</b> Serveur, base et app s'installent par script, depuis le repo. Si le serveur disparaît, on le reconstruit à l'identique et on restaure la sauvegarde.</span></li>
+</ul>
+
+<h2 id="couches"><i class="ti ti-stack-2" aria-hidden="true"></i>2. Vue d'ensemble</h2>
+<div class="layers">
+<div class="layer"><i class="ti ti-devices" aria-hidden="true"></i><div><b>Postes : app Windows et Android</b><span>Flutter, base SQLite locale, file d'envoi PowerSync</span></div><span class="tag ok">en place</span></div>
+<div class="layer"><i class="ti ti-world" aria-hidden="true"></i><div><b>Version web : fondateur et directeurs</b><span>Même code Flutter, en ligne, lecture des tableaux de bord</span></div><span class="tag todo">à faire</span></div>
+<p class="arrow"><i class="ti ti-arrows-vertical" aria-hidden="true"></i> HTTPS</p>
+<div class="layer"><i class="ti ti-lock" aria-hidden="true"></i><div><b>Caddy</b><span>HTTPS automatique, seule porte d'entrée (ports 80 et 443)</span></div><span class="tag ok">en place</span></div>
+<div class="layer"><i class="ti ti-user-check" aria-hidden="true"></i><div><b>Supabase Auth et API</b><span>Comptes, connexion par code SMS, écriture contrôlée par les règles de sécurité</span></div><span class="tag todo">comptes à faire</span></div>
+<div class="layer"><i class="ti ti-refresh" aria-hidden="true"></i><div><b>PowerSync</b><span>Envoie à chaque poste uniquement ses données</span></div><span class="tag todo">filtres à faire</span></div>
+<div class="layer"><i class="ti ti-database" aria-hidden="true"></i><div><b>PostgreSQL</b><span>Base centrale, référence unique</span></div><span class="tag ok">en place</span></div>
+<p class="arrow"><i class="ti ti-arrow-down" aria-hidden="true"></i> chaque nuit</p>
+<div class="layer"><i class="ti ti-cloud-upload" aria-hidden="true"></i><div><b>Sauvegardes hors du VPS</b><span>Copie chiffrée chez un autre hébergeur, 30 jours d'historique</span></div><span class="tag todo">à faire</span></div>
+</div>
+
+<h2 id="organisation"><i class="ti ti-hierarchy-2" aria-hidden="true"></i>3. Organisation des données</h2>
+<p>C'est la décision la plus importante : elle est presque impossible à changer une fois que de vraies écoles sont dedans.</p>
+<div class="card">
+<b>Organisation</b> <span class="muted">(le client : un groupe scolaire et son fondateur)</span><br>
+&nbsp;└ <b>Sites</b> <span class="muted">(Kaloum, Ratoma, Matoto…)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;└ <b>Année scolaire</b> <span class="muted">(2026-2027)</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└ <b>Classes</b> → <b>Inscriptions</b> → élèves, notes, absences, paiements
+</div>
+<ul>
+<li><b>Chaque ligne de chaque table porte <code>organisation_id</code> et, sauf exception, <code>site_id</code>.</b> C'est ce qui permet au serveur de filtrer et à la version web de tout additionner.</li>
+<li><b>L'élève est une personne, l'inscription est annuelle.</b> Un élève qui change de site ou passe en classe supérieure garde son dossier.</li>
+<li><b>Les identifiants sont des UUID créés sur le poste</b>, ce qui permet de créer un élève hors ligne sans collision. <span class="tag ok">déjà le cas</span></li>
+<li><b>Chaque ligne garde sa trace :</b> <code>created_at</code>, <code>updated_at</code>, <code>created_by</code> et <code>device_id</code>.</li>
+<li><b>Une personne peut appartenir à plusieurs organisations</b>, par exemple un enseignant qui travaille dans deux groupes. Un fondateur peut aussi en posséder plusieurs. <span class="tag q">à valider</span></li>
+</ul>
+
+<h2 id="roles"><i class="ti ti-users-group" aria-hidden="true"></i>4. Comptes, rôles et droits</h2>
+<p>Un compte = une personne, identifiée par son numéro de téléphone. Ses droits viennent de ses <b>rattachements</b> : <i>(personne, organisation, site ou tous les sites, rôle)</i>.</p>
+<div class="tbl"><table>
+<tr><th>Rôle</th><th>Périmètre</th><th>Voit</th><th>Ne voit pas</th><th>Appareil type</th></tr>
+<tr><td>Fondateur</td><td>Tous les sites</td><td>Tout, en lecture ; paramètres de l'organisation</td><td>—</td><td>Web, PC</td></tr>
+<tr><td>Directeur de site</td><td>Son site</td><td>Élèves, notes, absences, caisse, personnel du site</td><td>Les autres sites</td><td>PC direction</td></tr>
+<tr><td>Secrétaire / comptable</td><td>Son site</td><td>Élèves, inscriptions, paiements</td><td>Notes détaillées, autres sites</td><td>PC secrétariat</td></tr>
+<tr><td>Enseignant</td><td>Ses classes et matières</td><td>Ses élèves, ses notes, ses absences</td><td>Caisse, autres classes</td><td>Téléphone Android</td></tr>
+<tr><td>Parent</td><td>Ses enfants</td><td>Notes, absences, reste à payer</td><td>Tout le reste</td><td>Plus tard (web ou SMS) <span class="tag q">à valider</span></td></tr>
+</table></div>
+<h3>Une seule règle, appliquée à deux endroits</h3>
+<ul>
+<li><b>Lecture :</b> les filtres PowerSync décident ce qui descend sur chaque poste.</li>
+<li><b>Écriture :</b> les règles de sécurité de PostgreSQL (RLS) refusent toute écriture hors du périmètre, même si l'app est modifiée.</li>
+</ul>
+<h3>Connexion</h3>
+<ul>
+<li><b>Première connexion, en ligne :</b> numéro de téléphone et code reçu par SMS. <span class="tag q">à valider : fournisseur SMS en Guinée</span></li>
+<li><b>Ensuite, hors ligne :</b> un code PIN à 4 chiffres pour déverrouiller l'app sur ce poste.</li>
+<li><b>Poste partagé</b> (secrétariat) : plusieurs personnes, chacune avec son PIN. On sait toujours qui a encaissé quoi.</li>
+</ul>
+
+<h2 id="postes"><i class="ti ti-device-laptop" aria-hidden="true"></i>5. Activation des postes</h2>
+<ul>
+<li><b>Chaque appareil est enregistré</b> : nom, site, dernière synchro, état actif ou bloqué.</li>
+<li><b>Activation :</b> le directeur affiche un QR code valable 15 minutes, et le nouveau poste le scanne.</li>
+<li><b>Licence hors ligne :</b> le serveur remet au poste un jeton signé, valable 30 jours. Le poste le vérifie seul, et changer la date de l'appareil ne permet pas de tricher. <span class="tag q">à valider : durée</span></li>
+<li><b>Expiration :</b> le jeton se renouvelle à chaque synchro. Sans synchro pendant 30 jours, le poste passe en lecture seule.</li>
+<li><b>Vol :</b> le poste est bloqué depuis la version web. À sa prochaine connexion, il efface ses données locales.</li>
+</ul>
+
+<h2 id="conflits"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>6. Synchronisation et conflits</h2>
+<p>Deux postes hors ligne peuvent modifier la même chose. La règle dépend du type de donnée :</p>
+<div class="tbl"><table>
+<tr><th>Donnée</th><th>Règle</th><th>Pourquoi</th></tr>
+<tr><td>Paiements, frais</td><td>Ajout seulement ; une erreur se corrige par une annulation</td><td>Jamais de conflit, caisse toujours juste et traçable</td></tr>
+<tr><td>Notes</td><td>Une note = un élève × une évaluation ; la dernière modification gagne, l'ancienne valeur est gardée dans l'historique</td><td>Une seule personne saisit une évaluation ; l'historique permet de vérifier</td></tr>
+<tr><td>Absences</td><td>Ajout ou annulation, comme les paiements</td><td>Saisie par plusieurs personnes possible</td></tr>
+<tr><td>Fiches (élèves, classes…)</td><td>Champ par champ : la dernière modification gagne</td><td>Rares conflits, sans enjeu financier</td></tr>
+</table></div>
+<p class="muted">Un journal d'audit côté serveur enregistre qui a changé quoi, quand, et depuis quel poste.</p>
+
+<h2 id="evolution"><i class="ti ti-git-branch" aria-hidden="true"></i>7. Évolution de la base</h2>
+<ul>
+<li><b>Migrations numérotées</b> dans <code>serveur/migrations/</code> (<code>001_organisation.sql</code>, <code>002_roles.sql</code>…). L'installateur applique celles qui manquent. Elles remplacent l'actuel <code>init.sql</code>.</li>
+<li><b>Dans l'app, uniquement des ajouts</b> : de nouvelles tables ou de nouvelles colonnes. Un poste resté plusieurs semaines sans mise à jour continue donc de fonctionner.</li>
+<li><b>Deux environnements :</b> « essai » pour tester, « production » pour les vraies écoles. On ne teste jamais sur les vraies données.</li>
+</ul>
+
+<h2 id="exploitation"><i class="ti ti-server-2" aria-hidden="true"></i>8. Exploitation du serveur</h2>
+<div class="tbl"><table>
+<tr><th>Sujet</th><th>Cible</th><th>État</th></tr>
+<tr><td>Installation</td><td>Un clic, rejouable (workflow « VPS - Installer »)</td><td><span class="tag ok">en place</span></td></tr>
+<tr><td>Sauvegardes</td><td>Chaque nuit, chiffrées, chez un autre hébergeur, 30 jours ; test de restauration chaque mois</td><td><span class="tag todo">à faire en priorité</span></td></tr>
+<tr><td>Surveillance</td><td>Alerte par e-mail ou SMS si le serveur ne répond plus ou si le disque se remplit</td><td><span class="tag todo">à faire</span></td></tr>
+<tr><td>Nom de domaine</td><td>Remplacer <code>sslip.io</code> par un vrai domaine (≈ 10 € par an)</td><td><span class="tag todo">avant les vraies écoles</span></td></tr>
+<tr><td>Distribution de l'app</td><td>Installateur Windows signé et mises à jour automatiques ; APK Android, puis Play Store</td><td><span class="tag todo">à faire</span></td></tr>
+<tr><td>Branche principale</td><td>Tout le travail validé sur la branche principale du repo</td><td><span class="tag todo">à faire</span></td></tr>
+</table></div>
+
+<h2 id="onboarding"><i class="ti ti-route" aria-hidden="true"></i>9. Lien avec l'onboarding</h2>
+<p>L'onboarding, ce sont ces fondations vues par le client. Si on le construit bien, l'architecture est en place (voir <a href="4-onboarding-detaille.html">l'onboarding détaillé</a>).</p>
+<div class="tbl"><table>
+<tr><th>Étape d'onboarding</th><th>Fondation</th></tr>
+<tr><td>1. Créer l'espace école</td><td>Organisation (§3), compte du fondateur (§4)</td></tr>
+<tr><td>2. Configurer l'établissement</td><td>Sites, année, classes (§3)</td></tr>
+<tr><td>3. Inviter les utilisateurs</td><td>Rattachements et rôles (§4)</td></tr>
+<tr><td>4. Activer chaque poste</td><td>Activation et licence (§5)</td></tr>
+<tr><td>5. Synchronisation initiale</td><td>Filtres par rôle (§4)</td></tr>
+<tr><td>6. Prêt hors ligne</td><td>Déjà en place <span class="tag ok">en place</span></td></tr>
+</table></div>
+
+<h2 id="feuille"><i class="ti ti-map-2" aria-hidden="true"></i>10. Feuille de route</h2>
+<h3>Phase A : fondations <span class="tag todo">prochaine</span></h3>
+<ol>
+<li>Migrations numérotées, et environnements essai / production.</li>
+<li>Tables organisation, sites et rattachements, avec <code>organisation_id</code> et <code>site_id</code> partout.</li>
+<li>Connexion par code SMS et PIN hors ligne, puis suppression de la connexion anonyme de test.</li>
+<li>Filtres PowerSync et règles de sécurité par rôle.</li>
+<li>Enregistrement et activation des postes, licence hors ligne.</li>
+<li>Sauvegardes automatiques et surveillance.</li>
+</ol>
+<h3>Phase B : onboarding</h3>
+<p>Les 6 étapes, construites sur la phase A. À la fin, une école peut s'inscrire, se configurer, inviter son équipe et activer ses postes.</p>
+<h3>Phase C : premières fonctionnalités</h3>
+<p>Élèves et inscriptions, puis paiements, puis notes et absences.</p>
+<h3>Phase D : version web du fondateur</h3>
+<p>Tableau de bord multi-sites (voir le visuel <a href="5-multi-sites.html">Plusieurs sites, une vue web</a>).</p>
+
+<h2 id="questions"><i class="ti ti-help-circle" aria-hidden="true"></i>11. Questions à valider</h2>
+<ol>
+<li><b>Organisation :</b> un fondateur a-t-il parfois plusieurs groupes scolaires distincts ? Un enseignant travaille-t-il parfois dans plusieurs groupes ?</li>
+<li><b>Rôles :</b> la liste ci-dessus est-elle complète ? Faut-il ajouter comptable, surveillant ou censeur ? Les parents auront-ils un accès, et quand ?</li>
+<li><b>Connexion :</b> les enseignants ont-ils tous un smartphone ? Quel fournisseur SMS utiliser (Orange, MTN, autre) ?</li>
+<li><b>Hors ligne :</b> 30 jours de licence sans connexion, est-ce suffisant pour les écoles les plus isolées ?</li>
+<li><b>Paiement de l'abonnement :</b> Orange Money, MTN MoMo, les deux ?</li>
+<li><b>Nom de domaine :</b> lequel réserver (par exemple <code>scolagrid.com</code> ou <code>scolagrid.gn</code>) ?</li>
+</ol>
+</main>
+</body>
+</html>
