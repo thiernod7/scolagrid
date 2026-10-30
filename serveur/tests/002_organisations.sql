@@ -16,6 +16,7 @@ insert into auth.users (id, aud, role, phone) values
 -- A crée son espace
 begin;
 select set_config('request.jwt.claims', json_build_object('sub', :'a', 'role', 'authenticated', 'is_anonymous', false)::text, true);
+select set_config('request.jwt.claim.sub', :'a', true);  -- ancienne forme, lue par auth.uid() de la base jetable
 set local role authenticated;
 select public.creer_espace_ecole('Groupe scolaire Test', 'Conakry', 'Site de Kaloum', 'Fondateur Test') as org \gset
 do $$ begin
@@ -37,6 +38,7 @@ commit;
 -- B ne voit rien et ne peut rien faire chez A
 begin;
 select set_config('request.jwt.claims', json_build_object('sub', :'b', 'role', 'authenticated', 'is_anonymous', false)::text, true);
+select set_config('request.jwt.claim.sub', :'b', true);  -- ancienne forme, lue par auth.uid() de la base jetable
 select set_config('test.org', :'org', true);
 set local role authenticated;
 do $$ begin
@@ -65,6 +67,7 @@ end $$;
 -- Une session anonyme ne peut pas créer d'espace
 begin;
 select set_config('request.jwt.claims', json_build_object('sub', :'b', 'role', 'authenticated', 'is_anonymous', true)::text, true);
+select set_config('request.jwt.claim.sub', :'b', true);  -- ancienne forme, lue par auth.uid() de la base jetable
 set local role authenticated;
 do $$ begin
   perform public.creer_espace_ecole('Groupe anonyme', 'Conakry', 'Site', 'Anonyme');
