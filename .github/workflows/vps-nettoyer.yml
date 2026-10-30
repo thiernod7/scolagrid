@@ -1,0 +1,85 @@
+name: VPS - Nettoyer
+
+# Remet le serveur à l'état d'un Ubuntu neuf : supprime l'ancienne version
+# de Scolagrid (conteneurs, bases, images), Docker et les dossiers d'applications.
+# Conserve : le compte, les clés SSH, fail2ban et les mises à jour automatiques.
+# IRRÉVERSIBLE. Le lancement manuel demande d'écrire EFFACER.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Écrire EFFACER pour confirmer"
+        required: true
+  push:
+    paths:
+      - ".github/workflows/vps-nettoyer.yml"
+
+jobs:
+  nettoyer:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.confirmation == 'EFFACER'
+    steps:
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Nettoyer
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" 'bash -s' <<'EOF'
+          set -uo pipefail
+          export DEBIAN_FRONTEND=noninteractive
+          step() { echo; echo "===== $1 ====="; }
+
+          step "Conteneurs, bases et images Docker"
+          if command -v docker >/dev/null; then
+            ids=$(sudo docker ps -aq)
+            [ -n "$ids" ] && sudo docker rm -f $ids >/dev/null
+            sudo docker system prune -af --volumes >/dev/null
+            echo "supprimés"
+          else
+            echo "Docker absent"
+          fi
+
+          step "Désinstallation de Docker"
+          pkgs=$(dpkg-query -W -f='${Package} ${Status}\n' docker-ce docker-ce-cli docker-ce-rootless-extras \
+                 containerd.io docker-buildx-plugin docker-compose-plugin docker.io docker-compose containerd runc \
+                 2>/dev/null | awk '/ installed$/{print $1}')
+          [ -n "$pkgs" ] && sudo apt-get purge -y -qq $pkgs >/dev/null
+          sudo rm -rf /var/lib/docker /var/lib/containerd /etc/docker
+          sudo rm -f /etc/apt/sources.list.d/docker* /etc/apt/keyrings/docker* /usr/share/keyrings/docker*
+          getent group docker >/dev/null && sudo groupdel docker
+          echo "fait"
+
+          step "Dossiers d'applications"
+          sudo find /opt /srv -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          echo "/opt et /srv vidés"
+
+          step "Dossier personnel"
+          find ~ -mindepth 1 -maxdepth 1 ! -name .ssh -exec rm -rf {} +
+          cp /etc/skel/.bashrc /etc/skel/.profile /etc/skel/.bash_logout ~/
+          echo "remis à neuf (clés SSH conservées)"
+
+          step "Tâches planifiées"
+          crontab -r 2>/dev/null; sudo crontab -r 2>/dev/null
+          echo "crontabs vidées"
+
+          step "Paquets inutiles"
+          sudo apt-get autoremove --purge -y -qq >/dev/null
+          sudo apt-get clean
+          echo "fait"
+
+          step "À vérifier (non supprimé)"
+          echo "Utilisateurs :"; ls /home
+          echo "Services ajoutés :"; ls /etc/systemd/system/*.service 2>/dev/null || echo "aucun"
+          echo "Tâches /etc/cron.d :"; ls /etc/cron.d
+
+          step "Redémarrage"
+          echo "Le serveur redémarre pour repartir propre."
+          sudo systemd-run --on-active=5 systemctl reboot >/dev/null
+          EOF
