@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scolagrid offline-first</title>
+<link rel="stylesheet" href="vendor/tabler-icons.min.css">
+<style>
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--surface-0:#f5f4ef;--surface-2:#fff;--border:rgba(0,0,0,.1)}
+@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--surface-0:#1a1a19;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:520px;margin:0 auto;padding:24px 16px}
+h1{font-size:22px;font-weight:500;margin:0 0 4px}
+p{color:var(--text-secondary);margin:0 0 20px}
+a{display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:10px;border:.5px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text-primary);text-decoration:none}
+a:hover{border-color:#534AB7}
+a i{font-size:28px;color:#534AB7}
+a span small{display:block;color:var(--text-secondary);font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<h1>Visuels offline-first</h1>
+<p>Application de gestion scolaire, réseau d'écoles en Guinée</p>
+<a href="1-architecture.html"><i class="ti ti-stack-2"></i><span>Architecture<small>Interface, base locale, file de sync, cloud</small></span></a>
+<a href="2-postes-de-travail.html"><i class="ti ti-devices"></i><span>Postes de travail<small>Synchronisation entre postes, mode hors ligne</small></span></a>
+<a href="3-onboarding-apercu.html"><i class="ti ti-route"></i><span>Onboarding, aperçu<small>Les six étapes en un coup d'œil</small></span></a>
+<a href="4-onboarding-detaille.html"><i class="ti ti-list-details"></i><span>Onboarding, détaillé<small>Chaque étape illustrée et expliquée</small></span></a>
+</main>
+</body>
+</html>

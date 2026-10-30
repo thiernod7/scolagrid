@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Onboarding client, aperçu</title>
+<link rel="stylesheet" href="vendor/tabler-icons.min.css">
+<style>
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--surface-0:#f5f4ef;--surface-1:#faf9f5;--surface-2:#fff;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--radius:8px}
+@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--text-muted:#888780;--surface-0:#1a1a19;--surface-1:#232322;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.2)}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:420px;margin:0 auto;padding:16px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+button{font:inherit;font-size:14px;padding:8px 14px;border-radius:var(--radius);border:.5px solid var(--border-strong);background:transparent;color:var(--text-primary);cursor:pointer}
+button:hover{background:var(--surface-1)}
+.dots{display:flex;justify-content:space-between;align-items:center;margin:8px 4px 16px;position:relative}
+.dots:before{content:"";position:absolute;left:18px;right:18px;top:50%;height:1px;background:var(--border-strong)}
+.dt{position:relative;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--surface-2);border:0.5px solid var(--border-strong);color:var(--text-muted);cursor:pointer;transition:all .3s}
+.dt.done{background:#E1F5EE;border-color:#1D9E75;color:#0F6E56}
+.dt.cur{background:#EEEDFE;border-color:#534AB7;color:#3C3489;transform:scale(1.15)}
+.stage{border:0.5px solid var(--border);border-radius:16px;background:var(--surface-1);padding:20px 12px;min-height:220px;text-align:center}
+.scene{display:flex;justify-content:center;align-items:center;gap:10px;min-height:96px;flex-wrap:wrap}
+.it{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary)}
+.it i{font-size:36px;color:#534AB7}
+.it.t i{color:#1D9E75}
+.ar{font-size:20px;color:var(--text-muted)}
+.cap{font-size:16px;font-weight:500;color:var(--text-primary);margin:14px 0 2px}
+.sub{font-size:13px;color:var(--text-secondary);margin:0}
+.bar{height:8px;border-radius:99px;background:var(--surface-2);border:0.5px solid var(--border);overflow:hidden;width:200px;margin:12px auto 0}
+.fill{height:100%;width:0;background:#1D9E75}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.nav span{font-size:12px;color:var(--text-muted)}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="index.html" style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--text-secondary);text-decoration:none;margin-bottom:8px"><i class="ti ti-arrow-left" aria-hidden="true"></i> Tous les visuels</a>
+<h2 class="sr-only">Parcours d'onboarding d'une école cliente en six étapes : création de l'espace, configuration, invitation des utilisateurs, activation des postes, synchronisation initiale, puis travail hors ligne.</h2>
+<div class="dots" id="dots"></div>
+<div class="stage"><div class="scene" id="scene"></div><p class="cap" id="cap"></p><p class="sub" id="sub"></p><div id="extra"></div></div>
+<div class="nav"><button onclick="go(s-1)" aria-label="Étape précédente"><i class="ti ti-arrow-left" aria-hidden="true"></i></button><span id="ct"></span><button onclick="go(s+1)" aria-label="Étape suivante"><i class="ti ti-arrow-right" aria-hidden="true"></i></button></div>
+</main>
+<script>
+const S=[
+{ic:'ti-building-community',cap:"Créer l'espace école",sub:"En ligne, une seule fois",sc:[['ti-user','Directeur',''],['>'],['ti-cloud','Cloud','t'],['>'],['ti-building','Espace école','t']]},
+{ic:'ti-settings',cap:"Configurer l'établissement",sub:"Année, classes, matières, frais",sc:[['ti-calendar','Année',''],['ti-school','Classes',''],['ti-book','Matières',''],['ti-cash','Frais','']]},
+{ic:'ti-users',cap:"Inviter les utilisateurs",sub:"Chaque rôle voit ses données",sc:[['ti-user-shield','Direction',''],['ti-user-edit','Secrétariat',''],['ti-chalkboard','Enseignants','']]},
+{ic:'ti-qrcode',cap:"Activer chaque poste",sub:"Scanner un QR code ou saisir un code",sc:[['ti-qrcode','Code',''],['>'],['ti-device-laptop','Poste',''],['ti-key','Licence','t']]},
+{ic:'ti-cloud-download',cap:"Synchronisation initiale",sub:"Les données de l'école descendent en local",sc:[['ti-database','Base centrale','t'],['>'],['ti-device-laptop','Poste',''],['ti-database','Base locale','']],bar:1},
+{ic:'ti-wifi-off',cap:"Prêt à travailler hors ligne",sub:"Le réseau devient facultatif",sc:[['ti-device-laptop','Poste',''],['ti-wifi-off','Sans réseau',''],['ti-circle-check','Ça marche','t']]}
+];
+let s=0,tm;
+const rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const dots=document.getElementById('dots');
+S.forEach((x,i)=>{const d=document.createElement('div');d.className='dt';d.innerHTML='<i class="ti '+x.ic+'" aria-hidden="true"></i>';d.onclick=()=>go(i);dots.appendChild(d);});
+function go(n){s=(n+S.length)%S.length;const x=S[s];
+[...dots.children].forEach((d,i)=>{d.className='dt'+(i<s?' done':i===s?' cur':'');});
+const sc=document.getElementById('scene');sc.innerHTML='';
+x.sc.forEach((e,k)=>{const el=document.createElement('div');
+if(e[0]==='>'){el.className='ar';el.innerHTML='<i class="ti ti-arrow-right" aria-hidden="true"></i>';}
+else{el.className='it '+e[2];el.innerHTML='<i class="ti '+e[0]+'" aria-hidden="true"></i>'+e[1];}
+sc.appendChild(el);if(!rm)el.animate([{opacity:0,transform:'translateY(10px)'},{opacity:1,transform:'translateY(0)'}],{duration:400,delay:k*220,fill:'backwards',easing:'ease-out'});});
+document.getElementById('cap').textContent=x.cap;document.getElementById('sub').textContent=x.sub;
+document.getElementById('ct').textContent=(s+1)+' / '+S.length;
+const ex=document.getElementById('extra');ex.innerHTML='';
+if(x.bar){ex.innerHTML='<div class="bar"><div class="fill" id="fl"></div></div>';const f=document.getElementById('fl');
+if(rm)f.style.width='100%';else f.animate([{width:'0%'},{width:'100%'}],{duration:2600,fill:'forwards',easing:'ease-in-out'});}
+clearTimeout(tm);tm=setTimeout(()=>go(s+1),3800);}
+go(0);
+</script>
+</body>
+</html>

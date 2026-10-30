@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Onboarding client, détaillé</title>
+<link rel="stylesheet" href="vendor/tabler-icons.min.css">
+<style>
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--surface-0:#f5f4ef;--surface-1:#faf9f5;--surface-2:#fff;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--bg-success:#EAF3DE;--text-success:#3B6D11;--bg-danger:#FCEBEB;--text-danger:#A32D2D;--radius:8px}
+@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--text-muted:#888780;--surface-0:#1a1a19;--surface-1:#232322;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.2);--bg-success:#27500A;--text-success:#C0DD97;--bg-danger:#501313;--text-danger:#F7C1C1}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:420px;margin:0 auto;padding:16px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+button{font:inherit;font-size:14px;padding:8px 14px;border-radius:var(--radius);border:.5px solid var(--border-strong);background:transparent;color:var(--text-primary);cursor:pointer}
+button:hover{background:var(--surface-1)}
+.dots{display:flex;justify-content:space-between;align-items:center;margin:8px 4px 14px;position:relative}
+.dots:before{content:"";position:absolute;left:18px;right:18px;top:50%;height:1px;background:var(--border-strong)}
+.dt{position:relative;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--surface-2);border:0.5px solid var(--border-strong);color:var(--text-muted);cursor:pointer;transition:all .3s}
+.dt.done{background:#E1F5EE;border-color:#1D9E75;color:#0F6E56}
+.dt.cur{background:#EEEDFE;border-color:#534AB7;color:#3C3489;transform:scale(1.15)}
+.stage{border:0.5px solid var(--border);border-radius:16px;background:var(--surface-1);padding:16px 12px}
+.sc{position:relative;min-height:170px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap}
+.I{font-size:40px;color:#534AB7;display:inline-block}.tl{color:#1D9E75}
+.card{background:var(--surface-2);border:0.5px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-size:12px;color:var(--text-secondary);text-align:left}
+.row{display:flex;align-items:center;gap:6px;padding:3px 0;min-height:22px}
+.row i{font-size:16px;color:#534AB7;display:inline-block}
+.ck{color:var(--text-muted)!important;transition:color .3s}.row.on .ck{color:#1D9E75!important}
+.bd{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:var(--bg-success);color:var(--text-success);opacity:0;transition:opacity .4s}
+.bd.r{background:var(--bg-danger);color:var(--text-danger)}
+.col{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)}
+.track{position:relative;width:90px;height:2px;background:var(--border-strong)}
+.pk{position:absolute;top:-4px;width:10px;height:10px;border-radius:50%;background:#1D9E75}
+.phone{position:relative;width:64px;height:104px;border:1.5px solid #534AB7;border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.scan{position:absolute;left:6px;right:6px;height:2px;background:#1D9E75;top:20px}
+.bar{height:8px;border-radius:99px;background:var(--surface-2);border:0.5px solid var(--border);overflow:hidden;width:100%;margin-top:6px}
+.fill{height:100%;width:0;background:#1D9E75;transition:width .3s}
+.cap{font-size:16px;font-weight:500;margin:14px 0 6px;color:var(--text-primary)}
+.det{margin:0;padding:0;list-style:none}
+.det li{display:flex;gap:8px;font-size:14px;line-height:1.5;color:var(--text-secondary);padding:5px 0;border-top:0.5px solid var(--border)}
+.det li i{color:#534AB7;font-size:16px;margin-top:3px;flex:none}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+.nav span{font-size:12px;color:var(--text-muted)}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="index.html" style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--text-secondary);text-decoration:none;margin-bottom:8px"><i class="ti ti-arrow-left" aria-hidden="true"></i> Tous les visuels</a>
+<h2 class="sr-only">Guide détaillé et animé des six étapes d'onboarding d'une école cliente dans une application SaaS offline-first.</h2>
+<div class="dots" id="dots"></div>
+<div class="stage"><div class="sc" id="sc"></div><p class="cap" id="cap"></p><ul class="det" id="det"></ul></div>
+<div class="nav"><button onclick="go(s-1)" aria-label="Étape précédente"><i class="ti ti-arrow-left" aria-hidden="true"></i></button><span id="ct"></span><button onclick="go(s+1)" aria-label="Étape suivante"><i class="ti ti-arrow-right" aria-hidden="true"></i></button></div>
+</main>
+<script>
+const rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let T=[],s=0;
+const L=(f,m)=>T.push(setTimeout(f,rm?0:m));
+const $=id=>document.getElementById(id);
+function pulse(el,k){if(!rm&&el)el.animate([{transform:'scale(1)'},{transform:'scale('+(k||1.2)+')'},{transform:'scale(1)'}],{duration:450});}
+function pop(el,d){if(!rm)el.animate([{opacity:0,transform:'translateY(8px)'},{opacity:1,transform:'none'}],{duration:400,delay:d||0,fill:'backwards'});}
+function fly(tr,back){const p=document.createElement('div');p.className='pk';tr.appendChild(p);
+const a=p.animate([{left:back?'80px':'0px'},{left:back?'0px':'80px'}],{duration:rm?1:800,easing:'ease-in-out'});a.onfinish=()=>p.remove();}
+const S=[
+{ic:'ti-building-community',cap:"1. Créer l'espace école",
+html:`<div class="card" style="width:150px"><div class="row"><i class="ti ti-school"></i><span id="f0"></span></div><div class="row"><i class="ti ti-map-pin"></i><span id="f1"></span></div><div class="row"><i class="ti ti-phone"></i><span id="f2"></span></div></div><div class="col"><div class="track" id="tr"></div></div><div class="col"><i class="ti ti-cloud I tl" id="cl"></i><span class="bd" id="bd">ID école créé</span></div>`,
+run(){const v=['GS Billo École','Conakry','+224 6•• •• ••'];
+function type(i){if(i>2){fly($('tr'));L(()=>{pulse($('cl'));$('bd').style.opacity=1;},800);return;}const el=$('f'+i),t=v[i];let c=0;
+const id=setInterval(()=>{el.textContent=t.slice(0,++c);if(c>=t.length){clearInterval(id);L(()=>type(i+1),250);}},rm?0:60);T.push(id);}type(0);},
+det:[['ti-forms',"Le directeur remplit un formulaire court : nom de l'école, ville, logo."],['ti-message-2',"Le compte admin est validé par code SMS, plus fiable que l'e-mail en Guinée."],['ti-database',"Le cloud crée un espace isolé (tenant) avec un identifiant unique pour l'école."],['ti-receipt',"Le choix de l'offre et du paiement (Orange Money, MoMo) se fait ici."]]},
+{ic:'ti-settings',cap:"2. Configurer l'établissement",
+html:`<div class="card" style="width:230px" id="cl2">${[['ti-calendar','Année 2026-2027'],['ti-stairs','Cycles et niveaux'],['ti-school','Classes et salles'],['ti-book','Matières et coefficients'],['ti-cash','Frais scolaires (GNF)']].map(r=>`<div class="row"><i class="ti ${r[0]}"></i><span style="flex:1">${r[1]}</span><i class="ti ti-circle-check ck"></i></div>`).join('')}</div>`,
+run(){[...$('cl2').children].forEach((r,i)=>L(()=>{r.classList.add('on');pulse(r.querySelector('.ck'),1.4);},500+i*550));},
+det:[['ti-template',"Des modèles préremplis selon le programme guinéen évitent de tout saisir."],['ti-file-spreadsheet',"Import Excel pour les élèves existants : une liste suffit."],['ti-cloud',"Cette étape se fait en ligne, depuis un endroit bien connecté."],['ti-edit',"Tout reste modifiable ensuite, même hors ligne."]]},
+{ic:'ti-users',cap:"3. Inviter les utilisateurs",
+html:`<div class="col"><i class="ti ti-user-star I" id="ad"></i>Admin</div><div class="col" id="rl" style="gap:8px">${[['ti-user-shield','Direction'],['ti-user-edit','Secrétariat'],['ti-chalkboard','Enseignants']].map(r=>`<div class="card row" style="width:150px;opacity:0"><i class="ti ${r[0]}"></i><span style="flex:1">${r[1]}</span><i class="ti ti-brand-whatsapp" style="color:#1D9E75"></i></div>`).join('')}</div>`,
+run(){[...$('rl').children].forEach((c,i)=>L(()=>{pulse($('ad'),1.1);c.style.opacity=1;pop(c);},400+i*600));},
+det:[['ti-send',"L'admin envoie un lien d'invitation par SMS ou WhatsApp."],['ti-lock-access',"Chaque rôle a ses permissions : un enseignant ne voit pas la comptabilité."],['ti-link',"L'enseignant est rattaché à ses classes et matières uniquement."],['ti-user-x',"Un compte peut être désactivé à tout moment depuis le cloud."]]},
+{ic:'ti-qrcode',cap:"4. Activer chaque poste",
+html:`<div class="phone"><i class="ti ti-qrcode" style="font-size:38px;color:var(--text-primary)"></i><div class="scan" id="scn"></div></div><div class="col"><div class="track" id="tr"></div></div><div class="col"><i class="ti ti-device-laptop I" id="lp"></i><span class="bd" id="bd"><i class="ti ti-key"></i> Licence 30 j</span></div>`,
+run(){if(!rm)$('scn').animate([{top:'14px'},{top:'86px'},{top:'14px'}],{duration:1400,iterations:2});L(()=>{fly($('tr'));},2800);L(()=>{pulse($('lp'));$('bd').style.opacity=1;},3600);},
+det:[['ti-qrcode',"L'admin génère un QR code d'activation, valable 15 minutes."],['ti-device-laptop',"Le poste le scanne et reçoit un identifiant d'appareil unique."],['ti-key',"Il reçoit aussi un jeton de licence signé, valable 30 jours hors ligne."],['ti-shield-lock',"La base locale est chiffrée ; en cas de vol, le poste est révoqué à distance."]]},
+{ic:'ti-cloud-download',cap:"5. Synchronisation initiale",
+html:`<div style="display:flex;align-items:center;gap:10px"><div class="col"><i class="ti ti-database I tl"></i>Cloud</div><div class="track" id="tr"></div><div class="col"><i class="ti ti-database I" id="ldb"></i>Local</div></div><div class="card" style="width:230px">${['Classes','Élèves','Notes','Paiements'].map((n,i)=>`<div class="row"><span style="flex:1">${n}</span><span id="n${i}">0</span><i class="ti ti-circle-check ck"></i></div>`).join('')}<div class="bar"><div class="fill" id="fl"></div></div></div>`,
+run(){const M=[12,480,1260,350];let p=0;const id=setInterval(()=>{p+=4;fly($('tr'),true);pulse($('ldb'),1.1);
+M.forEach((m,i)=>{const v=Math.min(m,Math.round(m*Math.min(1,p/100*1.6-i*0.2)));if(v>0)$('n'+i).textContent=v;if(v>=m)$('n'+i).parentNode.classList.add('on');});
+$('fl').style.width=Math.min(100,p)+'%';if(p>=100)clearInterval(id);},rm?1:220);T.push(id);},
+det:[['ti-filter',"Le poste ne reçoit que les données de son rôle : plus léger, plus rapide."],['ti-stack-2',"Téléchargement par petits lots : si le réseau coupe, ça reprend où ça s'est arrêté."],['ti-file-zip',"Les données sont compressées pour économiser la connexion mobile."],['ti-checks',"Une vérification finale confirme que la base locale est complète."]]},
+{ic:'ti-wifi-off',cap:"6. Prêt à travailler hors ligne",
+html:`<div class="col"><i class="ti ti-device-laptop I" id="lp"></i><span class="bd r" id="st" style="opacity:1"><i class="ti ti-wifi-off"></i> Hors ligne</span></div><div class="col"><i class="ti ti-database I" id="ldb"></i><span id="q" style="font-size:14px;color:var(--text-primary)">0 en attente</span></div><div class="col"><i class="ti ti-cloud I tl" id="cl"></i>Cloud</div>`,
+run(){let q=0,on=false,t=0;const st=$('st');
+const id=setInterval(()=>{t++;if(t%14===8){on=true;st.className='bd';st.innerHTML='<i class="ti ti-wifi"></i> En ligne';}if(t%14===0){on=false;st.className='bd r';st.innerHTML='<i class="ti ti-wifi-off"></i> Hors ligne';}
+if(!on){q++;pulse($('lp'),1.08);pulse($('ldb'),1.2);}else if(q>0){q--;pulse($('cl'),1.15);}st.style.opacity=1;$('q').textContent=q+' en attente';},rm?900:600);T.push(id);},
+det:[['ti-pencil',"Notes, absences, paiements : tout s'écrit d'abord dans la base locale."],['ti-list-numbers',"Les changements attendent dans une file, visible par l'utilisateur."],['ti-refresh',"Dès le retour du réseau, tout part au cloud et la licence se renouvelle."],['ti-alert-triangle',"Si la licence approche de son expiration, l'app prévient quelques jours avant."]]}
+];
+const dots=$('dots');
+S.forEach((x,i)=>{const d=document.createElement('div');d.className='dt';d.setAttribute('aria-label','Étape '+(i+1));d.innerHTML='<i class="ti '+x.ic+'" aria-hidden="true"></i>';d.onclick=()=>go(i);dots.appendChild(d);});
+function go(n){T.forEach(clearTimeout);T=[];s=(n+S.length)%S.length;const x=S[s];
+[...dots.children].forEach((d,i)=>{d.className='dt'+(i<s?' done':i===s?' cur':'');});
+$('sc').innerHTML=x.html;[...$('sc').children].forEach((c,i)=>pop(c,i*150));
+$('cap').textContent=x.cap;$('det').innerHTML=x.det.map(d=>'<li><i class="ti '+d[0]+'" aria-hidden="true"></i><span>'+d[1]+'</span></li>').join('');
+$('ct').textContent=(s+1)+' / '+S.length;x.run();}
+go(0);
+</script>
+</body>
+</html>
