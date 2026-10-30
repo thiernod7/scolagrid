@@ -155,7 +155,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 
 <h2 id="evolution"><i class="ti ti-git-branch" aria-hidden="true"></i>7. Évolution de la base</h2>
 <ul>
-<li><b>Migrations numérotées</b> dans <code>serveur/migrations/</code> (<code>001_organisation.sql</code>, <code>002_roles.sql</code>…). L'installateur applique celles qui manquent. Elles remplacent l'actuel <code>init.sql</code>.</li>
+<li><b>Migrations numérotées</b> dans <code>serveur/migrations/</code> (<code>001_organisation.sql</code>, <code>002_roles.sql</code>…). L'installateur applique celles qui manquent, après les avoir testées sur une base jetable. <span class="tag ok">en place</span></li>
 <li><b>Dans l'app, uniquement des ajouts</b> : de nouvelles tables ou de nouvelles colonnes. Un poste resté plusieurs semaines sans mise à jour continue donc de fonctionner.</li>
 <li><b>Deux environnements :</b> « essai » pour tester, « production » pour les vraies écoles. On ne teste jamais sur les vraies données.</li>
 </ul>
@@ -164,7 +164,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <div class="tbl"><table>
 <tr><th>Sujet</th><th>Cible</th><th>État</th></tr>
 <tr><td>Installation</td><td>Un clic, rejouable (workflow « VPS - Installer »)</td><td><span class="tag ok">en place</span></td></tr>
-<tr><td>Sauvegardes</td><td>Chaque nuit, chiffrées, chez un autre hébergeur, 30 jours ; test de restauration chaque mois</td><td><span class="tag todo">à faire en priorité</span></td></tr>
+<tr><td>Sauvegardes</td><td>Chaque nuit, chiffrées, chez un autre hébergeur, 30 jours ; test de restauration chaque mois</td><td><span class="tag todo">prêtes, en attente du stockage</span></td></tr>
 <tr><td>Surveillance</td><td>Alerte par e-mail ou SMS si le serveur ne répond plus ou si le disque se remplit</td><td><span class="tag todo">à faire</span></td></tr>
 <tr><td>Nom de domaine</td><td>Remplacer <code>sslip.io</code> par un vrai domaine (≈ 10 € par an)</td><td><span class="tag todo">avant les vraies écoles</span></td></tr>
 <tr><td>Distribution de l'app</td><td>Installateur Windows signé et mises à jour automatiques ; APK Android, puis Play Store</td><td><span class="tag todo">à faire</span></td></tr>
@@ -186,7 +186,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <h2 id="feuille"><i class="ti ti-map-2" aria-hidden="true"></i>10. Feuille de route</h2>
 <h3>Phase A : fondations <span class="tag todo">prochaine</span></h3>
 <ol>
-<li>Migrations numérotées, et environnements essai / production.</li>
+<li>Migrations numérotées <span class="tag ok">fait</span>, et environnements essai / production.</li>
 <li>Tables organisation, sites et rattachements, avec <code>organisation_id</code> et <code>site_id</code> partout.</li>
 <li>Connexion par code SMS et PIN hors ligne, puis suppression de la connexion anonyme de test.</li>
 <li>Filtres PowerSync et règles de sécurité par rôle.</li>
