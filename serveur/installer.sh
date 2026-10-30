@@ -131,7 +131,8 @@ if [ "$PS_CHANGE" = oui ]; then
   erreurs=$(sudo docker logs --since 30s "$PS" 2>&1 | grep -iE '"level":"error"|sync config' | tail -5)
   [ -z "$erreurs" ] || { echo "Messages de PowerSync :"; echo "$erreurs"; }
 fi
-for c in $(dc ps --filter health=unhealthy --format '{{.Name}}'); do
+projet=$([ "$ENVIRONNEMENT" = essai ] && echo scolagrid-essai || echo supabase)
+for c in $(sudo docker ps --filter "label=com.docker.compose.project=$projet" --filter health=unhealthy --format '{{.Names}}'); do
   sudo docker restart "$c" >/dev/null && echo "redémarré (était en mauvaise santé) : $c"
 done
 dc ps --format 'table {{.Name}}\t{{.Status}}'
