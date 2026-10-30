@@ -1,0 +1,62 @@
+# Ajouts de Scolagrid par-dessus le docker-compose.yml officiel de Supabase.
+# Seul Caddy est exposé sur internet (ports 80 et 443).
+
+services:
+  api-gw:
+    ports: !reset []
+
+  supavisor:
+    ports: !reset []
+
+  caddy:
+    container_name: scolagrid-caddy
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SCOLAGRID_HOST: ${SCOLAGRID_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  powersync-storage:
+    container_name: scolagrid-powersync-storage
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: powersync
+      POSTGRES_PASSWORD: ${PS_STORAGE_PASSWORD}
+      POSTGRES_DB: powersync_storage
+    volumes:
+      - powersync-storage:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "powersync", "-d", "powersync_storage"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  powersync:
+    container_name: scolagrid-powersync
+    image: journeyapps/powersync-service:1.27.2
+    restart: unless-stopped
+    command: ["start", "-c", "/config/service.yaml"]
+    depends_on:
+      db:
+        condition: service_healthy
+      powersync-storage:
+        condition: service_healthy
+    environment:
+      PS_DATA_SOURCE_URI: postgresql://powersync_role:${PS_POWERSYNC_PASSWORD}@db:5432/postgres
+      PS_STORAGE_URI: postgresql://powersync:${PS_STORAGE_PASSWORD}@powersync-storage:5432/powersync_storage
+      PS_JWT_K: ${PS_JWT_K}
+    volumes:
+      - ./powersync:/config:ro
+
+volumes:
+  caddy-data:
+  caddy-config:
+  powersync-storage:

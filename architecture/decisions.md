@@ -7,8 +7,9 @@ Choix techniques retenus. Ils suivent le principe « offline-first » décrit da
 | Application | **Flutter** (`app/`) | Une vraie app Windows (direction, secrétariat) et Android (enseignants) avec un seul code. |
 | Base locale | **SQLite**, gérée par PowerSync | L'app lit et écrit uniquement ici, donc elle marche sans réseau. |
 | File de sync | **PowerSync** (client) | Garde les écritures faites hors ligne et les envoie dès que le réseau revient. |
-| Moteur de sync | **PowerSync Cloud** (`cloud/powersync/`) | Redistribue les changements aux autres postes. Gratuit pour démarrer. |
-| Base centrale | **PostgreSQL** via **Supabase** (`cloud/supabase/`) | Base, comptes utilisateurs et sécurité par ligne, gratuit pour démarrer. |
+| Moteur de sync | **PowerSync**, sur le VPS (`serveur/powersync/`) | Redistribue les changements aux autres postes. Open source, gratuit. |
+| Base centrale | **PostgreSQL** via **Supabase**, sur le VPS (`serveur/`) | Supabase ajoute à PostgreSQL les comptes utilisateurs, l'API et un tableau d'administration. Open source, gratuit. |
+| Serveur | **VPS** Ubuntu, avec **Docker** et **Caddy** (HTTPS automatique) | Installé et mis à jour par le workflow « VPS - Installer ». |
 | Compilation | **GitHub Actions** (`.github/workflows/app.yml`) | Produit l'installable Windows et l'APK Android à chaque modification. |
 
 ## Le test « Hello »

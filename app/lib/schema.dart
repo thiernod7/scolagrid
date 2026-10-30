@@ -1,6 +1,6 @@
 import 'package:powersync/powersync.dart';
 
-// Schéma de la base locale. Doit correspondre à cloud/supabase/schema.sql.
+// Schéma de la base locale. Doit correspondre à serveur/init.sql.
 const schema = Schema([
   Table('hellos', [
     Column.text('message'),

@@ -1,0 +1,33 @@
+# Configuration du service PowerSync (synchronisation).
+# Les valeurs !env viennent du fichier .env du serveur, jamais du repo.
+
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_DATA_SOURCE_URI
+      sslmode: disable
+
+storage:
+  type: postgresql
+  uri: !env PS_STORAGE_URI
+  sslmode: disable
+
+port: 8080
+
+sync_config:
+  path: /config/sync-config.yaml
+
+# Accepte les jetons émis par Supabase Auth (même secret HS256).
+client_auth:
+  jwks:
+    keys:
+      - kty: oct
+        alg: HS256
+        k: !env PS_JWT_K
+  audience:
+    - authenticated
+
+# Expose /probes/liveness pour vérifier que le service tourne.
+healthcheck:
+  probes:
+    use_http: true
