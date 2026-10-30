@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:scolagrid/main.dart';
+import 'package:scolagrid/schema.dart';
 
 void main() {
   test('le schéma local contient la table hellos', () {

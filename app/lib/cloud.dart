@@ -12,7 +12,7 @@ bool get cloudConfigured =>
     supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty && powersyncUrl.isNotEmpty;
 
 Future<void> initCloud() =>
-    Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+    Supabase.initialize(url: supabaseUrl, publishableKey: supabaseAnonKey);
 
 /// Ouvre une session (anonyme pour ce test) puis lance la synchronisation.
 /// Sans réseau, réessaie toutes les 30 secondes ; l'app reste utilisable.

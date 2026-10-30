@@ -4,18 +4,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:powersync/powersync.dart';
+import 'package:powersync/powersync.dart' show PowerSyncDatabase, SyncStatus;
 
 import 'cloud.dart';
-
-// Schéma de la base locale. Doit correspondre à cloud/supabase/schema.sql.
-const schema = Schema([
-  Table('hellos', [
-    Column.text('message'),
-    Column.text('device'),
-    Column.text('created_at'),
-  ]),
-]);
+import 'schema.dart';
 
 late final PowerSyncDatabase db;
 

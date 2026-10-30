@@ -29,7 +29,7 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter create --platforms=windows,android --org com.scolagrid --project-name scolagrid .
+      - run: flutter create --platforms=windows,android --org com.scolagrid --project-name scolagrid . && rm -f test/widget_test.dart
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
@@ -54,7 +54,7 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter create --platforms=windows,android --org com.scolagrid --project-name scolagrid .
+      - run: flutter create --platforms=windows,android --org com.scolagrid --project-name scolagrid . && rm -f test/widget_test.dart
       # Android exige une autorisation explicite pour accéder à internet.
       - run: sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
