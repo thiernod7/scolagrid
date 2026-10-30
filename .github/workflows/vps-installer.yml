@@ -41,6 +41,12 @@ jobs:
         run: bash serveur/appliquer-migrations.sh db serveur/migrations
       - name: Les rejouer ne doit rien changer
         run: bash serveur/appliquer-migrations.sh db serveur/migrations | tee /tmp/sortie && ! grep -q "appliquée" /tmp/sortie
+      - name: Tests de sécurité
+        run: |
+          for t in serveur/tests/*.sql; do
+            echo "== $t"
+            docker exec -i db psql -X -q -v ON_ERROR_STOP=1 -U supabase_admin -d postgres < "$t"
+          done
 
   installer:
     needs: tester-migrations
