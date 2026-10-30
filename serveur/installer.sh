@@ -162,14 +162,23 @@ check -H "apikey: $anon" "https://$API/auth/v1/health"
 check "https://$SYNC/probes/liveness"
 if [ "$ENVIRONNEMENT" = essai ]; then
   # Parcours réel : code par téléphone, jeton, puis lecture protégée par les règles.
+  # Numéro de test n°5, réservé à ce contrôle (les n°1 à 4 sont libres pour les essais à la main).
   curl -s -o /dev/null -H "apikey: $anon" -H "Content-Type: application/json" \
-    -d '{"phone":"224620000001"}' "https://$API/auth/v1/otp" || true
+    -d '{"phone":"224620000005"}' "https://$API/auth/v1/otp" || true
   jeton=$(curl -s -H "apikey: $anon" -H "Content-Type: application/json" \
-    -d '{"phone":"224620000001","token":"123456","type":"sms"}' "https://$API/auth/v1/verify" \
+    -d '{"phone":"224620000005","token":"123456","type":"sms"}' "https://$API/auth/v1/verify" \
     | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
   if [ -n "$jeton" ]; then
     echo "OK   connexion par téléphone (numéro de test)"
-    check -H "apikey: $anon" -H "Authorization: Bearer $jeton" "https://$API/rest/v1/organisations?select=id"
+    auth=(-H "apikey: $anon" -H "Authorization: Bearer $jeton" -H "Content-Type: application/json")
+    check "${auth[@]}" "https://$API/rest/v1/organisations?select=id"
+    if [ "$(curl -s "${auth[@]}" "https://$API/rest/v1/organisations?select=id")" = "[]" ]; then
+      org=$(curl -s "${auth[@]}" -d '{"nom_groupe":"Groupe scolaire de contrôle","ville":"Conakry","nom_site":"Site de contrôle","nom_complet":"Contrôle automatique"}' \
+        "https://$API/rest/v1/rpc/creer_espace_ecole")
+      echo "Espace école de contrôle créé : $org"
+    fi
+    nb=$(curl -s "${auth[@]}" "https://$API/rest/v1/sites?select=id" | grep -o '"id"' | wc -l)
+    if [ "$nb" -ge 1 ]; then echo "OK   espace école visible avec ses droits ($nb site(s))"; else echo "ÉCHEC espace école introuvable"; fi
   else
     echo "ÉCHEC connexion par téléphone (numéro de test)"
   fi
