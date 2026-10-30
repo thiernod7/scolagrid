@@ -15,7 +15,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  tester-migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Démarrer une base Supabase jetable
+        run: |
+          image=$(curl -fsSL https://raw.githubusercontent.com/supabase/supabase/master/docker/docker-compose.yml \
+            | grep -m1 -o 'supabase/postgres:[^ ]*')
+          echo "Image : $image"
+          docker run -d --name db -e POSTGRES_PASSWORD=test -e PGPASSWORD=test "$image" \
+            postgres -c config_file=/etc/postgresql/postgresql.conf
+          for i in $(seq 1 60); do docker exec db pg_isready -U postgres -h localhost -q && break; sleep 2; done
+          sleep 5
+      - name: Appliquer les migrations
+        run: bash serveur/appliquer-migrations.sh db serveur/migrations
+      - name: Les rejouer ne doit rien changer
+        run: bash serveur/appliquer-migrations.sh db serveur/migrations | tee /tmp/sortie && ! grep -q "appliquée" /tmp/sortie
+
   installer:
+    needs: tester-migrations
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

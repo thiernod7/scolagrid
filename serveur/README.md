@@ -14,7 +14,7 @@ Tout ce qui tourne sur le VPS, installé par le workflow **VPS - Installer** (on
 - `installer.sh` : installe ou met à jour le serveur. Rejouable sans risque.
 - `docker-compose.scolagrid.yml` : nos ajouts au `docker-compose.yml` officiel de Supabase.
 - `Caddyfile` : HTTPS et redirection vers les services.
-- `init.sql` : tables et droits de la base.
+- `migrations/` : les changements de la base, numérotés (`001_…`, `002_…`). Chacun est appliqué une seule fois, dans l'ordre, par `appliquer-migrations.sh`. On ne modifie jamais une migration déjà appliquée : on en ajoute une nouvelle. GitHub les teste sur une base jetable avant chaque installation.
 - `powersync/` : configuration de la synchronisation.
 
 ## Secrets

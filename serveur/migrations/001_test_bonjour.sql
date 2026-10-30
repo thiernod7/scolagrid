@@ -1,5 +1,5 @@
--- Schéma Scolagrid. Rejouable sans risque à chaque installation.
--- Exécuté par installer.sh avec la variable psql :pw (mot de passe PowerSync).
+-- 001 : table de test « Bonjour » et accès de PowerSync.
+-- Écrite pour être rejouable : elle a d'abord été appliquée par l'ancien init.sql.
 
 -- Table de test « Hello ». Doit correspondre à app/lib/schema.dart.
 create table if not exists public.hellos (
@@ -24,7 +24,6 @@ do $$ begin
     create role powersync_role with replication bypassrls login;
   end if;
 end $$;
-alter role powersync_role with password :'pw';
 grant select on all tables in schema public to powersync_role;
 alter default privileges for role postgres in schema public grant select on tables to powersync_role;
 

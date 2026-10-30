@@ -41,7 +41,8 @@ else
   echo "déjà présents"
 fi
 cd "$DIR"
-cp "$SRC/docker-compose.scolagrid.yml" "$SRC/Caddyfile" "$SRC/init.sql" .
+cp "$SRC/docker-compose.scolagrid.yml" "$SRC/Caddyfile" .
+rm -f init.sql
 mkdir -p powersync
 cp "$SRC"/powersync/* powersync/
 
@@ -77,9 +78,12 @@ for i in $(seq 1 60); do
   [ "$(sudo docker inspect -f '{{.State.Health.Status}}' supabase-db)" = healthy ] && break
   sleep 3
 done
+
+step "Migrations"
+SUDO=sudo bash "$SRC/appliquer-migrations.sh" supabase-db "$SRC/migrations"
 pw=$(grep '^PS_POWERSYNC_PASSWORD=' .env | cut -d= -f2-)
-sudo docker exec -i supabase-db psql -q -v ON_ERROR_STOP=1 -U supabase_admin -d postgres -v pw="$pw" < init.sql
-echo "schéma appliqué"
+sudo docker exec -i supabase-db psql -q -X -v ON_ERROR_STOP=1 -U supabase_admin -d postgres -v pw="$pw" \
+  <<<"alter role powersync_role with password :'pw';"
 
 step "Services"
 dc up -d --quiet-pull db auth rest meta studio api-gw powersync-storage powersync caddy
