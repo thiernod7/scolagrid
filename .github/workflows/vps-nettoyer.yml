@@ -11,14 +11,11 @@ on:
       confirmation:
         description: "Écrire EFFACER pour confirmer"
         required: true
-  push:
-    paths:
-      - ".github/workflows/vps-nettoyer.yml"
 
 jobs:
   nettoyer:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || inputs.confirmation == 'EFFACER'
+    if: inputs.confirmation == 'EFFACER'
     steps:
       - name: Préparer la connexion SSH
         run: |
