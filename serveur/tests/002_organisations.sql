@@ -6,6 +6,9 @@
 \set a '11111111-1111-1111-1111-111111111111'
 \set b '22222222-2222-2222-2222-222222222222'
 
+-- Sur le serveur, le service Auth ajoute ces colonnes à ses tables ; la base jetable ne les a pas.
+alter table auth.users add column if not exists phone text;
+
 insert into auth.users (id, aud, role, phone) values
   (:'a', 'authenticated', 'authenticated', '224620000001'),
   (:'b', 'authenticated', 'authenticated', '224620000002');
