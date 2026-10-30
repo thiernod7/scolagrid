@@ -20,6 +20,8 @@ jobs:
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
           echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519
+          # Empreinte de la clé (publique, sans risque) pour vérifier que c'est la bonne.
+          ssh-keygen -lf ~/.ssh/id_ed25519
 
       - name: Inspecter
         env:
