@@ -1,0 +1,9 @@
+# Ce que chaque poste reçoit du cloud.
+# Pour le test : tous les « Hello » vont à tout le monde.
+config:
+  edition: 3
+
+streams:
+  hellos:
+    auto_subscribe: true
+    query: SELECT * FROM hellos
