@@ -99,6 +99,23 @@ check() {
 check -H "apikey: $anon" "https://api.$HOST/auth/v1/health"
 check "https://sync.$HOST/probes/liveness"
 
+step "Sauvegardes"
+if sudo test -f /opt/scolagrid/sauvegarde.env; then
+  sudo apt-get install -y -qq restic >/dev/null
+  sudo install -m 755 "$SRC/sauvegarde/sauvegarder.sh" /usr/local/bin/scolagrid-sauvegarder
+  sudo install -m 644 "$SRC/sauvegarde/scolagrid-sauvegarde.service" "$SRC/sauvegarde/scolagrid-sauvegarde.timer" /etc/systemd/system/
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now scolagrid-sauvegarde.timer >/dev/null 2>&1
+  echo "programmées chaque nuit vers 2 h 30 ($(restic version | cut -d' ' -f1-2))"
+  if ! sudo find /var/lib/scolagrid/derniere-sauvegarde -mmin -1440 2>/dev/null | grep -q .; then
+    if sudo systemctl start scolagrid-sauvegarde.service; then echo "première sauvegarde faite"
+    else echo "ÉCHEC de la sauvegarde :"; sudo journalctl -u scolagrid-sauvegarde -n 15 --no-pager -o cat; fi
+  fi
+  sudo scolagrid-sauvegarder --etat || echo "ÉCHEC de la vérification"
+else
+  echo "non configurées : secrets SAUVEGARDE_* absents dans GitHub"
+fi
+
 step "Adresses pour l'application"
 echo "SUPABASE_URL=https://api.$HOST"
 echo "POWERSYNC_URL=https://sync.$HOST"

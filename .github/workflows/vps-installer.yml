@@ -27,6 +27,23 @@ jobs:
           echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519
 
+      - name: Transmettre l'accès aux sauvegardes
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          DEPOT: ${{ secrets.SAUVEGARDE_DEPOT }}
+          CLE_ID: ${{ secrets.SAUVEGARDE_CLE_ID }}
+          CLE_SECRETE: ${{ secrets.SAUVEGARDE_CLE_SECRETE }}
+          MOT_DE_PASSE: ${{ secrets.SAUVEGARDE_MOT_DE_PASSE }}
+        run: |
+          if [ -z "$DEPOT" ] || [ -z "$MOT_DE_PASSE" ]; then echo "Sauvegardes non configurées"; exit 0; fi
+          {
+            printf 'RESTIC_REPOSITORY=%q\n' "$DEPOT"
+            printf 'RESTIC_PASSWORD=%q\n' "$MOT_DE_PASSE"
+            printf 'AWS_ACCESS_KEY_ID=%q\n' "$CLE_ID"
+            printf 'AWS_SECRET_ACCESS_KEY=%q\n' "$CLE_SECRETE"
+          } | ssh "$VPS" 'sudo mkdir -p /opt/scolagrid && sudo install -m 600 /dev/stdin /opt/scolagrid/sauvegarde.env'
+          echo "Accès transmis"
+
       - name: Installer
         env:
           VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}

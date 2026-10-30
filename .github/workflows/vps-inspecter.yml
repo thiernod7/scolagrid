@@ -40,5 +40,6 @@ jobs:
           section "Services actifs"; systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}'
           section "Ports ouverts";  sudo -n ss -tlnp 2>/dev/null | awk 'NR>1{print $4, $6}' || ss -tln | awk 'NR>1{print $4}'
           section "Paquets installés à la main"; apt-mark showmanual 2>/dev/null | wc -l
+          section "Sauvegardes"; cat /var/lib/scolagrid/derniere-sauvegarde 2>/dev/null || echo "aucune"
           section "PowerSync (erreurs et réplication)"; sudo -n docker logs scolagrid-powersync 2>&1 | grep -iE 'error|replicat|snapshot|slot' | tail -15 || echo "pas de PowerSync"
           EOF

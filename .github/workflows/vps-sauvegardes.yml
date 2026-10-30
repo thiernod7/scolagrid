@@ -1,0 +1,38 @@
+name: VPS - Sauvegardes
+
+# Liste les sauvegardes et vérifie la dernière, ou lance une sauvegarde tout de suite.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Que faire ?"
+        type: choice
+        options:
+          - verifier
+          - sauvegarder-maintenant
+        default: verifier
+
+concurrency:
+  group: vps
+  cancel-in-progress: false
+
+jobs:
+  sauvegardes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: ${{ inputs.action }}
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          if [ "${{ inputs.action }}" = sauvegarder-maintenant ]; then
+            ssh "$VPS" 'sudo systemctl start scolagrid-sauvegarde.service && echo "Sauvegarde faite"'
+          fi
+          ssh "$VPS" 'sudo scolagrid-sauvegarder --etat; echo; echo "Prochaine sauvegarde :"; systemctl list-timers scolagrid-sauvegarde.timer --no-pager | sed -n 2p'
