@@ -3,34 +3,244 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Scolagrid offline-first</title>
+<title>Carte de Scolagrid</title>
 <link rel="stylesheet" href="vendor/tabler-icons.min.css">
 <style>
-:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--surface-0:#f5f4ef;--surface-2:#fff;--border:rgba(0,0,0,.1)}
-@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--surface-0:#1a1a19;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1)}}
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--surface-0:#f5f4ef;--surface-1:#faf9f5;--surface-2:#fff;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--p:#534AB7;--p-bg:#EEEDFE;--p-ink:#3C3489;--t:#1D9E75;--t-ink:#0F6E56;--t-bg:#E1F5EE;--a:#BA7517;--a-bg:#FAEEDA;--a-ink:#854F0B;--ok-bg:#EAF3DE;--ok:#3B6D11;--shade:rgba(0,0,0,.35)}
+@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--text-muted:#888780;--surface-0:#1a1a19;--surface-1:#232322;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.2);--p:#AFA9EC;--p-bg:#3C3489;--p-ink:#CECBF6;--t:#5DCAA5;--t-ink:#9FE1CB;--t-bg:#085041;--a:#EF9F27;--a-bg:#633806;--a-ink:#FAC775;--ok-bg:#27500A;--ok:#C0DD97;--shade:rgba(0,0,0,.6)}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-main{max-width:520px;margin:0 auto;padding:24px 16px}
-@media (min-width:560px){main{zoom:1.25}}@media (min-width:720px){main{zoom:1.5}}@media (min-width:1000px){main{zoom:1.75}}
-h1{font-size:22px;font-weight:500;margin:0 0 4px}
-p{color:var(--text-secondary);margin:0 0 20px}
-a{display:flex;align-items:center;gap:12px;padding:14px 16px;margin-bottom:10px;border:.5px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text-primary);text-decoration:none}
-a:hover{border-color:#534AB7}
-a i{font-size:28px;color:#534AB7}
-a span small{display:block;color:var(--text-secondary);font-size:13px}
+main{max-width:440px;margin:0 auto;padding:16px 16px 32px}
+@media (min-width:560px){main{zoom:1.2}}@media (min-width:720px){main{zoom:1.4}}@media (min-width:1000px){main{zoom:1.55}}
+h1{font-size:20px;font-weight:600;margin:0 0 2px}
+.lead{font-size:13px;color:var(--text-secondary);margin:0 0 12px}
+button{font:inherit;color:inherit;cursor:pointer}
+.node{position:relative;border:.5px solid var(--border-strong);border-radius:14px;background:var(--surface-2);padding:8px 10px;text-align:left;transition:transform .15s,box-shadow .15s}
+.node:hover,.node:focus-visible{box-shadow:0 0 0 2px var(--p);outline:none}
+.st{position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%}
+.st.ok{background:var(--t)}.st.todo{background:var(--a)}
+.web{display:flex;align-items:center;gap:8px;width:100%;border-color:var(--a)}
+.web>i{font-size:24px;color:var(--a)}
+.web b{display:block;font-size:13px}.web small{font-size:11px;color:var(--text-secondary)}
+.link{position:relative;height:30px}
+.link svg,.wires svg{position:absolute;inset:0;width:100%;height:100%}
+.srv{border:.5px solid var(--t);border-radius:16px;background:var(--surface-1);padding:8px}
+.srv .h{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--t-ink);margin:0 2px 6px}
+.srv .h i{font-size:20px}
+.srv .h small{margin-left:auto;font-weight:400;font-size:11px;color:var(--text-muted)}
+.parts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.part{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;padding:7px 3px 6px;border-radius:10px;border:.5px solid var(--border);text-align:center}
+.part i{font-size:20px;color:var(--t-ink)}
+.wires{position:relative;height:56px}
+.pk{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;pointer-events:none}
+.sites{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.site{border:.5px solid var(--border-strong);border-radius:14px;background:var(--surface-2);padding:6px 4px 6px}
+.site>button.sn{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;border:none;background:none;font-size:12px;font-weight:600;padding:2px 0 4px;border-radius:8px}
+.site>button.sn i{font-size:15px;color:var(--p)}
+.site>button.sn:hover,.site>button.sn:focus-visible{background:var(--p-bg);outline:none}
+.devs{display:flex;justify-content:center;gap:2px}
+.dv{border:none;background:none;padding:4px 3px;border-radius:8px;display:flex;flex-direction:column;align-items:center;font-size:9.5px;color:var(--text-secondary)}
+.dv i{font-size:20px;color:var(--p)}
+.dv:hover,.dv:focus-visible{background:var(--p-bg);outline:none}
+.sec{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text-secondary);margin:18px 2px 6px}
+.sec i{font-size:16px;color:var(--p)}
+.onb{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;position:relative}
+.onb:before{content:"";position:absolute;left:8%;right:8%;top:17px;height:1px;background:var(--border-strong)}
+.step{position:relative;border:none;background:none;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:9.5px;line-height:1.2;color:var(--text-secondary);padding:0 0 2px;text-align:center}
+.step span.c{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--surface-2);border:.5px solid var(--border-strong);transition:all .3s}
+.step span.c i{font-size:17px;color:var(--p)}
+.step:hover span.c,.step:focus-visible span.c,.step.lit span.c{background:var(--p-bg);border-color:var(--p)}
+.step:focus-visible{outline:none}
+.legend{display:flex;justify-content:center;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-muted);margin:14px 0 0}
+.legend span{display:inline-flex;align-items:center;gap:4px}
+.legend i.d{width:8px;height:8px;border-radius:50%;display:inline-block}
+.hint{text-align:center;font-size:12px;color:var(--text-muted);margin:6px 0 0}
+.foot{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.foot a,.foot summary{display:flex;align-items:center;gap:6px;font-size:12px;padding:10px;border:.5px solid var(--border);border-radius:12px;background:var(--surface-2);color:var(--text-primary);text-decoration:none;cursor:pointer;list-style:none}
+.foot i{font-size:18px;color:var(--p)}
+.foot summary::-webkit-details-marker{display:none}
+details.all{grid-column:1/-1}
+details.all[open] summary{border-bottom-left-radius:0;border-bottom-right-radius:0}
+details.all nav{border:.5px solid var(--border);border-top:none;border-radius:0 0 12px 12px;background:var(--surface-2);padding:4px 10px 8px}
+details.all nav a{border:none;padding:6px 0;background:none;border-radius:0}
+
+/* Panneau de détail */
+.shade{position:fixed;inset:0;background:var(--shade);opacity:0;pointer-events:none;transition:opacity .25s;z-index:10}
+.shade.on{opacity:1;pointer-events:auto}
+.panel{position:fixed;left:0;right:0;bottom:0;height:88vh;height:88dvh;background:var(--surface-0);border-radius:18px 18px 0 0;box-shadow:0 -6px 30px rgba(0,0,0,.2);transform:translateY(105%);transition:transform .3s ease;z-index:11;display:flex;flex-direction:column}
+.panel.on{transform:none}
+@media (min-width:900px){.panel{left:auto;top:0;height:100vh;width:min(520px,45vw);border-radius:0;transform:translateX(105%)}.panel.on{transform:none}}
+.ph{display:flex;align-items:flex-start;gap:10px;padding:14px 16px 8px}
+.ph>i{font-size:28px;color:var(--p);margin-top:2px}
+.ph h2{font-size:17px;margin:0;font-weight:600}
+.ph .tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;margin-top:3px}
+.tag.ok{background:var(--ok-bg);color:var(--ok)}.tag.todo{background:var(--a-bg);color:var(--a-ink)}
+.ph .x{margin-left:auto;border:none;background:var(--surface-2);border-radius:50%;width:34px;height:34px;flex:none;display:flex;align-items:center;justify-content:center;font-size:18px}
+.pb{padding:0 16px;overflow:auto;flex:1;display:flex;flex-direction:column}
+.pb p{font-size:14px;line-height:1.55;margin:0 0 8px;color:var(--text-primary)}
+.pb ul{margin:0 0 8px;padding-left:20px;font-size:14px;line-height:1.5}
+.pb iframe{flex:1;min-height:420px;width:100%;border:.5px solid var(--border);border-radius:12px;background:var(--surface-0);margin:4px 0 8px}
+.pf{display:flex;gap:8px;padding:8px 16px 14px;flex-wrap:wrap}
+.pf a{display:inline-flex;align-items:center;gap:5px;font-size:13px;padding:7px 12px;border-radius:99px;border:.5px solid var(--border-strong);color:var(--text-primary);text-decoration:none;background:var(--surface-2)}
+.pf a i{font-size:16px;color:var(--p)}
 </style>
 </head>
 <body>
 <main>
-<h1>Visuels offline-first</h1>
-<p>Application de gestion scolaire, réseau d'écoles en Guinée</p>
-<a href="1-architecture.html"><i class="ti ti-stack-2"></i><span>Architecture<small>Interface, base locale, file de sync, cloud</small></span></a>
-<a href="2-postes-de-travail.html"><i class="ti ti-devices"></i><span>Postes de travail<small>Synchronisation entre postes, mode hors ligne</small></span></a>
-<a href="3-onboarding-apercu.html"><i class="ti ti-route"></i><span>Onboarding, aperçu<small>Les six étapes en un coup d'œil</small></span></a>
-<a href="4-onboarding-detaille.html"><i class="ti ti-list-details"></i><span>Onboarding, détaillé<small>Chaque étape illustrée et expliquée</small></span></a>
-<a href="5-multi-sites.html"><i class="ti ti-building-community"></i><span>Plusieurs sites, une vue web<small>Chaque site hors ligne, le fondateur suit tout</small></span></a>
-<a href="6-qui-voit-quoi.html"><i class="ti ti-eye-check"></i><span>Qui voit quoi<small>Chaque rôle ne reçoit que ses données</small></span></a>
-<a href="architecture-cible.html"><i class="ti ti-file-text"></i><span>Document : architecture cible<small>Les fondations à poser avant les fonctionnalités</small></span></a>
+<h1>Carte de Scolagrid</h1>
+<p class="lead">Tout le système sur une page. Touchez un élément pour voir son détail.</p>
+
+<button class="node web" data-k="web"><i class="ti ti-world" aria-hidden="true"></i><span><b>Version web</b><small>Fondateur et directeurs, depuis n'importe où</small></span><span class="st todo"></span></button>
+
+<div class="link" id="lk"><svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="0" x2="50" y2="30" stroke="var(--a)" stroke-width="1" vector-effect="non-scaling-stroke"/></svg></div>
+
+<div class="srv">
+<div class="h"><i class="ti ti-server-2" aria-hidden="true"></i>Serveur (VPS)<small>Ubuntu, Docker</small></div>
+<div class="parts">
+<button class="node part" data-k="sync"><i class="ti ti-refresh" aria-hidden="true"></i>Synchro<span class="st ok"></span></button>
+<button class="node part" data-k="roles"><i class="ti ti-filter" aria-hidden="true"></i>Filtre par rôle<span class="st todo"></span></button>
+<button class="node part" data-k="auth"><i class="ti ti-user-check" aria-hidden="true"></i>Comptes<span class="st todo"></span></button>
+<button class="node part" data-k="db"><i class="ti ti-database" aria-hidden="true"></i>Base centrale<span class="st ok"></span></button>
+<button class="node part" data-k="https"><i class="ti ti-lock" aria-hidden="true"></i>HTTPS<span class="st ok"></span></button>
+<button class="node part" data-k="backup"><i class="ti ti-cloud-upload" aria-hidden="true"></i>Sauvegardes<span class="st todo"></span></button>
+</div>
+</div>
+
+<div class="wires" id="wires"><svg viewBox="0 0 300 56" preserveAspectRatio="none" aria-hidden="true">
+<line x1="50" y1="56" x2="150" y2="0" stroke="var(--t)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+<line x1="150" y1="56" x2="150" y2="0" stroke="var(--t)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+<line x1="250" y1="56" x2="150" y2="0" stroke="var(--t)" stroke-width="1" vector-effect="non-scaling-stroke"/>
+</svg></div>
+
+<div class="sites" id="sites"></div>
+
+<div class="sec"><i class="ti ti-route" aria-hidden="true"></i>Comment une école démarre</div>
+<div class="onb" id="onb"></div>
+
+<div class="legend"><span><i class="d" style="background:var(--t)"></i>en place</span><span><i class="d" style="background:var(--a)"></i>à faire</span><span><i class="ti ti-hand-finger" aria-hidden="true"></i>tout est cliquable</span></div>
+
+<div class="foot">
+<a href="architecture-cible.html"><i class="ti ti-file-text" aria-hidden="true"></i>Document complet</a>
+<a href="#" data-k="onbo"><i class="ti ti-player-play" aria-hidden="true"></i>Onboarding en film</a>
+<details class="all"><summary><i class="ti ti-list" aria-hidden="true"></i>Toutes les pages, une par une</summary><nav>
+<a href="1-architecture.html"><i class="ti ti-stack-2" aria-hidden="true"></i>Dans un poste</a>
+<a href="2-postes-de-travail.html"><i class="ti ti-devices" aria-hidden="true"></i>Les postes d'un site</a>
+<a href="3-onboarding-apercu.html"><i class="ti ti-route" aria-hidden="true"></i>Onboarding, aperçu</a>
+<a href="4-onboarding-detaille.html"><i class="ti ti-list-details" aria-hidden="true"></i>Onboarding, détaillé</a>
+<a href="5-multi-sites.html"><i class="ti ti-building-community" aria-hidden="true"></i>Plusieurs sites, une vue web</a>
+<a href="6-qui-voit-quoi.html"><i class="ti ti-eye-check" aria-hidden="true"></i>Qui voit quoi</a>
+</nav></details>
+</div>
 </main>
+
+<div class="shade" id="shade"></div>
+<aside class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="pt">
+<div class="ph"><i class="ti" id="pi" aria-hidden="true"></i><div><h2 id="pt"></h2><span class="tag" id="ps"></span></div><button class="x" id="px" aria-label="Fermer"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+<div class="pb" id="pb"></div>
+<div class="pf" id="pf"></div>
+</aside>
+
+<script>
+const OK='en place',TODO='à faire';
+const DEV={
+ dir:{i:'ti-device-desktop',n:'Direction',c:'Dir.',who:'le directeur du site',sees:'tout son site : élèves, notes, absences, caisse'},
+ sec:{i:'ti-device-laptop',n:'Secrétariat',c:'Secr.',who:'la secrétaire (plusieurs personnes possibles, chacune avec son code PIN)',sees:'élèves, inscriptions et paiements du site'},
+ ens:{i:'ti-device-mobile',n:'Enseignant',c:'Ens.',who:"l'enseignant, sur son téléphone Android",sees:'uniquement ses classes : ses élèves, ses notes, ses absences'}
+};
+const D={
+ web:{i:'ti-world',t:'Version web',s:TODO,frame:'5-multi-sites.html',doc:'couches',
+  txt:`<p>Le fondateur suit tous les sites depuis n'importe où ; un directeur peut suivre le sien. Même code que l'app, ouvert dans un navigateur.</p><p>Elle montre ce qui est déjà remonté au serveur : un site coupé apparaît avec l'heure de sa dernière synchro.</p>`},
+ sync:{i:'ti-refresh',t:'Synchronisation',s:OK,frame:'2-postes-de-travail.html',doc:'conflits',
+  txt:`<p>Chaque poste écrit d'abord chez lui, puis envoie ses changements au serveur dès que le réseau revient. Le serveur les redistribue aux autres postes.</p><p>Hors ligne, les changements attendent dans une file. Touchez un poste dans l'animation pour couper son réseau.</p>`},
+ roles:{i:'ti-filter',t:'Filtre par rôle',s:TODO,frame:'6-qui-voit-quoi.html',doc:'roles',
+  txt:`<p>Le serveur ne laisse descendre sur un appareil que ce que son rôle autorise, et refuse toute écriture hors de son périmètre. Choisissez une personne dans l'animation.</p>`},
+ auth:{i:'ti-user-check',t:'Comptes et connexion',s:TODO,doc:'roles',
+  txt:`<p>Un compte = une personne, identifiée par son numéro de téléphone.</p><ul><li><b>Première connexion</b>, en ligne : code reçu par SMS.</li><li><b>Ensuite, hors ligne</b> : un code PIN à 4 chiffres sur le poste.</li><li><b>Poste partagé</b> : chacun son PIN, on sait qui a encaissé quoi.</li><li><b>Droits</b> : chaque personne est rattachée à une organisation, un site (ou tous) et un rôle.</li></ul><p>Aujourd'hui, la connexion est anonyme (test). C'est la prochaine étape.</p>`},
+ db:{i:'ti-database',t:'Base centrale',s:OK,doc:'organisation',
+  txt:`<p>PostgreSQL, la référence unique. Les données sont rangées ainsi :</p><ul><li><b>Organisation</b> (le groupe scolaire)</li><li>→ <b>Sites</b> (Kaloum, Ratoma, Matoto…)</li><li>→ <b>Année scolaire</b> → <b>Classes</b> → élèves, notes, absences, paiements</li></ul><p>Chaque ligne sait à quelle organisation et à quel site elle appartient : c'est ce qui permet de filtrer et d'additionner.</p><p>Aujourd'hui elle ne contient que la table de test « Bonjour ».</p>`},
+ https:{i:'ti-lock',t:'HTTPS',s:OK,doc:'exploitation',
+  txt:`<p>Caddy chiffre toutes les connexions et renouvelle les certificats tout seul. C'est la seule porte d'entrée du serveur ; le pare-feu bloque tout le reste.</p><p>Adresse provisoire en <code>sslip.io</code> ; un vrai nom de domaine sera nécessaire avant les vraies écoles.</p>`},
+ backup:{i:'ti-cloud-upload',t:'Sauvegardes',s:TODO,doc:'exploitation',
+  txt:`<p><b>Priorité.</b> Aujourd'hui, si le VPS disparaît, les données sont perdues.</p><ul><li>Copie chiffrée chaque nuit, chez un autre hébergeur.</li><li>30 jours d'historique.</li><li>Test de restauration chaque mois.</li></ul>`},
+ site:{i:'ti-building-community',t:'Un site',s:OK,frame:'2-postes-de-travail.html',doc:'conflits',
+  txt:`<p>Un site = une école physique. Ses postes travaillent hors ligne et se synchronisent entre eux en passant par le serveur.</p>`},
+ onbo:{i:'ti-player-play',t:'Onboarding en film',s:TODO,frame:'3-onboarding-apercu.html',doc:'onboarding',
+  txt:`<p>Les six étapes qui amènent une école de l'inscription au travail hors ligne.</p>`}
+};
+const STEPS=[
+ {i:'ti-building-community',n:'Créer l\'espace'},{i:'ti-settings',n:'Configurer'},{i:'ti-users',n:'Inviter'},
+ {i:'ti-qrcode',n:'Activer les postes'},{i:'ti-cloud-download',n:'Synchro initiale'},{i:'ti-wifi-off',n:'Hors ligne'}];
+const STEP_TXT=[
+ "Le fondateur crée l'espace de son groupe scolaire, validé par code SMS, puis choisit son offre.",
+ "Sites, année scolaire, classes, matières et frais, avec des modèles adaptés au programme guinéen.",
+ "Invitation de l'équipe par SMS ou WhatsApp, chacun avec son rôle et son site.",
+ "Chaque poste scanne un QR code et reçoit sa licence hors ligne de 30 jours.",
+ "Le poste télécharge uniquement les données de son rôle, par petits lots qui reprennent après une coupure.",
+ "Le réseau devient facultatif : tout se fait en local, la synchro se fait quand elle peut."];
+
+// Sites et postes
+const SITES=['Kaloum','Ratoma','Matoto'],sitesEl=document.getElementById('sites');
+SITES.forEach((s,i)=>{
+ const d=document.createElement('div');d.className='site';
+ d.innerHTML=`<button class="sn" data-k="site" data-site="${s}"><i class="ti ti-building-community" aria-hidden="true"></i>${s}</button><div class="devs">`+
+  Object.entries(DEV).map(([k,v])=>`<button class="dv" data-k="dev" data-dev="${k}" data-site="${s}" aria-label="${v.n} ${s}"><i class="ti ${v.i}" aria-hidden="true"></i>${v.c}</button>`).join('')+'</div>';
+ sitesEl.appendChild(d);
+});
+// Étapes d'onboarding
+const onb=document.getElementById('onb');
+STEPS.forEach((x,i)=>{const b=document.createElement('button');b.className='step';b.dataset.k='step';b.dataset.n=i+1;
+ b.innerHTML=`<span class="c"><i class="ti ${x.i}" aria-hidden="true"></i></span>${i+1}. ${x.n}`;onb.appendChild(b);});
+
+// Panneau
+const panel=document.getElementById('panel'),shade=document.getElementById('shade');
+const $=id=>document.getElementById(id);
+let lastFocus=null;
+function open(k,el){
+ let d=D[k],frame,title,txt,icon;
+ if(k==='dev'){const v=DEV[el.dataset.dev],s=el.dataset.site;
+  d={i:v.i,t:`${v.n}, ${s}`,s:OK,frame:'1-architecture.html',doc:'principes',
+   txt:`<p>Utilisé par ${v.who}. Il reçoit ${v.sees}.</p><p>À l'intérieur : l'interface lit et écrit dans la base locale ; la file envoie les changements quand le réseau est là. Coupez le réseau dans l'animation pour voir la file se remplir.</p>`};}
+ else if(k==='step'){const n=+el.dataset.n,x=STEPS[n-1];
+  d={i:x.i,t:`Onboarding, étape ${n} : ${x.n}`,s:n===6?OK:TODO,frame:`4-onboarding-detaille.html?etape=${n}`,doc:'onboarding',txt:`<p>${STEP_TXT[n-1]}</p>`};}
+ else if(k==='site'){d={...D.site,t:`Site ${el.dataset.site}`};}
+ $('pi').className='ti '+d.i;$('pt').textContent=d.t;
+ $('ps').className='tag '+(d.s===OK?'ok':'todo');$('ps').textContent=d.s;
+ const src=d.frame?d.frame+(d.frame.includes('?')?'&':'?')+'embed':'';
+ $('pb').innerHTML=d.txt+(src?`<iframe src="${src}" title="Animation : ${d.t}" loading="lazy"></iframe>`:'');
+ $('pf').innerHTML=(d.frame?`<a href="${d.frame}"><i class="ti ti-arrows-maximize" aria-hidden="true"></i>Plein écran</a>`:'')+
+  `<a href="architecture-cible.html#${d.doc}"><i class="ti ti-file-text" aria-hidden="true"></i>Dans le document</a>`;
+ lastFocus=el;panel.classList.add('on');shade.classList.add('on');$('px').focus();
+ try{history.replaceState(null,'','#'+(k==='dev'?`poste-${el.dataset.dev}-${el.dataset.site}`:k==='step'?'etape-'+el.dataset.n:k==='site'?'site-'+el.dataset.site:k));}catch(e){}
+}
+function close(){panel.classList.remove('on');shade.classList.remove('on');setTimeout(()=>{if(!panel.classList.contains('on'))$('pb').innerHTML='';},300);
+ try{history.replaceState(null,'',location.pathname);}catch(e){} if(lastFocus)lastFocus.focus();}
+document.addEventListener('click',e=>{const el=e.target.closest('[data-k]');if(!el)return;e.preventDefault();open(el.dataset.k,el);});
+$('px').onclick=close;shade.onclick=close;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&panel.classList.contains('on'))close();});
+// Lien direct : #sync, #etape-4, #site-Ratoma, #poste-ens-Matoto
+(function(){const h=decodeURIComponent(location.hash.slice(1));if(!h)return;let el;
+ if(D[h])el=document.querySelector(`[data-k="${h}"]`);
+ else if(h.startsWith('etape-'))el=document.querySelector(`.step[data-n="${h.slice(6)}"]`);
+ else if(h.startsWith('site-'))el=document.querySelector(`.sn[data-site="${h.slice(5)}"]`);
+ else if(h.startsWith('poste-')){const [,dv,s]=h.split('-');el=document.querySelector(`.dv[data-dev="${dv}"][data-site="${s}"]`);}
+ if(el)open(el.dataset.k,el);})();
+
+// Animation de fond : les sites envoient au serveur, le serveur alimente la vue web
+const rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const W=$('wires'),L=$('lk'),X=[16.67,50,83.33];
+function pkt(box,a,b,c,cb){const p=document.createElement('div');p.className='pk';p.style.background=c;box.appendChild(p);
+ p.animate([a,b],{duration:900,easing:'ease-in-out'}).onfinish=()=>{p.remove();cb&&cb();};}
+function pulse(el){el.animate([{transform:'scale(1)'},{transform:'scale(1.06)'},{transform:'scale(1)'}],{duration:400});}
+let stepLit=0;
+if(!rm)setInterval(()=>{
+ if(document.hidden||panel.classList.contains('on'))return;
+ const i=Math.floor(Math.random()*3),site=sitesEl.children[i];pulse(site);
+ pkt(W,{left:X[i]+'%',top:'100%'},{left:'50%',top:'0%'},'var(--t)',()=>{
+  pulse(document.querySelector('.srv'));
+  pkt(L,{left:'50%',top:'100%'},{left:'50%',top:'0%'},'var(--a)',()=>pulse(document.querySelector('.web')));
+ });
+ [...onb.children].forEach((b,j)=>b.classList.toggle('lit',j===stepLit));stepLit=(stepLit+1)%6;
+},1600);
+</script>
 </body>
 </html>

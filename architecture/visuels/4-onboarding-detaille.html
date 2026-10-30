@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Onboarding client, détaillé</title>
 <link rel="stylesheet" href="vendor/tabler-icons.min.css">
+<script>if(/[?&]embed/.test(location.search))document.documentElement.classList.add("embed")</script>
+<style>.embed .back{display:none!important}.embed main{padding-top:6px}</style>
 <style>
 :root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--surface-0:#f5f4ef;--surface-1:#faf9f5;--surface-2:#fff;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--bg-success:#EAF3DE;--text-success:#3B6D11;--bg-danger:#FCEBEB;--text-danger:#A32D2D;--radius:8px}
 @media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--text-muted:#888780;--surface-0:#1a1a19;--surface-1:#232322;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.2);--bg-success:#27500A;--text-success:#C0DD97;--bg-danger:#501313;--text-danger:#F7C1C1}}
@@ -100,7 +102,7 @@ function go(n){T.forEach(clearTimeout);T=[];s=(n+S.length)%S.length;const x=S[s]
 $('sc').innerHTML=x.html;[...$('sc').children].forEach((c,i)=>pop(c,i*150));
 $('cap').textContent=x.cap;$('det').innerHTML=x.det.map(d=>'<li><i class="ti '+d[0]+'" aria-hidden="true"></i><span>'+d[1]+'</span></li>').join('');
 $('ct').textContent=(s+1)+' / '+S.length;x.run();}
-go(0);
+go((+new URLSearchParams(location.search).get('etape')||1)-1);
 </script>
 </body>
 </html>
