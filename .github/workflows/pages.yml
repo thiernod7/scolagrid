@@ -2,6 +2,8 @@ name: Publier les visuels d'architecture
 
 on:
   push:
+    branches:
+      - claude/sleepy-pasteur-06ebnn
     paths:
       - "architecture/**"
       - ".github/workflows/pages.yml"
