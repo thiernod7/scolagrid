@@ -45,7 +45,7 @@ if [ ! -d "$DIR" ]; then
   git -C "$tmp" sparse-checkout set docker
   sudo mkdir -p "$(dirname "$DIR")"
   sudo cp -r "$tmp/docker" "$DIR"
-  sudo chown -R "$(id -un)": /opt/scolagrid
+  sudo chown -R "$(id -un)": "$DIR"   # surtout pas tout /opt/scolagrid : la base de l'autre environnement y vit
   rm -rf "$tmp"
   echo "téléchargés"
 else
@@ -96,6 +96,9 @@ for i in $(seq 1 60); do
   [ "$(sudo docker inspect -f '{{.State.Health.Status}}' "$DB")" = healthy ] && break
   sleep 3
 done
+# Le dossier de données doit appartenir à postgres dans le conteneur
+# (répare un changement de propriétaire accidentel, sans effet sinon).
+sudo docker exec -u root "$DB" chown -R postgres:postgres /var/lib/postgresql/data
 
 step "Migrations"
 SUDO=sudo bash "$SRC/appliquer-migrations.sh" "$DB" "$SRC/migrations"
@@ -106,6 +109,9 @@ sudo docker exec -i "$DB" psql -q -X -v ON_ERROR_STOP=1 -U supabase_admin -d pos
 step "Services"
 dc up -d --quiet-pull --remove-orphans db auth rest meta studio api-gw powersync-storage powersync
 sleep 20
+for c in $(dc ps --filter health=unhealthy --format '{{.Name}}'); do
+  sudo docker restart "$c" >/dev/null && echo "redémarré (était en mauvaise santé) : $c"
+done
 dc ps --format 'table {{.Name}}\t{{.Status}}'
 
 step "Proxy HTTPS (Caddy, partagé)"
