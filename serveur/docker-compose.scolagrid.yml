@@ -9,6 +9,17 @@ services:
     container_name: ${PREFIXE:-}supabase-db
   auth:
     container_name: ${PREFIXE:-}supabase-auth
+    environment:
+      # Connexion par téléphone. Tant qu'aucun fournisseur SMS n'est choisi, les
+      # identifiants Twilio sont factices : seuls les numéros de test (SMS_TEST_OTP,
+      # environnement d'essai) reçoivent un code, fixe, sans envoi de SMS.
+      GOTRUE_SMS_PROVIDER: ${SMS_PROVIDER:-twilio}
+      GOTRUE_SMS_TWILIO_ACCOUNT_SID: ${SMS_TWILIO_ACCOUNT_SID:-aucun}
+      GOTRUE_SMS_TWILIO_AUTH_TOKEN: ${SMS_TWILIO_AUTH_TOKEN:-aucun}
+      GOTRUE_SMS_TWILIO_MESSAGE_SERVICE_SID: ${SMS_TWILIO_MESSAGE_SERVICE_SID:-aucun}
+      GOTRUE_SMS_TEST_OTP: ${SMS_TEST_OTP:-}
+      GOTRUE_SMS_OTP_LENGTH: "6"
+      GOTRUE_SMS_TEMPLATE: "Votre code Scolagrid : {{ .Code }}"
   rest:
     container_name: ${PREFIXE:-}supabase-rest
   meta:

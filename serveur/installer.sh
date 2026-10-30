@@ -79,7 +79,18 @@ set_env SCOLAGRID_HOST "$HOST"
 set_env SUPABASE_PUBLIC_URL "https://$API"
 set_env API_EXTERNAL_URL "https://$API/auth/v1"
 set_env SITE_URL "https://$API"
-set_env ENABLE_ANONYMOUS_USERS true
+if [ "$ENVIRONNEMENT" = essai ]; then
+  # Numéros de test : code fixe, aucun SMS envoyé. Publics, donc réservés à l'essai.
+  set_env ENABLE_PHONE_SIGNUP true
+  set_env ENABLE_PHONE_AUTOCONFIRM true
+  set_env SMS_TEST_OTP "224620000001:123456,224620000002:123456,224620000003:123456,224620000004:123456,224620000005:123456"
+  set_env ENABLE_ANONYMOUS_USERS false
+else
+  # Production : téléphone fermé tant qu'aucun fournisseur SMS n'est choisi.
+  set_env ENABLE_PHONE_SIGNUP false
+  set_env SMS_TEST_OTP ""
+  set_env ENABLE_ANONYMOUS_USERS true   # app « Bonjour » de test, à fermer avec l'onboarding
+fi
 set_env DASHBOARD_USERNAME admin
 set_env POOLER_TENANT_ID scolagrid
 jwt_secret=$(grep '^JWT_SECRET=' .env | cut -d= -f2-)
@@ -137,6 +148,20 @@ check() {
 }
 check -H "apikey: $anon" "https://$API/auth/v1/health"
 check "https://$SYNC/probes/liveness"
+if [ "$ENVIRONNEMENT" = essai ]; then
+  # Parcours réel : code par téléphone, jeton, puis lecture protégée par les règles.
+  curl -s -o /dev/null -H "apikey: $anon" -H "Content-Type: application/json" \
+    -d '{"phone":"224620000001"}' "https://$API/auth/v1/otp" || true
+  jeton=$(curl -s -H "apikey: $anon" -H "Content-Type: application/json" \
+    -d '{"phone":"224620000001","token":"123456","type":"sms"}' "https://$API/auth/v1/verify" \
+    | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+  if [ -n "$jeton" ]; then
+    echo "OK   connexion par téléphone (numéro de test)"
+    check -H "apikey: $anon" -H "Authorization: Bearer $jeton" "https://$API/rest/v1/organisations?select=id"
+  else
+    echo "ÉCHEC connexion par téléphone (numéro de test)"
+  fi
+fi
 
 step "Sauvegardes"
 if [ "$ENVIRONNEMENT" != prod ]; then
