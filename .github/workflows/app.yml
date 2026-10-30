@@ -25,6 +25,11 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+      - name: Vérifier la configuration du serveur
+        run: |
+          for v in SUPABASE_URL=${{ vars.SUPABASE_URL }} POWERSYNC_URL=${{ vars.POWERSYNC_URL }} SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON_KEY }}; do
+            [ -n "${v#*=}" ] && echo "${v%%=*} : renseignée" || echo "${v%%=*} : ABSENTE (l'app fonctionnera en local seulement)"
+          done
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
