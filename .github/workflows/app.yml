@@ -7,29 +7,52 @@ on:
       - ".github/workflows/app.yml"
   workflow_dispatch:
 
-# Les adresses du cloud viennent des variables du repo
-# (Settings > Secrets and variables > Actions > Variables).
-# Si elles sont absentes, l'app fonctionne en local seulement.
-env:
-  DART_DEFINES: >-
-    --dart-define=SUPABASE_URL=${{ vars.SUPABASE_URL }}
-    --dart-define=SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON_KEY }}
-    --dart-define=POWERSYNC_URL=${{ vars.POWERSYNC_URL }}
+# Branche principale : app reliée à la production (variables du repo
+# SUPABASE_URL, SUPABASE_ANON_KEY, POWERSYNC_URL).
+# Autres branches : app reliée à l'environnement d'essai ; sa clé publique
+# est lue sur le serveur, rien à configurer.
 
 jobs:
+  config:
+    runs-on: ubuntu-latest
+    outputs:
+      environnement: ${{ steps.c.outputs.environnement }}
+      defines: ${{ steps.c.outputs.defines }}
+    steps:
+      - id: c
+        env:
+          PROD: ${{ github.ref_name == github.event.repository.default_branch }}
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ "$PROD" = true ]; then
+            # Les jobs de compilation lisent eux-mêmes les variables : GitHub ne
+            # transmet pas une sortie qui ressemble à un secret.
+            echo "environnement=prod" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+          host="$(echo "$VPS_HOST" | tr . -).sslip.io"
+          cle=$(ssh "$VPS" "grep '^ANON_KEY=' /opt/scolagrid/essai/supabase/.env | cut -d= -f2-")
+          [ -n "$cle" ] || { echo "Clé de l'essai introuvable sur le serveur"; exit 1; }
+          echo "environnement=essai" >> "$GITHUB_OUTPUT"
+          echo "defines=--dart-define=SCOLAGRID_ENV=essai --dart-define=SUPABASE_URL=https://api-essai.$host --dart-define=SUPABASE_ANON_KEY=$cle --dart-define=POWERSYNC_URL=https://sync-essai.$host" >> "$GITHUB_OUTPUT"
+          echo "App reliée à l'essai : https://api-essai.$host"
+
   windows:
+    needs: config
     runs-on: windows-latest
+    env:
+      DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || needs.config.outputs.defines }}
     defaults:
       run:
         working-directory: app
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      - name: Vérifier la configuration du serveur
-        run: |
-          for v in SUPABASE_URL=${{ vars.SUPABASE_URL }} POWERSYNC_URL=${{ vars.POWERSYNC_URL }} SUPABASE_ANON_KEY=${{ vars.SUPABASE_ANON_KEY }}; do
-            [ -n "${v#*=}" ] && echo "${v%%=*} : renseignée" || echo "${v%%=*} : ABSENTE (l'app fonctionnera en local seulement)"
-          done
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -41,11 +64,14 @@ jobs:
       - run: flutter build windows --release $DART_DEFINES
       - uses: actions/upload-artifact@v4
         with:
-          name: scolagrid-windows
+          name: scolagrid-windows-${{ needs.config.outputs.environnement }}
           path: app/build/windows/x64/runner/Release/
 
   android:
+    needs: config
     runs-on: ubuntu-latest
+    env:
+      DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || needs.config.outputs.defines }}
     defaults:
       run:
         working-directory: app
@@ -66,5 +92,5 @@ jobs:
       - run: flutter build apk --release $DART_DEFINES
       - uses: actions/upload-artifact@v4
         with:
-          name: scolagrid-android
+          name: scolagrid-android-${{ needs.config.outputs.environnement }}
           path: app/build/app/outputs/flutter-apk/app-release.apk
