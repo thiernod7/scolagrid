@@ -1,9 +1,23 @@
-# Ce que chaque poste reçoit du cloud.
-# Pour le test : tous les « Hello » vont à tout le monde.
+# Ce que chaque appareil reçoit du serveur.
+# Règle : uniquement les données des organisations auxquelles la personne
+# connectée est rattachée (auth.user_id() = son identifiant de compte).
+
 config:
   edition: 3
 
 streams:
+  # L'espace de la personne : ses organisations, leurs sites, ses rattachements
+  # et son profil. Prioritaire : c'est ce que l'app affiche en premier.
+  mon_espace:
+    auto_subscribe: true
+    priority: 1
+    queries:
+      - SELECT * FROM organisations WHERE id IN (SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true)
+      - SELECT * FROM sites WHERE organisation_id IN (SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true)
+      - SELECT * FROM rattachements WHERE user_id = auth.user_id()
+      - SELECT * FROM personnes WHERE id = auth.user_id()
+
+  # Table de test « Bonjour » (première version de l'app).
   hellos:
     auto_subscribe: true
     query: SELECT * FROM hellos
