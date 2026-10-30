@@ -55,7 +55,9 @@ cd "$DIR"
 cp "$SRC/docker-compose.scolagrid.yml" .
 rm -f init.sql Caddyfile
 mkdir -p powersync
+avant=$(cat powersync/* 2>/dev/null | sha256sum)
 cp "$SRC"/powersync/* powersync/
+[ "$(cat powersync/* | sha256sum)" = "$avant" ] && PS_CHANGE=non || PS_CHANGE=oui
 
 step "Secrets"
 set_env() {
@@ -120,6 +122,13 @@ sudo docker exec -i "$DB" psql -q -X -v ON_ERROR_STOP=1 -U supabase_admin -d pos
 step "Services"
 dc up -d --quiet-pull --remove-orphans db auth rest meta studio api-gw powersync-storage powersync
 sleep 20
+PS="${PREFIXE}scolagrid-powersync"
+if [ "$PS_CHANGE" = oui ]; then
+  sudo docker restart "$PS" >/dev/null && echo "PowerSync redémarré (configuration modifiée)"
+  sleep 15
+  erreurs=$(sudo docker logs --since 30s "$PS" 2>&1 | grep -iE '"level":"error"|sync config' | tail -5)
+  [ -z "$erreurs" ] || { echo "Messages de PowerSync :"; echo "$erreurs"; }
+fi
 for c in $(dc ps --filter health=unhealthy --format '{{.Name}}'); do
   sudo docker restart "$c" >/dev/null && echo "redémarré (était en mauvaise santé) : $c"
 done
