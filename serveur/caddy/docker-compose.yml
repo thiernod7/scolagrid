@@ -1,0 +1,29 @@
+# Proxy HTTPS partagé par la production et l'essai, via le réseau scolagrid-web.
+name: scolagrid-caddy
+
+services:
+  caddy:
+    container_name: scolagrid-caddy
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SCOLAGRID_HOST: ${SCOLAGRID_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - data:/data
+      - config:/config
+    networks:
+      - web
+
+volumes:
+  data:
+  config:
+
+networks:
+  web:
+    external: true
+    name: scolagrid-web

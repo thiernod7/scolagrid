@@ -1,30 +1,34 @@
 # Ajouts de Scolagrid par-dessus le docker-compose.yml officiel de Supabase.
-# Seul Caddy est exposé sur internet (ports 80 et 443).
+# Sert aux deux environnements : PREFIXE distingue les conteneurs
+# (vide en production, « essai- » en essai) et SCOLAGRID_ENV les noms
+# sous lesquels Caddy les joint sur le réseau partagé scolagrid-web.
+# Aucun port n'est exposé : seul Caddy (serveur/caddy) l'est.
 
 services:
+  db:
+    container_name: ${PREFIXE:-}supabase-db
+  auth:
+    container_name: ${PREFIXE:-}supabase-auth
+  rest:
+    container_name: ${PREFIXE:-}supabase-rest
+  meta:
+    container_name: ${PREFIXE:-}supabase-meta
+  studio:
+    container_name: ${PREFIXE:-}supabase-studio
+
   api-gw:
+    container_name: ${PREFIXE:-}supabase-envoy
     ports: !reset []
+    networks:
+      web:
+        aliases:
+          - api-gw-${SCOLAGRID_ENV}
 
   supavisor:
     ports: !reset []
 
-  caddy:
-    container_name: scolagrid-caddy
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      SCOLAGRID_HOST: ${SCOLAGRID_HOST}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-
   powersync-storage:
-    container_name: scolagrid-powersync-storage
+    container_name: ${PREFIXE:-}scolagrid-powersync-storage
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
@@ -40,7 +44,7 @@ services:
       retries: 10
 
   powersync:
-    container_name: scolagrid-powersync
+    container_name: ${PREFIXE:-}scolagrid-powersync
     image: journeyapps/powersync-service:1.27.2
     restart: unless-stopped
     command: ["start", "-c", "/config/service.yaml"]
@@ -55,8 +59,16 @@ services:
       PS_JWT_K: ${PS_JWT_K}
     volumes:
       - ./powersync:/config:ro
+    networks:
+      default:
+      web:
+        aliases:
+          - powersync-${SCOLAGRID_ENV}
 
 volumes:
-  caddy-data:
-  caddy-config:
   powersync-storage:
+
+networks:
+  web:
+    external: true
+    name: scolagrid-web

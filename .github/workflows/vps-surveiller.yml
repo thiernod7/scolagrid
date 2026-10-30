@@ -1,0 +1,84 @@
+name: VPS - Surveiller
+
+# Toutes les 30 minutes, vérifie la production depuis l'extérieur.
+# En cas de problème, le workflow échoue et GitHub envoie un e-mail
+# (à la personne qui a modifié en dernier la ligne « cron » ci-dessous).
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: surveillance
+  cancel-in-progress: true
+
+jobs:
+  surveiller:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Vérifier
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          host="$(echo "$VPS_HOST" | tr . -).sslip.io"
+          problemes=()
+          ok() { echo "OK      $1"; echo "| ✅ | $1 |" >> "$GITHUB_STEP_SUMMARY"; }
+          ko() { echo "PROBLÈME $1"; echo "| ❌ | $1 |" >> "$GITHUB_STEP_SUMMARY"; problemes+=("$1"); }
+          echo "| | Vérification |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+
+          # Vu depuis internet, comme une application dans une école
+          code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' "https://api.$host/auth/v1/health" || true)
+          if [ "$code" != 000 ] && [ "$code" -lt 500 ]; then ok "API joignable ($code)"; else ko "API injoignable (code $code)"; fi
+          code=$(curl -s -o /dev/null -m 20 -w '%{http_code}' "https://sync.$host/probes/liveness" || true)
+          if [ "$code" = 200 ]; then ok "Synchronisation joignable"; else ko "Synchronisation injoignable (code $code)"; fi
+          jours=$(echo | openssl s_client -connect "api.$host:443" -servername "api.$host" 2>/dev/null \
+                  | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+          if [ -n "$jours" ]; then
+            restant=$(( ($(date -d "$jours" +%s) - $(date +%s)) / 86400 ))
+            if [ "$restant" -ge 10 ]; then ok "Certificat HTTPS valable encore $restant jours"; else ko "Certificat HTTPS expire dans $restant jours"; fi
+          else ko "Certificat HTTPS illisible"; fi
+
+          # Vu de l'intérieur du serveur
+          etat=$(ssh -o ConnectTimeout=20 "$VPS" 'bash -s' <<'EOF' || echo "ssh=echec"
+          echo "disque=$(df --output=pcent / | tail -1 | tr -dc 0-9)"
+          echo "memoire=$(free | awk '/Mem:/{printf "%d", 100-$7*100/$2}')"
+          echo "malades=$(sudo docker ps -a --filter label=com.docker.compose.project=supabase --format '{{.Names}} {{.State}} {{.Status}}' | awk '$2!="running" || /unhealthy/ {print $1}' | paste -sd, -)"
+          echo "caddy=$(sudo docker inspect -f '{{.State.Running}}' scolagrid-caddy 2>/dev/null || echo false)"
+          if sudo test -f /opt/scolagrid/sauvegarde.env; then
+            if [ -f /var/lib/scolagrid/derniere-sauvegarde ]; then
+              echo "sauvegarde_heures=$(( ($(date +%s) - $(date -d "$(cat /var/lib/scolagrid/derniere-sauvegarde)" +%s)) / 3600 ))"
+            else echo "sauvegarde_heures=jamais"; fi
+          else echo "sauvegarde_heures=non-configurees"; fi
+          EOF
+          )
+          echo "$etat"
+          val() { grep "^$1=" <<<"$etat" | cut -d= -f2-; }
+          if grep -q "ssh=echec" <<<"$etat"; then ko "Connexion SSH impossible"; else
+            d=$(val disque); if [ "${d:-100}" -lt 85 ]; then ok "Disque utilisé à $d %"; else ko "Disque presque plein ($d %)"; fi
+            m=$(val memoire); if [ "${m:-100}" -lt 90 ]; then ok "Mémoire utilisée à $m %"; else ko "Mémoire presque pleine ($m %)"; fi
+            s=$(val malades); if [ -z "$s" ]; then ok "Tous les services de production tournent"; else ko "Services en panne : $s"; fi
+            if [ "$(val caddy)" = true ]; then ok "Caddy tourne"; else ko "Caddy arrêté"; fi
+            h=$(val sauvegarde_heures)
+            case "$h" in
+              non-configurees) ok "Sauvegardes pas encore configurées" ;;
+              jamais) ko "Aucune sauvegarde n'a encore réussi" ;;
+              *) if [ "$h" -le 26 ]; then ok "Dernière sauvegarde il y a $h h"; else ko "Dernière sauvegarde il y a $h h"; fi ;;
+            esac
+          fi
+
+          if [ ${#problemes[@]} -gt 0 ]; then
+            echo "::error::${#problemes[@]} problème(s) : ${problemes[*]}"
+            exit 1
+          fi
+          echo "Tout va bien."

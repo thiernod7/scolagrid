@@ -1,10 +1,19 @@
 name: VPS - Installer
 
-# Installe ou met à jour le serveur Scolagrid (Supabase, PowerSync, Caddy).
+# Installe ou met à jour un environnement Scolagrid (Supabase, PowerSync, Caddy).
+# Branche principale -> production ; toute autre branche -> essai.
 # Rejouable sans risque : les données et les secrets existants sont conservés.
 
 on:
   workflow_dispatch:
+    inputs:
+      environnement:
+        description: "Environnement à installer"
+        type: choice
+        options:
+          - essai
+          - prod
+        default: essai
   push:
     paths:
       - "serveur/**"
@@ -36,6 +45,8 @@ jobs:
   installer:
     needs: tester-migrations
     runs-on: ubuntu-latest
+    env:
+      ENVIRONNEMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environnement || (github.ref_name == github.event.repository.default_branch && 'prod' || 'essai') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +58,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Transmettre l'accès aux sauvegardes
+        if: env.ENVIRONNEMENT == 'prod'
         env:
           VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
           DEPOT: ${{ secrets.SAUVEGARDE_DEPOT }}
@@ -63,7 +75,7 @@ jobs:
           } | ssh "$VPS" 'sudo mkdir -p /opt/scolagrid && sudo install -m 600 /dev/stdin /opt/scolagrid/sauvegarde.env'
           echo "Accès transmis"
 
-      - name: Installer
+      - name: Installer (${{ env.ENVIRONNEMENT }})
         env:
           VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
@@ -71,4 +83,4 @@ jobs:
           host="$(echo "$VPS_HOST" | tr . -).sslip.io"
           ssh "$VPS" 'rm -rf /tmp/scolagrid-serveur'
           scp -q -r serveur "$VPS":/tmp/scolagrid-serveur
-          ssh "$VPS" "bash /tmp/scolagrid-serveur/installer.sh $host; s=\$?; rm -rf /tmp/scolagrid-serveur; exit \$s"
+          ssh "$VPS" "bash /tmp/scolagrid-serveur/installer.sh $host $ENVIRONNEMENT; s=\$?; rm -rf /tmp/scolagrid-serveur; exit \$s"

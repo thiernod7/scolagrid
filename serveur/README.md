@@ -2,10 +2,14 @@
 
 Tout ce qui tourne sur le VPS, installé par le workflow **VPS - Installer** (onglet Actions).
 
-| Adresse | Service |
-|---|---|
-| `https://api.<ip>.sslip.io` | Supabase : base de données, comptes, API, tableau d'administration |
-| `https://sync.<ip>.sslip.io` | PowerSync : synchronisation avec les postes |
+Deux environnements tournent sur le même VPS, chacun avec sa base et ses secrets :
+
+| Environnement | Adresses | Installé depuis |
+|---|---|---|
+| Production | `https://api.<ip>.sslip.io` et `https://sync.<ip>.sslip.io` | la branche principale |
+| Essai | `https://api-essai.<ip>.sslip.io` et `https://sync-essai.<ip>.sslip.io` | toute autre branche |
+
+`api` = Supabase (base, comptes, API, tableau d'administration), `sync` = PowerSync. Seule la production est sauvegardée ; l'essai contient des données jetables.
 
 `<ip>` est l'adresse du VPS avec des tirets (ex. `178-162-254-106`). Quand on aura un nom de domaine, il suffira de changer l'hôte passé à `installer.sh`.
 
@@ -13,7 +17,7 @@ Tout ce qui tourne sur le VPS, installé par le workflow **VPS - Installer** (on
 
 - `installer.sh` : installe ou met à jour le serveur. Rejouable sans risque.
 - `docker-compose.scolagrid.yml` : nos ajouts au `docker-compose.yml` officiel de Supabase.
-- `Caddyfile` : HTTPS et redirection vers les services.
+- `caddy/` : le proxy HTTPS, unique et partagé par les deux environnements (réseau Docker `scolagrid-web`).
 - `migrations/` : les changements de la base, numérotés (`001_…`, `002_…`). Chacun est appliqué une seule fois, dans l'ordre, par `appliquer-migrations.sh`. On ne modifie jamais une migration déjà appliquée : on en ajoute une nouvelle. GitHub les teste sur une base jetable avant chaque installation.
 - `powersync/` : configuration de la synchronisation.
 
@@ -24,7 +28,8 @@ Générés une seule fois sur le serveur, dans `/opt/scolagrid/supabase/.env`. I
 Mot de passe du tableau d'administration (utilisateur `admin`) :
 
 ```bash
-ssh vps "grep DASHBOARD_PASSWORD /opt/scolagrid/supabase/.env"
+ssh vps "grep DASHBOARD_PASSWORD /opt/scolagrid/supabase/.env"         # production
+ssh vps "grep DASHBOARD_PASSWORD /opt/scolagrid/essai/supabase/.env"   # essai
 ```
 
 ## Sauvegardes
@@ -46,3 +51,7 @@ docker exec -i supabase-db psql -U supabase_admin -d postgres < /tmp/scolagrid.s
 ```
 
 La restauration complète sur un serveur neuf (secrets compris) sera écrite et testée dans un workflow dédié.
+
+## Surveillance
+
+Le workflow « VPS - Surveiller » vérifie la production toutes les 30 minutes : API et synchronisation joignables, certificat HTTPS, disque, mémoire, services, ancienneté de la dernière sauvegarde. En cas de problème, il échoue et GitHub envoie un e-mail. Le résumé de chaque vérification est visible dans l'onglet Actions.

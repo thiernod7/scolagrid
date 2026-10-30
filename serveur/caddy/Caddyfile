@@ -1,0 +1,22 @@
+# Caddy est la seule porte d'entrée du serveur, partagée par les deux environnements.
+# Il obtient et renouvelle les certificats HTTPS tout seul.
+
+# Production
+api.{$SCOLAGRID_HOST} {
+	reverse_proxy api-gw-prod:8000
+}
+sync.{$SCOLAGRID_HOST} {
+	reverse_proxy powersync-prod:8080 {
+		flush_interval -1
+	}
+}
+
+# Essai
+api-essai.{$SCOLAGRID_HOST} {
+	reverse_proxy api-gw-essai:8000
+}
+sync-essai.{$SCOLAGRID_HOST} {
+	reverse_proxy powersync-essai:8080 {
+		flush_interval -1
+	}
+}
