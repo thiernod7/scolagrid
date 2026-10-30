@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plusieurs sites, une vue web</title>
+<link rel="stylesheet" href="vendor/tabler-icons.min.css">
+<style>
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--surface-0:#f5f4ef;--surface-1:#faf9f5;--surface-2:#fff;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--border-danger:#F09595;--bg-success:#EAF3DE;--text-success:#3B6D11;--bg-danger:#FCEBEB;--text-danger:#A32D2D;--bg-warn:#FAEEDA;--text-warn:#854F0B;--radius:8px}
+@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--text-muted:#888780;--surface-0:#1a1a19;--surface-1:#232322;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.2);--border-danger:#A32D2D;--bg-success:#27500A;--text-success:#C0DD97;--bg-danger:#501313;--text-danger:#F7C1C1;--bg-warn:#633806;--text-warn:#FAC775}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:420px;margin:0 auto;padding:16px}
+@media (min-width:560px){main{zoom:1.25}}@media (min-width:720px){main{zoom:1.5}}@media (min-width:1000px){main{zoom:1.75}}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.web{border:0.5px solid #BA7517;border-radius:16px;background:var(--surface-2);padding:10px 12px}
+.wh{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500}
+.wh i{font-size:20px;color:#BA7517}
+.wh small{font-weight:400;color:var(--text-muted);font-size:11px;margin-left:auto}
+.tabs{display:flex;gap:4px;margin:8px 0 6px}
+.tab{flex:1;font:inherit;font-size:11px;padding:5px 4px;border-radius:99px;border:0.5px solid var(--border-strong);background:transparent;color:var(--text-secondary);cursor:pointer}
+.tab.on{background:#FAEEDA;border-color:#BA7517;color:#633806}
+@media (prefers-color-scheme:dark){.tab.on{background:#633806;color:#FAC775}}
+.rw{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;font-size:12px;padding:6px 4px;border-top:0.5px solid var(--border);transition:opacity .3s}
+.rw .n{font-weight:500}
+.rw .v{color:var(--text-secondary);text-align:right;font-variant-numeric:tabular-nums}
+.rw.tot{font-weight:500}
+.rw.lock{opacity:.35}
+.fr{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 6px;border-radius:99px;background:var(--bg-success);color:var(--text-success);white-space:nowrap;min-width:84px;justify-content:center}
+.fr.old{background:var(--bg-warn);color:var(--text-warn)}
+.cols{display:grid;grid-template-columns:1fr auto auto;gap:8px;font-size:10px;color:var(--text-muted);padding:0 4px 2px}
+.cols span:nth-child(2){text-align:right}.cols span:nth-child(3){min-width:84px;text-align:center}
+.link{position:relative;height:44px}
+.link svg,.wires svg{position:absolute;inset:0;width:100%;height:100%}
+.cl{margin:0 auto;width:230px;border:0.5px solid #1D9E75;border-radius:16px;padding:8px 12px;text-align:center;background:var(--surface-1)}
+.cl .t{display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:500;color:#0F6E56}
+.cl .t i{font-size:24px;display:inline-block}
+.mrow{display:flex;justify-content:center;gap:10px;margin-top:6px}
+.mini{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary);padding:3px 8px;border-radius:var(--radius);background:var(--surface-2);border:0.5px solid var(--border)}
+.mini i{font-size:16px;color:#0F6E56;display:inline-block}
+@media (prefers-color-scheme:dark){.cl .t,.mini i{color:#5DCAA5}}
+.wires{position:relative;height:90px}
+.pk{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%}
+.devs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dev{border:0.5px solid var(--border-strong);border-radius:12px;padding:8px 4px;text-align:center;cursor:pointer;background:var(--surface-2);transition:opacity .3s}
+.dev .ic{font-size:28px;color:#534AB7;display:inline-block}
+.nm{font-size:12px;color:var(--text-primary);margin:2px 0 4px;font-weight:500}
+.loc{font-size:10px;color:var(--text-secondary);margin-bottom:6px;line-height:1.4}
+.chip{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 7px;border-radius:99px;background:var(--bg-success);color:var(--text-success)}
+.dev.off .chip{background:var(--bg-danger);color:var(--text-danger)}
+.dev.off{border-color:var(--border-danger)}
+.db{margin-top:6px;font-size:11px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;gap:4px}
+.db i{font-size:16px;color:#7F77DD;display:inline-block}
+.qn{min-width:18px;padding:0 5px;border-radius:99px;background:var(--surface-1);font-size:11px}
+.dev.off .qn{background:var(--bg-danger);color:var(--text-danger)}
+.hint{text-align:center;font-size:12px;color:var(--text-muted);margin:10px 0 4px}
+.note{font-size:12px;color:var(--text-secondary);line-height:1.5;border-left:2px solid #BA7517;padding:2px 0 2px 10px;margin:12px 0 0}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="index.html" style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--text-secondary);text-decoration:none;margin-bottom:8px"><i class="ti ti-arrow-left" aria-hidden="true"></i> Tous les visuels</a>
+<h2 class="sr-only">Animation : trois sites d'une même école travaillent chacun hors ligne avec leur base locale. Quand un site a du réseau, ses données montent au serveur, puis la version web du fondateur affiche la situation de chaque site, avec l'heure de sa dernière synchronisation.</h2>
+
+<div class="web" id="web">
+<div class="wh"><i class="ti ti-world" aria-hidden="true"></i>Version web<small>depuis n'importe où</small></div>
+<div class="tabs" role="tablist">
+<button class="tab on" id="tf" onclick="view('f')">Fondateur : tous les sites</button>
+<button class="tab" id="td" onclick="view('d')">Directeur : Ratoma</button>
+</div>
+<div class="cols"><span>Site</span><span>Encaissé aujourd'hui</span><span>Données</span></div>
+<div id="rows"></div>
+</div>
+
+<div class="link" id="link">
+<svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><line x1="50" y1="0" x2="50" y2="40" stroke="#BA7517" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>
+</div>
+
+<div class="cl">
+<div class="t"><i class="ti ti-server-2" aria-hidden="true" id="srv"></i>Ton serveur (VPS)</div>
+<div class="mrow">
+<div class="mini"><i class="ti ti-refresh" aria-hidden="true"></i>Sync</div>
+<div class="mini"><i class="ti ti-database" aria-hidden="true" id="cdb"></i>Base centrale</div>
+</div>
+</div>
+
+<div class="wires" id="wires">
+<svg viewBox="0 0 300 100" preserveAspectRatio="none" aria-hidden="true">
+<line id="w0" x1="50" y1="100" x2="150" y2="0" stroke="#1D9E75" stroke-width="1" vector-effect="non-scaling-stroke"/>
+<line id="w1" x1="150" y1="100" x2="150" y2="0" stroke="#1D9E75" stroke-width="1" vector-effect="non-scaling-stroke"/>
+<line id="w2" x1="250" y1="100" x2="150" y2="0" stroke="#1D9E75" stroke-width="1" vector-effect="non-scaling-stroke"/>
+</svg>
+</div>
+
+<div class="devs" id="devs"></div>
+<p class="hint"><i class="ti ti-hand-finger" aria-hidden="true"></i> Touchez un site pour couper ou rétablir son réseau</p>
+<p class="note">Chaque site travaille hors ligne, comme les autres postes. La version web ne montre que ce qui est déjà remonté au serveur : un site coupé apparaît avec l'heure de sa dernière synchro, puis se met à jour dès que son réseau revient.</p>
+</main>
+<script>
+const X=[16.67,50,83.33],T='#1D9E75',A='#BA7517';
+const rm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fmt=n=>n.toLocaleString('fr-FR').replace(/ | /g,' ')+' GNF';
+const S=[
+ {n:'Kaloum',on:true,cash:450000},
+ {n:'Ratoma',on:true,cash:820000},
+ {n:'Matoto',on:false,cash:300000}
+].map((s,i)=>({...s,q:[],fly:0,seen:s.cash,last:Date.now()-(s.on?0:7*60000),i}));
+let mode='f';
+const devs=document.getElementById('devs'),rows=document.getElementById('rows');
+S.forEach(s=>{
+ const d=document.createElement('div');d.className='dev';d.onclick=()=>tog(s.i);
+ d.innerHTML=`<i class="ti ti-building-community ic" aria-hidden="true"></i><div class="nm">${s.n}</div><div class="loc">Caisse locale<br><b class="lc"></b></div><span class="chip"><i aria-hidden="true"></i><span class="cs"></span></span><div class="db"><i class="ti ti-database" aria-hidden="true"></i><span class="qn"></span></div>`;
+ devs.appendChild(d);s.el=d;s.w=document.getElementById('w'+s.i);
+ const r=document.createElement('div');r.className='rw';
+ r.innerHTML=`<span class="n">${s.n}</span><span class="v"></span><span class="fr"><i aria-hidden="true"></i><span></span></span>`;
+ rows.appendChild(r);s.row=r;
+});
+const tot=document.createElement('div');tot.className='rw tot';
+tot.innerHTML=`<span>Total réseau</span><span class="v"></span><span></span>`;rows.appendChild(tot);
+
+function pulse(el,s){if(rm||!el)return;el.animate([{transform:'scale(1)'},{transform:'scale('+(s||1.18)+')'},{transform:'scale(1)'}],{duration:450,easing:'ease-out'});}
+function pkt(box,a,b,c,cb){const p=document.createElement('div');p.className='pk';p.style.background=c;box.appendChild(p);
+ const an=p.animate([a,b],{duration:rm?1:900,easing:'ease-in-out'});an.onfinish=()=>{p.remove();cb&&cb();};}
+const W=document.getElementById('wires'),L=document.getElementById('link');
+function ago(t){const s=Math.round((Date.now()-t)/1000);if(s<5)return"à l'instant";if(s<60)return'il y a '+s+' s';return'il y a '+Math.round(s/60)+' min';}
+
+function render(s){
+ const d=s.el;d.classList.toggle('off',!s.on);
+ d.querySelector('.cs').textContent=s.on?'En ligne':'Hors ligne';
+ d.querySelector('.chip i').className='ti '+(s.on?'ti-wifi':'ti-wifi-off');
+ d.querySelector('.qn').textContent=s.q.length+' en attente';
+ d.querySelector('.lc').textContent=fmt(s.cash);
+ s.w.setAttribute('stroke',s.on?T:'#E24B4A');s.w.setAttribute('stroke-dasharray',s.on?'':'4 5');
+}
+function renderWeb(){
+ let sum=0;
+ S.forEach(s=>{
+  const locked=mode==='d'&&s.n!=='Ratoma';
+  s.row.classList.toggle('lock',locked);
+  s.row.querySelector('.v').textContent=locked?'Pas d\'accès':fmt(s.seen);
+  const fr=s.row.querySelector('.fr'),fresh=s.on&&s.fly<2,catching=s.on&&!fresh;
+  fr.classList.toggle('old',!fresh&&!locked);
+  fr.style.visibility=locked?'hidden':'visible';
+  fr.querySelector('i').className='ti '+(fresh?'ti-circle-check':catching?'ti-refresh':'ti-clock');
+  fr.querySelector('span').textContent=fresh?'À jour':catching?'Rattrapage…':ago(s.last);
+  if(!locked)sum+=s.seen;
+ });
+ tot.style.display=mode==='f'?'':'none';
+ tot.querySelector('.v').textContent=fmt(sum);
+}
+function arrive(s,amount){
+ pkt(L,{left:'50%',top:'100%'},{left:'50%',top:'0%'},A,()=>{s.fly--;s.seen+=amount;s.last=Date.now();renderWeb();
+  if(!(mode==='d'&&s.n!=='Ratoma'))pulse(s.row.querySelector('.v'),1.12);});
+}
+function send(s,amount){
+ s.fly++;renderWeb();
+ pkt(W,{left:X[s.i]+'%',top:'100%'},{left:'50%',top:'0%'},T,()=>{pulse(document.getElementById('srv'));pulse(document.getElementById('cdb'),1.3);arrive(s,amount);});
+}
+function pay(i){
+ const s=S[i],amount=(2+Math.floor(Math.random()*12))*25000;
+ s.cash+=amount;pulse(s.el.querySelector('.ic'),1.12);
+ if(s.on)send(s,amount);else s.q.push(amount);
+ render(s);renderWeb();
+}
+function tog(i){
+ const s=S[i];s.on=!s.on;render(s);renderWeb();
+ if(s.on){const pending=s.q.splice(0);render(s);renderWeb();
+  pending.forEach((a,k)=>setTimeout(()=>send(s,a),k*350));
+  if(!pending.length){s.last=Date.now();renderWeb();}}
+}
+function view(m){mode=m;document.getElementById('tf').classList.toggle('on',m==='f');document.getElementById('td').classList.toggle('on',m==='d');renderWeb();}
+S.forEach(render);renderWeb();
+setInterval(()=>pay(Math.floor(Math.random()*3)),1700);
+setInterval(renderWeb,1000);
+</script>
+</body>
+</html>
