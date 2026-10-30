@@ -6,6 +6,9 @@ name: VPS - Inspecter
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/vps-inspecter.yml"
 
 jobs:
   inspecter:
