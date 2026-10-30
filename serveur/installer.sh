@@ -55,9 +55,10 @@ cd "$DIR"
 cp "$SRC/docker-compose.scolagrid.yml" .
 rm -f init.sql Caddyfile
 mkdir -p powersync
-avant=$(cat powersync/* 2>/dev/null | sha256sum)
 cp "$SRC"/powersync/* powersync/
-[ "$(cat powersync/* | sha256sum)" = "$avant" ] && PS_CHANGE=non || PS_CHANGE=oui
+# PowerSync ne relit pas sa configuration : on note celle qu'il a chargée.
+PS_CONFIG=$(cat powersync/* | sha256sum | cut -c1-16)
+[ "$(cat .powersync-chargee 2>/dev/null)" = "$PS_CONFIG" ] && PS_CHANGE=non || PS_CHANGE=oui
 
 step "Secrets"
 set_env() {
@@ -125,6 +126,7 @@ sleep 20
 PS="${PREFIXE}scolagrid-powersync"
 if [ "$PS_CHANGE" = oui ]; then
   sudo docker restart "$PS" >/dev/null && echo "PowerSync redémarré (configuration modifiée)"
+  echo "$PS_CONFIG" > .powersync-chargee
   sleep 15
   erreurs=$(sudo docker logs --since 30s "$PS" 2>&1 | grep -iE '"level":"error"|sync config' | tail -5)
   [ -z "$erreurs" ] || { echo "Messages de PowerSync :"; echo "$erreurs"; }
