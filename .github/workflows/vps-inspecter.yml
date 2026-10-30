@@ -1,0 +1,38 @@
+name: VPS - Inspecter
+
+# Lecture seule : décrit l'état du serveur sans rien modifier.
+# Le repo est public, donc ce journal est visible de tous :
+# on n'affiche ni adresse, ni fichier de configuration, ni contenu.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspecter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Inspecter
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" 'bash -s' <<'EOF'
+          section() { echo; echo "===== $1 ====="; }
+          section "Système";        . /etc/os-release; echo "$PRETTY_NAME"; uname -r
+          section "Processeurs";    nproc
+          section "Mémoire";        free -h
+          section "Disque";         df -h /
+          section "Sudo sans mot de passe"; sudo -n true 2>/dev/null && echo oui || echo non
+          section "Dossier personnel"; ls -A ~
+          section "Dossiers d'applications"; ls -A /opt /srv /var/www 2>&1
+          section "Docker";         command -v docker >/dev/null && sudo -n docker ps -a --format '{{.Names}}  {{.Image}}  {{.Status}}' 2>&1 || echo "Docker absent"
+          section "Services actifs"; systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}'
+          section "Ports ouverts";  sudo -n ss -tlnp 2>/dev/null | awk 'NR>1{print $4, $6}' || ss -tln | awk 'NR>1{print $4}'
+          section "Paquets installés à la main"; apt-mark showmanual 2>/dev/null | wc -l
+          EOF
