@@ -41,5 +41,16 @@ jobs:
           section "Ports ouverts";  sudo -n ss -tlnp 2>/dev/null | awk 'NR>1{print $4, $6}' || ss -tln | awk 'NR>1{print $4}'
           section "Paquets installés à la main"; apt-mark showmanual 2>/dev/null | wc -l
           section "Sauvegardes"; cat /var/lib/scolagrid/derniere-sauvegarde 2>/dev/null || echo "aucune"
+          masquer() { sed -E 's/[0-9]{6,}/######/g; s/"(access_token|token|secret|password)"[^,}]*/"\1":"***"/g'; }
+          section "SMS : dernières réponses de NimbaSMS (numéros masqués)"
+          sudo -n docker exec supabase-db psql -X -A -t -U supabase_admin -d postgres -c \
+            "select created, status_code, coalesce(error_msg,''), left(coalesce(content,''), 300) from net._http_response order by created desc limit 5" 2>&1 | masquer
+          section "SMS : réglages présents (valeurs cachées)"
+          sudo -n docker exec supabase-db psql -X -A -t -U supabase_admin -d postgres -c \
+            "select cle, length(valeur) from scolagrid.reglages order by cle" 2>&1
+          section "SMS : variables du service de connexion"
+          sudo -n docker exec supabase-auth env 2>/dev/null | grep -E '^GOTRUE_(HOOK_SEND_SMS_ENABLED|HOOK_SEND_SMS_URI|EXTERNAL_PHONE_ENABLED|SMS_AUTOCONFIRM)=' || echo "indisponible"
+          section "SMS : journal du service de connexion"
+          sudo -n docker logs --since 2h supabase-auth 2>&1 | grep -iE 'sms|hook|otp' | tail -15 | masquer
           section "PowerSync (erreurs et réplication)"; sudo -n docker logs scolagrid-powersync 2>&1 | grep -iE 'error|replicat|snapshot|slot' | tail -15 || echo "pas de PowerSync"
           EOF
