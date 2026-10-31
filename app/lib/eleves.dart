@@ -756,6 +756,8 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
             ]),
           ),
           const SizedBox(height: 8),
+          _PiecesDossier(eleve: e, modifiable: _peutModifier),
+          const SizedBox(height: 8),
           Requete(
             '''SELECT d.*, p.nom_complet AS auteur FROM impressions_documents d
                LEFT JOIN personnel p ON p.user_id = d.par AND p.organisation_id = d.organisation_id
