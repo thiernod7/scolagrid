@@ -340,7 +340,16 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     _preparer();
   }
 
+  /// Jours passés encaissés mais pas clôturés : il faut les clôturer d'abord.
+  List<Map<String, Object?>> _nonClos = [];
+
+  Future<void> _verifierClotures() async {
+    final j = await joursNonClotures(widget.espace.orgId);
+    if (mounted) setState(() => _nonClos = j);
+  }
+
   Future<void> _preparer() async {
+    await _verifierClotures();
     // Le carnet en cours et la feuille suivante, d'après le dernier reçu de ce poste.
     final poste = await cePoste();
     final dernier = poste == null
@@ -412,6 +421,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
   Future<void> _valider() async {
     final messager = ScaffoldMessenger.of(context);
     void erreur(String m) => messager.showSnackBar(SnackBar(content: Text(m)));
+    if (_nonClos.isNotEmpty) return erreur("Clôturez d'abord votre caisse du ${_dateLisible(_nonClos.first['jour'])}.");
     if (_lignes.isEmpty) return erreur('Ajoutez au moins un élève.');
     if (_payeur.text.trim().length < 2) return erreur('Indiquez le nom de la personne qui paie.');
     if (_mode != 'especes' && _reference.text.trim().isEmpty) {
@@ -514,6 +524,23 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       // Sur PC, le reçu se remplit en direct à droite pendant la saisie.
       final large = c.maxWidth >= 900;
       final liste = ListView(padding: const EdgeInsets.all(16), children: [
+        if (_nonClos.isNotEmpty)
+          Card(
+            color: Couleurs.attenteFond,
+            child: ListTile(
+              leading: const Icon(Icons.lock_clock, color: Couleurs.attente),
+              title: Text("Caisse du ${_dateLisible(_nonClos.first['jour'])} pas encore clôturée"),
+              subtitle: const Text("Clôturez-la avant d'encaisser aujourd'hui : comptez les espèces de ce jour-là."),
+              trailing: FilledButton(
+                onPressed: () async {
+                  await cloturerCaisse(context,
+                      orgId: widget.espace.orgId, siteId: _nonClos.first['site_id'] as String, jour: '${_nonClos.first['jour']}');
+                  await _verifierClotures();
+                },
+                child: const Text('Clôturer'),
+              ),
+            ),
+          ),
         TextField(
             controller: _payeur,
             onChanged: (_) => setState(() {}),
@@ -970,6 +997,7 @@ class _CaisseScreenState extends State<CaisseScreen> {
                 ]),
               ),
             ),
+            _ClotureDuJour(espace: widget.espace, jour: _date(_jour)),
             for (final r in recus)
               Card(
                 child: ListTile(
@@ -982,6 +1010,7 @@ class _CaisseScreenState extends State<CaisseScreen> {
                     modesPaiement[r['mode']],
                     if (r['encaisseur'] != null) r['encaisseur'],
                     if (r['statut'] == 'annule') 'ANNULÉ',
+                    if (r['apres_cloture'] == 1) 'saisi après la clôture',
                   ].join(' · ')),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => RecuScreen(espace: widget.espace, encaissementId: r['id'] as String))),
@@ -992,4 +1021,128 @@ class _CaisseScreenState extends State<CaisseScreen> {
       ),
     );
   }
+}
+
+// Clôture de caisse -----------------------------------------------------------------
+
+/// Clôture la caisse de la personne connectée pour un jour et un site :
+/// espèces attendues (calculées), espèces comptées (saisies), écart justifié.
+Future<void> cloturerCaisse(BuildContext context, {required String orgId, required String siteId, required String jour}) async {
+  final recus = await db.get(
+      """SELECT coalesce(sum(total_gnf) FILTER (WHERE mode = 'especes'), 0) AS especes,
+                coalesce(sum(total_gnf) FILTER (WHERE mode <> 'especes'), 0) AS autres,
+                count(*) AS n
+         FROM encaissements WHERE organisation_id = ? AND site_id = ? AND encaisse_par = ? AND date_effective = ? AND statut = 'valide'""",
+      [orgId, siteId, monId, jour]);
+  final attendu = recus['especes'] as int? ?? 0;
+  final compte = TextEditingController();
+  final justification = TextEditingController();
+  if (!context.mounted) return;
+  final ok = await _formulaire(context, 'Clôturer ma caisse du ${_dateLisible(jour)}', (maj) {
+    final c = int.tryParse(compte.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    final ecart = c == null ? null : c - attendu;
+    return [
+      Text('Espèces attendues : ${gnf(attendu)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+      Text('${recus['n']} reçu(s) ; autres modes (Orange Money, MTN, chèques, virements) : ${gnf(recus['autres'])}, '
+          'non comptés dans le tiroir.'),
+      TextField(
+        controller: compte,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        onChanged: (_) => maj(() {}),
+        decoration: _champ('Espèces comptées dans la caisse', suffixe: 'GNF'),
+      ),
+      if (ecart != null)
+        Etat(ecart == 0 ? 'Aucun écart' : 'Écart : ${ecart > 0 ? '+' : '-'}${gnf(ecart.abs())}',
+            ton: ecart == 0 ? Ton.regle : Ton.retard),
+      if (ecart != null && ecart != 0)
+        TextField(
+          controller: justification,
+          decoration: _champ('Justification obligatoire', aide: 'Monnaie rendue en trop, reçu oublié, erreur de comptage…'),
+        ),
+      const Text('Après la clôture, la journée est verrouillée : annuler un de ses reçus demandera la direction.'),
+    ];
+  });
+  final c = int.tryParse(compte.text.replaceAll(RegExp(r'[^0-9]'), ''));
+  if (!ok || c == null || !context.mounted) return;
+  final ecart = c - attendu;
+  if (ecart != 0 && justification.text.trim().length < 3) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Un écart doit être justifié.')));
+    return;
+  }
+  final poste = await cePoste();
+  await _inserer('clotures_caisse', {
+    'organisation_id': orgId,
+    'site_id': siteId,
+    'encaisse_par': monId,
+    'jour': jour,
+    'attendu_especes': attendu,
+    'compte_especes': c,
+    'ecart': ecart,
+    'justification': ecart == 0 ? null : justification.text.trim(),
+    'nb_recus': recus['n'],
+    'total_autres_modes': recus['autres'],
+    'poste_id': poste?['poste_id'],
+  });
+}
+
+/// Jours passés où la personne connectée a encaissé sans clôturer (le plus ancien d'abord).
+Future<List<Map<String, Object?>>> joursNonClotures(String orgId) async => [
+      for (final r in await db.getAll(
+          """SELECT DISTINCT e.date_effective AS jour, e.site_id FROM encaissements e
+             WHERE e.organisation_id = ? AND e.encaisse_par = ? AND e.statut = 'valide' AND e.date_effective < ?
+               AND NOT EXISTS (SELECT 1 FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
+                 AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.date_effective)
+             ORDER BY e.date_effective""",
+          [orgId, monId, _date(DateTime.now())]))
+        Map.of(r),
+    ];
+
+class _ClotureDuJour extends StatelessWidget {
+  const _ClotureDuJour({required this.espace, required this.jour});
+
+  final Espace espace;
+  final String jour;
+
+  @override
+  Widget build(BuildContext context) => Requete(
+        """SELECT c.*, p.nom_complet AS encaisseur, s.nom AS site FROM clotures_caisse c
+           LEFT JOIN personnel p ON p.user_id = c.encaisse_par AND p.organisation_id = c.organisation_id
+           LEFT JOIN sites s ON s.id = c.site_id
+           WHERE c.organisation_id = ? AND c.jour = ? ORDER BY c.created_at""",
+        parametres: [espace.orgId, jour],
+        builder: (context, clotures) => Requete(
+          // Mes sites de la journée qui restent à clôturer.
+          """SELECT DISTINCT e.site_id FROM encaissements e WHERE e.organisation_id = ? AND e.encaisse_par = ?
+               AND e.date_effective = ? AND e.statut = 'valide'
+               AND NOT EXISTS (SELECT 1 FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
+                 AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.date_effective)""",
+          parametres: [espace.orgId, monId, jour],
+          builder: (context, aClore) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (final s in aClore)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: FilledButton.icon(
+                  onPressed: () => cloturerCaisse(context, orgId: espace.orgId, siteId: s['site_id'] as String, jour: jour),
+                  icon: const Icon(Icons.lock_outline),
+                  label: const Text('Clôturer ma caisse de ce jour'),
+                ),
+              ),
+            for (final c in clotures)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.lock),
+                  title: Text('Caisse clôturée · ${c['encaisseur'] ?? ''}'),
+                  subtitle: Text([
+                    'Attendu ${gnf(c['attendu_especes'])} · compté ${gnf(c['compte_especes'])}',
+                    if ((c['ecart'] as int? ?? 0) != 0) 'Écart ${gnf(c['ecart'])} : ${c['justification'] ?? ''}',
+                    '${c['nb_recus']} reçu(s) · autres modes ${gnf(c['total_autres_modes'])}',
+                  ].join('\n')),
+                  isThreeLine: true,
+                  trailing: Etat((c['ecart'] as int? ?? 0) == 0 ? 'Sans écart' : 'Écart', ton: (c['ecart'] as int? ?? 0) == 0 ? Ton.regle : Ton.retard),
+                ),
+              ),
+          ]),
+        ),
+      );
 }

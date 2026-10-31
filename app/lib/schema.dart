@@ -290,6 +290,7 @@ const schema = Schema([
     Column.text('annule_par'),
     Column.text('annule_le'),
     Column.integer('impressions'),
+    Column.integer('apres_cloture'),
     Column.text('poste_id'),
     Column.text('encaisse_par'),
     Column.text('created_at'),
@@ -309,6 +310,21 @@ const schema = Schema([
   ], indexes: [
     Index('par_encaissement', [IndexedColumn('encaissement_id')]),
     Index('par_inscription', [IndexedColumn('inscription_id')]),
+  ]),
+  Table('clotures_caisse', [
+    Column.text('organisation_id'),
+    Column.text('site_id'),
+    Column.text('encaisse_par'),
+    Column.text('jour'),
+    Column.integer('attendu_especes'),
+    Column.integer('compte_especes'),
+    Column.integer('ecart'),
+    Column.text('justification'),
+    Column.integer('nb_recus'),
+    Column.integer('total_autres_modes'),
+    Column.text('poste_id'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
   ]),
   // Réductions : règles de l'école et attributions aux élèves.
   Table('regles_reduction', [
