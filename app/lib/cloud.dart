@@ -138,7 +138,10 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     'droits_personnel': ['accorde'],
     'eleves_contacts': ['tuteur_principal', 'responsable_financier'],
     'souscriptions': ['actif'],
-    'organisations': ['reductions_cumul'],
+    'organisations': [
+      'reductions_cumul', 'remboursement_aucun', 'remboursable_inscription',
+      'remboursable_reinscription', 'remboursable_scolarite', 'remboursable_optionnel',
+    ],
     'regles_reduction': ['pourcentage', 'actif'],
     'reductions_eleves': ['actif'],
   };

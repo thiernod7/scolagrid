@@ -292,3 +292,55 @@ Future<Uint8List> attestationPdf({
   ));
   return doc.save();
 }
+
+/// Décharge de remboursement : le parent signe qu'il a reçu l'argent.
+Future<Uint8List> dechargePdf({required Map<String, Object?> ecole, required Map<String, Object?> remboursement, required int rang}) {
+  final r = remboursement;
+  final doc = pw.Document(title: 'Décharge ${r['matricule']}');
+  final montant = r['montant_gnf'] as int;
+  final corps = pw.TextStyle(fontSize: 11, lineSpacing: 3);
+  final gras = pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold);
+  pw.Widget ligne(String a, String b) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 2),
+        child: pw.Row(children: [pw.SizedBox(width: 130, child: pw.Text(a, style: corps)), pw.Expanded(child: pw.Text(b, style: gras))]),
+      );
+  doc.addPage(pw.Page(
+    pageTheme: pw.PageTheme(
+      pageFormat: PdfPageFormat.a5,
+      margin: const pw.EdgeInsets.all(28),
+      buildBackground: rang == 1
+          ? null
+          : (_) => pw.FullPage(
+                ignoreMargins: true,
+                child: pw.Center(
+                  child: pw.Transform.rotate(angle: 0.6, child: pw.Text('DUPLICATA', style: pw.TextStyle(fontSize: 54, color: PdfColors.grey300))),
+                ),
+              ),
+    ),
+    build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text('${ecole['nom_officiel'] ?? ecole['nom']}', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+      pw.Text([ecole['quartier'], ecole['ville']].where((x) => x != null).join(', '), style: const pw.TextStyle(fontSize: 9)),
+      pw.Divider(),
+      pw.Center(child: pw.Text('DÉCHARGE DE REMBOURSEMENT', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold))),
+      if (r['decharge'] != null) pw.Center(child: pw.Text('Décharge papier : ${r['decharge']}', style: const pw.TextStyle(fontSize: 9))),
+      pw.SizedBox(height: 14),
+      pw.Text('Je soussigné(e), ${r['beneficiaire']}, reconnais avoir reçu de ${ecole['nom_officiel'] ?? ecole['nom']} la somme de :', style: corps),
+      pw.SizedBox(height: 8),
+      pw.Center(child: pw.Text(_gnf(montant), style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold))),
+      pw.Center(child: pw.Text('(${enLettres(montant)} francs guinéens)', style: corps)),
+      pw.SizedBox(height: 10),
+      ligne('Élève', '${r['nom']} ${r['prenoms']} (${r['matricule']})'),
+      ligne('Frais remboursés', '${r['frais']}'),
+      ligne('Reçu d\'origine', '${r['numero']}${r['feuille'] != null ? ' (papier ${r['feuille']})' : ''}'),
+      ligne('Mode', '${modesPaiement[r['mode']] ?? r['mode']}'),
+      ligne('Motif', '${r['motif']}'),
+      ligne('Date', _date(r['verse_le'] as String?)),
+      pw.Spacer(),
+      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        pw.Column(children: [pw.Text('Signature du bénéficiaire', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 40)]),
+        pw.Column(children: [pw.Text('Pour l\'école (caisse)', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 40)]),
+      ]),
+    ]),
+  ));
+  return doc.save();
+}

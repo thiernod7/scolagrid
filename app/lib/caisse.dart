@@ -191,3 +191,49 @@ int reductionSurFrais({required String typeFrais, required int total, required L
   }
   return r > total ? total : r;
 }
+
+// Montant en lettres (décharges, reçus) ------------------------------------------
+
+const _unites = [
+  'zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix',
+  'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf',
+];
+const _dizaines = ['', '', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante', 'soixante', 'quatre-vingt', 'quatre-vingt'];
+
+String _moinsDeCent(int n) {
+  if (n < 20) return _unites[n];
+  final d = n ~/ 10;
+  var u = n % 10;
+  if (d == 7 || d == 9) u += 10; // soixante-dix, quatre-vingt-dix
+  final base = _dizaines[d];
+  if (u == 0) return d == 8 ? 'quatre-vingts' : base;
+  if (u == 1 && d != 8 && d != 9) return '$base et un';
+  if (u == 11 && d == 7) return 'soixante et onze';
+  return '$base-${_unites[u]}';
+}
+
+String _moinsDeMille(int n) {
+  final c = n ~/ 100;
+  final r = n % 100;
+  final cents = c == 0 ? '' : (c == 1 ? 'cent' : '${_unites[c]} cent${r == 0 ? 's' : ''}');
+  if (r == 0) return cents;
+  return cents.isEmpty ? _moinsDeCent(r) : '$cents ${_moinsDeCent(r)}';
+}
+
+/// 1 250 000 → « un million deux cent cinquante mille ».
+String enLettres(int n) {
+  if (n == 0) return 'zéro';
+  final parts = <String>[];
+  final milliards = n ~/ 1000000000;
+  final millions = (n ~/ 1000000) % 1000;
+  final milliers = (n ~/ 1000) % 1000;
+  final reste = n % 1000;
+  if (milliards > 0) parts.add('${_moinsDeMille(milliards)} milliard${milliards > 1 ? 's' : ''}');
+  if (millions > 0) parts.add('${_moinsDeMille(millions)} million${millions > 1 ? 's' : ''}');
+  if (milliers > 0) {
+    // « mille » est invariable, et « cent » ne prend pas de s devant lui.
+    parts.add(milliers == 1 ? 'mille' : '${_moinsDeMille(milliers).replaceAll(RegExp(r'cents$'), 'cent')} mille');
+  }
+  if (reste > 0) parts.add(_moinsDeMille(reste));
+  return parts.join(' ');
+}

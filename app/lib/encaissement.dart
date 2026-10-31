@@ -65,14 +65,16 @@ Future<List<FraisDu>> situationInscription(String inscriptionId, {bool paiementA
       SELECT f.*,
         (SELECT coalesce(sum(l.montant_gnf), 0) FROM lignes_encaissement l
          JOIN encaissements e ON e.id = l.encaissement_id AND e.statut = 'valide' AND e.confirmation <> 'rejete'
-         WHERE l.inscription_id = ? AND l.frais_id = f.id) AS paye
+         WHERE l.inscription_id = ? AND l.frais_id = f.id)
+        - (SELECT coalesce(sum(r.montant_gnf), 0) FROM remboursements r
+           WHERE r.inscription_id = ? AND r.frais_id = f.id AND r.statut = 'verse') AS paye
       FROM frais f
       WHERE f.annee_id = ? AND (f.site_id IS NULL OR f.site_id = ?) AND (f.niveau_id IS NULL OR f.niveau_id = ?)
         AND (f.type_frais IN (?, 'scolarite')
              OR (f.type_frais = 'optionnel' AND EXISTS (SELECT 1 FROM souscriptions s
                  WHERE s.inscription_id = ? AND s.frais_id = f.id AND s.actif = 1)))
       ORDER BY f.created_at''',
-      [inscriptionId, ins['annee_id'], ins['site_id'], ins['niveau_id'], typeEntree, inscriptionId]);
+      [inscriptionId, inscriptionId, ins['annee_id'], ins['site_id'], ins['niveau_id'], typeEntree, inscriptionId]);
   final arrivee = DateTime.tryParse('${ins['date_effective']}') ?? DateTime.now();
   return [
     for (final f in frais)
@@ -906,6 +908,13 @@ class RecuScreen extends StatelessWidget {
                     icon: const Icon(Icons.print),
                     label: Text((r['impressions'] as int? ?? 0) == 0 ? 'Imprimer le reçu' : 'Réimprimer (duplicata)'),
                   ),
+                  if (!annule) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                        onPressed: () => demanderRemboursement(context, r),
+                        icon: const Icon(Icons.currency_exchange),
+                        label: const Text('Demander un remboursement')),
+                  ],
                   if (peutAnnuler) ...[
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
@@ -997,6 +1006,21 @@ class _CaisseScreenState extends State<CaisseScreen> {
                 ]),
               ),
             ),
+            Requete(
+              "SELECT count(*) FILTER (WHERE statut = 'demande') AS d, count(*) FILTER (WHERE statut = 'autorise') AS a "
+              'FROM remboursements WHERE organisation_id = ?',
+              parametres: [widget.espace.orgId],
+              builder: (context, x) => Card(
+                child: ListTile(
+                  leading: const Icon(Icons.currency_exchange),
+                  title: const Text('Remboursements'),
+                  subtitle: Text('${x.first['d']} à autoriser · ${x.first['a']} à verser'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context)
+                      .push(MaterialPageRoute(builder: (_) => RemboursementsScreen(espace: widget.espace))),
+                ),
+              ),
+            ),
             _ClotureDuJour(espace: widget.espace, jour: _date(_jour)),
             for (final r in recus)
               Card(
@@ -1034,7 +1058,11 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
                 count(*) AS n
          FROM encaissements WHERE organisation_id = ? AND site_id = ? AND encaisse_par = ? AND date_effective = ? AND statut = 'valide'""",
       [orgId, siteId, monId, jour]);
-  final attendu = recus['especes'] as int? ?? 0;
+  final sorties = (await db.get(
+      """SELECT coalesce(sum(montant_gnf), 0) AS s FROM remboursements WHERE organisation_id = ? AND site_id = ?
+         AND verse_par = ? AND verse_le = ? AND statut = 'verse' AND mode = 'especes'""",
+      [orgId, siteId, monId, jour]))['s'] as int? ?? 0;
+  final attendu = (recus['especes'] as int? ?? 0) - sorties;
   final compte = TextEditingController();
   final justification = TextEditingController();
   if (!context.mounted) return;
@@ -1043,6 +1071,7 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
     final ecart = c == null ? null : c - attendu;
     return [
       Text('Espèces attendues : ${gnf(attendu)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+      if (sorties > 0) Text('Remboursements versés en espèces déduits : ${gnf(sorties)}'),
       Text('${recus['n']} reçu(s) ; autres modes (Orange Money, MTN, chèques, virements) : ${gnf(recus['autres'])}, '
           'non comptés dans le tiroir.'),
       TextField(

@@ -29,6 +29,7 @@ part 'import_ecran.dart';
 part 'personnel.dart';
 part 'poste.dart';
 part 'reductions.dart';
+part 'remboursements.dart';
 
 /// Étape 2 de l'onboarding : configurer l'établissement.
 /// Tout s'écrit dans la base locale, donc fonctionne hors ligne ;
@@ -261,6 +262,7 @@ class ConfigurationScreen extends StatelessWidget {
             etape(5, 'Frais scolaires', '${r['frais']} frais · inscription, scolarité en tranches', (r['frais'] as int? ?? 0) > 0,
                 FraisScreen(espace: espace)),
             etape(6, 'Réductions', 'Fratrie, paiement annuel, bourses', false, ReductionsScreen(espace: espace)),
+            etape(7, 'Remboursements', 'Ce que l\'école accepte de rembourser', false, PolitiqueRemboursementScreen(espace: espace)),
           ]);
         },
       ),

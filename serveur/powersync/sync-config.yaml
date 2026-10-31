@@ -108,6 +108,7 @@ streams:
       - SELECT * FROM encaissements WHERE organisation_id IN orgs_familles
       - SELECT * FROM lignes_encaissement WHERE organisation_id IN orgs_familles
       - SELECT * FROM clotures_caisse WHERE organisation_id IN orgs_familles
+      - SELECT * FROM remboursements WHERE organisation_id IN orgs_familles
 
   # Table de test « Bonjour » (première version de l'app).
   hellos:

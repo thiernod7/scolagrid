@@ -14,7 +14,7 @@ import 'package:scolagrid/theme.dart';
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
-    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves', 'souscriptions', 'encaissements', 'lignes_encaissement', 'regles_reduction', 'reductions_eleves', 'clotures_caisse', 'impressions_documents']) {
+    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves', 'souscriptions', 'encaissements', 'lignes_encaissement', 'regles_reduction', 'reductions_eleves', 'clotures_caisse', 'impressions_documents', 'remboursements']) {
       expect(tables, contains(t));
     }
   });
@@ -230,5 +230,19 @@ void main() {
     final clair = themeScolagrid(Brightness.light);
     expect(clair.colorScheme.primary, Couleurs.indigo);
     expect(themeScolagrid(Brightness.dark).brightness, Brightness.dark);
+  });
+
+  test('montant en lettres', () {
+    expect(enLettres(0), 'zéro');
+    expect(enLettres(21), 'vingt et un');
+    expect(enLettres(71), 'soixante et onze');
+    expect(enLettres(80), 'quatre-vingts');
+    expect(enLettres(95), 'quatre-vingt-quinze');
+    expect(enLettres(200), 'deux cents');
+    expect(enLettres(250000), 'deux cent cinquante mille');
+    expect(enLettres(200000), 'deux cent mille');
+    expect(enLettres(1000), 'mille');
+    expect(enLettres(1250000), 'un million deux cent cinquante mille');
+    expect(enLettres(2000000), 'deux millions');
   });
 }
