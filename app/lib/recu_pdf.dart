@@ -214,6 +214,7 @@ Future<Uint8List> attestationPdf({
   required String annee,
   required DateTime date,
   required int rang,
+  Uint8List? photo,
 }) {
   final doc = pw.Document(title: 'Attestation ${eleve['matricule']}');
   final duplicata = rang > 1;
@@ -264,11 +265,27 @@ Future<Uint8List> attestationPdf({
         style: corps,
       ),
       pw.SizedBox(height: 16),
-      ligne('Nom et prénoms', '${eleve['nom']} ${eleve['prenoms']}'),
-      ligne('${ne[0].toUpperCase()}${ne.substring(1)} le',
-          naissance == null ? '—' : '${_date(eleve['date_naissance'] as String?)}${eleve['lieu_naissance'] != null ? ' à ${eleve['lieu_naissance']}' : ''}'),
-      ligne('Matricule', '${eleve['matricule']}'),
-      if (eleve['matricule_etat'] != null) ligne("Matricule d'État", '${eleve['matricule_etat']}'),
+      // Identité, avec la photo d'identité à droite quand l'élève en a une.
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Expanded(
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            ligne('Nom et prénoms', '${eleve['nom']} ${eleve['prenoms']}'),
+            ligne('${ne[0].toUpperCase()}${ne.substring(1)} le',
+                naissance == null ? '—' : '${_date(eleve['date_naissance'] as String?)}${eleve['lieu_naissance'] != null ? ' à ${eleve['lieu_naissance']}' : ''}'),
+            ligne('Matricule', '${eleve['matricule']}'),
+            if (eleve['matricule_etat'] != null) ligne("Matricule d'État", '${eleve['matricule_etat']}'),
+          ]),
+        ),
+        if (photo != null) ...[
+          pw.SizedBox(width: 16),
+          pw.Container(
+            width: 90,
+            height: 110,
+            decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.8, color: PdfColors.grey600)),
+            child: pw.Image(pw.MemoryImage(photo), fit: pw.BoxFit.cover),
+          ),
+        ],
+      ]),
       pw.SizedBox(height: 16),
       pw.Text('est régulièrement $inscrit en classe de $classe pour l\'année scolaire $annee.', style: corps),
       pw.SizedBox(height: 16),

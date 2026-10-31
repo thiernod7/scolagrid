@@ -825,7 +825,16 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
       'par': monId,
       'poste_id': poste?['poste_id'],
     });
+    // La photo d'identité, si l'élève en a une sur ce poste.
+    final p = await db.getOptional('SELECT image FROM photos_eleves WHERE eleve_id = ?', [e['id']]);
+    Uint8List? photo;
+    try {
+      photo = p == null ? null : base64Decode(p['image'] as String);
+    } catch (_) {
+      photo = null;
+    }
     final pdf = await attestationPdf(
+      photo: photo,
       ecole: Map.of(ecole),
       eleve: e,
       classe: '${ins['classe']}',
