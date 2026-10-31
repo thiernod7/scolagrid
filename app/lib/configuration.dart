@@ -1,4 +1,8 @@
-import 'package:flutter/foundation.dart' show listEquals;
+import 'dart:convert' show base64Url, utf8;
+import 'dart:math' show Random;
+
+import 'package:crypto/crypto.dart' show sha256;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
@@ -9,6 +13,7 @@ import 'fonctions.dart';
 import 'modele_guineen.dart';
 
 part 'personnel.dart';
+part 'poste.dart';
 
 /// Étape 2 de l'onboarding : configurer l'établissement.
 /// Tout s'écrit dans la base locale, donc fonctionne hors ligne ;

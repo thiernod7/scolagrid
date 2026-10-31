@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'accueil.dart';
 import 'base.dart';
 import 'cloud.dart';
+import 'configuration.dart' show PorteDuPoste;
 import 'onboarding.dart';
 
 Future<void> main() async {
@@ -36,7 +37,7 @@ class ScolagridApp extends StatelessWidget {
       home: !cloudConfigured
           ? const _SansServeur()
           : estConnecte
-              ? const AccueilScreen()
+              ? const PorteDuPoste(accueil: AccueilScreen(), sortie: BienvenueScreen())
               : const BienvenueScreen(),
     );
   }

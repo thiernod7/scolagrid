@@ -119,6 +119,32 @@ const schema = Schema([
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
+  // Postes de travail (étape 4).
+  Table('postes', [
+    Column.text('organisation_id'),
+    Column.text('site_id'),
+    Column.integer('numero'),
+    Column.text('code'),
+    Column.text('nom'),
+    Column.text('plateforme'),
+    Column.text('version_app'),
+    Column.text('user_id'),
+    Column.text('statut'),
+    Column.text('derniere_synchro'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
+  // Ce poste : sa lettre et son code PIN. Reste sur l'appareil, jamais envoyé.
+  Table.localOnly('ce_poste', [
+    Column.text('poste_id'),
+    Column.text('organisation_id'),
+    Column.text('code'),
+    Column.text('nom'),
+    Column.text('pin_empreinte'),
+    Column.text('pin_sel'),
+    Column.integer('echecs'),
+    Column.text('attendre_jusqu'),
+  ]),
   // Table de test de la première version.
   Table('hellos', [
     Column.text('message'),

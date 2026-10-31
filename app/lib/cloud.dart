@@ -72,6 +72,25 @@ Future<String> inviterPersonnel(String ficheId) async =>
 Future<String?> accepterInvitation(String code) async =>
     await Supabase.instance.client.rpc('accepter_invitation', params: {'code_saisi': code}) as String?;
 
+/// Étape 4 : active ce poste. Le serveur lui donne la lettre suivante de
+/// l'organisation (A, B, C…), jamais réutilisée. Nécessite le réseau.
+Future<({String id, String code})> activerPoste({
+  required String organisation,
+  required String? site,
+  required String nom,
+  String? plateforme,
+  String? version,
+}) async {
+  final r = await Supabase.instance.client.rpc('activer_poste', params: {
+    'organisation': organisation,
+    'site': site,
+    'nom': nom,
+    'plateforme': plateforme,
+    'version_app': version,
+  }) as Map<String, dynamic>;
+  return (id: r['id'] as String, code: r['code'] as String);
+}
+
 /// Lance la synchronisation de la personne connectée.
 /// Hors ligne, PowerSync réessaie tout seul ; l'app reste utilisable.
 Future<void> demarrerSynchro(PowerSyncDatabase db) async {

@@ -47,7 +47,10 @@ String _messageErreur(Object e) => switch (e) {
     };
 
 class BienvenueScreen extends StatelessWidget {
-  const BienvenueScreen({super.key});
+  const BienvenueScreen({super.key, this.avertissement});
+
+  /// Message affiché en haut (par exemple : poste bloqué par l'école).
+  final String? avertissement;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +63,11 @@ class BienvenueScreen extends StatelessWidget {
             shrinkWrap: true,
             padding: const EdgeInsets.all(24),
             children: [
+              if (avertissement != null)
+                Card(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  child: ListTile(leading: const Icon(Icons.block), title: Text(avertissement!)),
+                ),
               Icon(Icons.school_outlined, size: 56, color: Theme.of(context).colorScheme.primary),
               const SizedBox(height: 16),
               Text('Scolagrid', style: texte.headlineMedium, textAlign: TextAlign.center),

@@ -64,6 +64,21 @@ streams:
       - SELECT * FROM personnel WHERE id IN (SELECT personnel_id FROM affectations WHERE site_id IN sites_diriges)
       - SELECT * FROM droits_personnel WHERE personnel_id IN (SELECT id FROM personnel WHERE site_id IN sites_diriges)
 
+  # Postes de travail (étape 4). Chaque poste reçoit sa propre ligne (pour
+  # savoir s'il est bloqué) ; le fondateur et les directeurs, ceux de leur périmètre.
+  postes:
+    auto_subscribe: true
+    priority: 1
+    with:
+      orgs_fondees: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'fondateur'
+      orgs_dirigees: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'directeur' AND site_id IS NULL
+      sites_diriges: SELECT site_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'directeur'
+    queries:
+      - SELECT * FROM postes WHERE user_id = auth.user_id()
+      - SELECT * FROM postes WHERE organisation_id IN orgs_fondees
+      - SELECT * FROM postes WHERE organisation_id IN orgs_dirigees AND site_id IS NOT NULL
+      - SELECT * FROM postes WHERE site_id IN sites_diriges
+
   # Table de test « Bonjour » (première version de l'app).
   hellos:
     auto_subscribe: true

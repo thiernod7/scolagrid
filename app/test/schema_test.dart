@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolagrid/cloud.dart';
-import 'package:scolagrid/configuration.dart' show gnf;
+import 'package:scolagrid/configuration.dart' show empreintePin, gnf, pinValide;
 import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_guineen.dart';
 import 'package:scolagrid/schema.dart';
@@ -8,7 +8,7 @@ import 'package:scolagrid/schema.dart';
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
-    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel']) {
+    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste']) {
       expect(tables, contains(t));
     }
   });
@@ -48,5 +48,16 @@ void main() {
 
   test("code d'invitation lisible", () {
     expect(codeLisible('K7PQ4XZM'), 'K7PQ-4XZM');
+  });
+
+  test('code PIN du poste', () {
+    expect(pinValide('1234'), isTrue);
+    expect(pinValide('123456'), isTrue);
+    expect(pinValide('123'), isFalse);
+    expect(pinValide('12a4'), isFalse);
+    expect(empreintePin('1234', 'sel'), empreintePin('1234', 'sel'));
+    expect(empreintePin('1234', 'sel'), isNot(empreintePin('1235', 'sel')));
+    expect(empreintePin('1234', 'sel'), isNot(empreintePin('1234', 'autre')));
+    expect(empreintePin('1234', 'sel'), isNot(contains('1234')));
   });
 }

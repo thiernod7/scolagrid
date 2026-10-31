@@ -29,6 +29,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
   String? _nom;
   SyncStatus _statut = db.currentStatus;
   int _enAttente = 0;
+  Map<String, Object?>? _cePoste;
+  DateTime? _dernierSignal;
 
   @override
   void initState() {
@@ -52,10 +54,40 @@ class _AccueilScreenState extends State<AccueilScreen> {
       ..add(db.watch('SELECT nom_complet FROM personnes WHERE id = ?', parameters: [moi]).listen((r) {
         setState(() => _nom = r.isEmpty ? null : r.first['nom_complet'] as String?);
       }))
+      ..add(db.watch('SELECT c.*, p.statut FROM ce_poste c LEFT JOIN postes p ON p.id = c.poste_id').listen((r) {
+        setState(() => _cePoste = r.isEmpty ? null : r.first);
+        if (r.isNotEmpty && r.first['statut'] == 'bloque') _posteBloque();
+      }))
       ..add(db.statusStream.listen((s) {
         setState(() => _statut = s);
         _majEnAttente();
+        if (s.connected && s.lastSyncedAt != null) _signalerSynchro();
       }));
+  }
+
+  /// Le poste indique au serveur qu'il est vivant (au plus une fois par heure).
+  Future<void> _signalerSynchro() async {
+    final poste = _cePoste;
+    if (poste == null) return;
+    if (_dernierSignal != null && DateTime.now().difference(_dernierSignal!) < const Duration(hours: 1)) return;
+    _dernierSignal = DateTime.now();
+    final maintenant = DateTime.now().toUtc().toIso8601String();
+    await db.execute('UPDATE postes SET derniere_synchro = ?, version_app = ?, updated_at = ? WHERE id = ?',
+        [maintenant, versionApp, maintenant, poste['poste_id']]);
+  }
+
+  /// L'école a bloqué ce poste (perdu ou volé) : on efface tout.
+  bool _effacement = false;
+  Future<void> _posteBloque() async {
+    if (_effacement) return;
+    _effacement = true;
+    await deconnecter(db);
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+            builder: (_) => const BienvenueScreen(
+                avertissement: "Ce poste a été bloqué par l'école. Ses données ont été effacées.")),
+        (_) => false);
   }
 
   Future<void> _majEnAttente() async {
@@ -163,7 +195,11 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   children: [
                     if (_nom != null) Text('Bonjour $_nom', style: texte.headlineSmall),
                     const SizedBox(height: 4),
-                    Text('${fonctions[_rattachement?['role']] ?? ''} · ${org['ville']}', style: texte.bodyMedium),
+                    Text([
+                      fonctions[_rattachement?['role']] ?? '',
+                      org['ville'],
+                      if (_cePoste != null) 'poste ${_cePoste!['code']}',
+                    ].join(' · '), style: texte.bodyMedium),
                     if (org['statut'] == 'en_attente')
                       Card(
                         margin: const EdgeInsets.only(top: 16),
@@ -197,6 +233,29 @@ class _AccueilScreenState extends State<AccueilScreen> {
                         )),
                       ),
                     ),
+                    if (_cePoste == null)
+                      Card(
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        child: ListTile(
+                          leading: const Icon(Icons.devices_outlined),
+                          title: const Text('Activer ce poste'),
+                          subtitle: const Text('Une fois par appareil, avec internet : lettre du poste et code PIN'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => ActiverPosteScreen(orgId: org['id'] as String))),
+                        ),
+                      ),
+                    if (_espace(org).gestionnaire)
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.devices_other_outlined),
+                          title: const Text("Postes de l'école"),
+                          subtitle: const Text('Appareils activés, dernière synchro, blocage'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.of(context)
+                              .push(MaterialPageRoute(builder: (_) => PostesScreen(espace: _espace(org)))),
+                        ),
+                      ),
                     if (_espace(org).gestionnaire)
                       Card(
                         child: ListTile(
