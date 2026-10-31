@@ -1,5 +1,7 @@
-import 'dart:convert' show base64Url, utf8;
+import 'dart:convert' show base64Decode, base64Encode, base64Url, utf8;
 import 'dart:math' show Random;
+import 'dart:typed_data' show Uint8List;
+import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:excel/excel.dart' as xl;
@@ -7,6 +9,7 @@ import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:image_picker/image_picker.dart' show CameraDevice, ImagePicker, ImageSource;
 import 'package:printing/printing.dart' show Printing;
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
@@ -27,6 +30,7 @@ part 'frais.dart';
 part 'identite.dart';
 part 'import_ecran.dart';
 part 'personnel.dart';
+part 'photo.dart';
 part 'poste.dart';
 part 'reductions.dart';
 part 'remboursements.dart';

@@ -14,7 +14,7 @@ import 'package:scolagrid/theme.dart';
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
-    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves', 'souscriptions', 'encaissements', 'lignes_encaissement', 'regles_reduction', 'reductions_eleves', 'clotures_caisse', 'impressions_documents', 'remboursements']) {
+    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves', 'souscriptions', 'encaissements', 'lignes_encaissement', 'regles_reduction', 'reductions_eleves', 'clotures_caisse', 'impressions_documents', 'remboursements', 'photos_eleves']) {
       expect(tables, contains(t));
     }
   });

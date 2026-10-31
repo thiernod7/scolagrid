@@ -372,6 +372,18 @@ const schema = Schema([
   ], indexes: [
     Index('par_eleve', [IndexedColumn('eleve_id')]),
   ]),
+  // Photos d'identité des élèves (réduites, quelques dizaines de Ko).
+  Table('photos_eleves', [
+    Column.text('organisation_id'),
+    Column.text('eleve_id'),
+    Column.text('type_image'),
+    Column.text('image'),
+    Column.text('par'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_eleve', [IndexedColumn('eleve_id')]),
+  ]),
   // Réductions : règles de l'école et attributions aux élèves.
   Table('regles_reduction', [
     Column.text('organisation_id'),

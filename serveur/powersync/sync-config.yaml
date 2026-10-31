@@ -94,6 +94,7 @@ streams:
       - SELECT * FROM souscriptions WHERE organisation_id IN mes_orgs
       - SELECT * FROM reductions_eleves WHERE organisation_id IN mes_orgs
       - SELECT * FROM impressions_documents WHERE organisation_id IN mes_orgs
+      - SELECT * FROM photos_eleves WHERE organisation_id IN mes_orgs
 
   # Contacts des familles (téléphones) et caisse : seulement les fonctions qui
   # inscrivent, encaissent ou dirigent. Le serveur vérifie aussi les droits accordés un par un.

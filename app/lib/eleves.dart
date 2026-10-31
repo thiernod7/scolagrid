@@ -202,7 +202,8 @@ class _ElevesScreenState extends State<ElevesScreen> {
         ),
         Expanded(
           child: Requete(
-            '''SELECT e.*, i.statut, c.nom AS classe
+            '''SELECT e.*, i.statut, c.nom AS classe,
+                 (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj
                FROM eleves e
                LEFT JOIN inscriptions i ON i.eleve_id = e.id
                  AND i.annee_id = (SELECT id FROM annees_scolaires WHERE organisation_id = e.organisation_id AND en_cours = 1)
@@ -231,7 +232,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
                 for (final e in eleves)
                   Card(
                     child: ListTile(
-                      leading: Initiales(_nomEleve(e)),
+                      leading: PhotoEleve(eleveId: e['id'] as String, nom: _nomEleve(e), version: e['photo_maj'] as String?),
                       title: Row(children: [
                         Flexible(child: Text(_nomEleve(e), overflow: TextOverflow.ellipsis)),
                         if (e['allergies'] != null || e['sante'] != null)
@@ -302,6 +303,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
   String _type = 'nouvelle';
   String? _classe;
   final _parents = <_Parent>[];
+  PhotoPrete? _photo;
   bool _envoi = false;
 
   Map<String, Object?>? _annee;
@@ -523,6 +525,9 @@ class _InscrireScreenState extends State<InscrireScreen> {
     } finally {
       if (mounted) setState(() => _envoi = false);
     }
+    if (_photo != null && !_reinscription) {
+      await enregistrerPhoto(orgId: o, eleveId: eleveId, photo: _photo!);
+    }
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: eleveId)));
@@ -545,6 +550,34 @@ class _InscrireScreenState extends State<InscrireScreen> {
           if (!_reinscription) ...[
             Text('Identité', style: texte.titleMedium),
             const SizedBox(height: 8),
+            Row(children: [
+              _photo == null
+                  ? Initiales(_nom.text.isEmpty ? '?' : '${_nom.text} ${_prenoms.text}', taille: 64)
+                  : CircleAvatar(radius: 32, backgroundImage: MemoryImage(base64Decode(_photo!.base64))),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  if (cameraDisponible)
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final p = await choisirPhoto(context, camera: true);
+                        if (p != null) setState(() => _photo = p);
+                      },
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: const Text('Prendre la photo'),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final p = await choisirPhoto(context, camera: false);
+                      if (p != null) setState(() => _photo = p);
+                    },
+                    icon: const Icon(Icons.image_outlined),
+                    label: Text(cameraDisponible ? 'Galerie' : 'Choisir une photo'),
+                  ),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 12),
             TextFormField(
                 controller: _nom,
                 validator: _requis,
@@ -966,13 +999,51 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
   @override
   Widget build(BuildContext context) {
     final texte = Theme.of(context).textTheme;
-    return Requete('SELECT e.*, s.nom AS site FROM eleves e LEFT JOIN sites s ON s.id = e.site_id WHERE e.id = ?',
+    return Requete(
+        '''SELECT e.*, s.nom AS site, (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj
+           FROM eleves e LEFT JOIN sites s ON s.id = e.site_id WHERE e.id = ?''',
         parametres: [widget.eleveId], builder: (context, l) {
       if (l.isEmpty) return const Scaffold(body: Center(child: Text('Élève introuvable sur ce poste.')));
       final e = l.first;
       return _Page(
         titre: _nomEleve(e),
         corps: ListView(padding: const EdgeInsets.all(16), children: [
+          Row(children: [
+            PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: 96),
+            const SizedBox(width: 16),
+            if (_peutModifier)
+              Expanded(
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  if (cameraDisponible)
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final p = await choisirPhoto(context, camera: true);
+                        if (p != null) await enregistrerPhoto(orgId: e['organisation_id'] as String, eleveId: widget.eleveId, photo: p);
+                      },
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: Text(e['photo_maj'] == null ? 'Prendre la photo' : 'Nouvelle photo'),
+                    ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final p = await choisirPhoto(context, camera: false);
+                      if (p != null) await enregistrerPhoto(orgId: e['organisation_id'] as String, eleveId: widget.eleveId, photo: p);
+                    },
+                    icon: const Icon(Icons.image_outlined),
+                    label: Text(cameraDisponible ? 'Galerie' : 'Choisir une photo'),
+                  ),
+                  if (e['photo_maj'] != null)
+                    TextButton(
+                      onPressed: () async {
+                        if (await _confirmer(context, 'Retirer la photo de cet élève ?')) {
+                          await db.execute('DELETE FROM photos_eleves WHERE eleve_id = ?', [widget.eleveId]);
+                        }
+                      },
+                      child: const Text('Retirer'),
+                    ),
+                ]),
+              ),
+          ]),
+          const SizedBox(height: 12),
           Card(
             child: ListTile(
               leading: const Icon(Icons.badge_outlined),
