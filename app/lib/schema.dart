@@ -195,6 +195,7 @@ const schema = Schema([
     Column.text('sante'),
     Column.text('groupe_sanguin'),
     Column.text('ecole_precedente'),
+    Column.text('pieces_dossier'),
     Column.text('date_premiere_inscription'),
     Column.text('poste_id'),
     Column.text('cree_par'),

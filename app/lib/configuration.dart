@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'dart:convert' show base64Decode, base64Encode, base64Url, utf8;
 import 'dart:math' show Random;
 import 'dart:typed_data' show Uint8List;
@@ -29,6 +30,7 @@ part 'encaissement.dart';
 part 'frais.dart';
 part 'identite.dart';
 part 'import_ecran.dart';
+part 'inscription.dart';
 part 'personnel.dart';
 part 'photo.dart';
 part 'poste.dart';
