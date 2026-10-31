@@ -28,6 +28,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Vérifier les règles de synchronisation
+        # Même version de la bibliothèque que l'image powersync-service utilisée.
+        working-directory: serveur/outils
+        run: |
+          npm install --no-save --silent @powersync/service-sync-rules@0.44.0
+          node valider-synchro.mjs ../powersync/sync-config.yaml
       - name: Démarrer une base Supabase jetable
         run: |
           image=$(curl -fsSL https://raw.githubusercontent.com/supabase/supabase/master/docker/docker-compose.yml \

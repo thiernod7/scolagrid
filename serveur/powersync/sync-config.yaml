@@ -31,6 +31,39 @@ streams:
       - SELECT * FROM matieres WHERE organisation_id IN mes_orgs
       - SELECT * FROM frais WHERE organisation_id IN mes_orgs
 
+  # Sa propre fiche du personnel, ses fonctions et ses droits particuliers :
+  # l'app en déduit ce que la personne peut faire.
+  ma_fiche:
+    auto_subscribe: true
+    priority: 1
+    with:
+      mes_fiches: SELECT id FROM personnel WHERE user_id = auth.user_id()
+    queries:
+      - SELECT * FROM personnel WHERE user_id = auth.user_id()
+      - SELECT * FROM affectations WHERE personnel_id IN mes_fiches
+      - SELECT * FROM droits_personnel WHERE personnel_id IN mes_fiches
+
+  # Gestion du personnel (étape 3). Le fondateur reçoit tout le personnel de son
+  # groupe ; un directeur, celui de ses sites (y compris les personnes d'un autre
+  # site qui y ont une fonction). Les autres ne reçoivent que leur fiche.
+  personnel:
+    auto_subscribe: true
+    priority: 2
+    with:
+      orgs_fondees: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'fondateur'
+      orgs_dirigees: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'directeur' AND site_id IS NULL
+      sites_diriges: SELECT site_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'directeur'
+    queries:
+      - SELECT * FROM personnel WHERE organisation_id IN orgs_fondees
+      - SELECT * FROM affectations WHERE organisation_id IN orgs_fondees
+      - SELECT * FROM droits_personnel WHERE organisation_id IN orgs_fondees
+      - SELECT * FROM personnel WHERE organisation_id IN orgs_dirigees AND site_id IS NOT NULL
+      - SELECT * FROM affectations WHERE organisation_id IN orgs_dirigees AND site_id IS NOT NULL
+      - SELECT * FROM personnel WHERE site_id IN sites_diriges
+      - SELECT * FROM affectations WHERE site_id IN sites_diriges
+      - SELECT * FROM personnel WHERE id IN (SELECT personnel_id FROM affectations WHERE site_id IN sites_diriges)
+      - SELECT * FROM droits_personnel WHERE personnel_id IN (SELECT id FROM personnel WHERE site_id IN sites_diriges)
+
   # Table de test « Bonjour » (première version de l'app).
   hellos:
     auto_subscribe: true
