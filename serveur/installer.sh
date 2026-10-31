@@ -88,11 +88,20 @@ if [ "$ENVIRONNEMENT" = essai ]; then
   set_env ENABLE_PHONE_AUTOCONFIRM true
   set_env SMS_TEST_OTP "224620000001:123456,224620000002:123456,224620000003:123456,224620000004:123456,224620000005:123456"
   set_env ENABLE_ANONYMOUS_USERS false
+elif sudo test -f /opt/scolagrid/sms.env; then
+  # Production avec NimbaSMS : les codes partent par le crochet scolagrid.envoyer_sms.
+  set_env ENABLE_PHONE_SIGNUP true
+  set_env ENABLE_PHONE_AUTOCONFIRM true
+  set_env SMS_TEST_OTP ""
+  set_env SMS_HOOK_ENABLED true
+  set_env SMS_HOOK_URI "pg-functions://postgres/scolagrid/envoyer_sms"
+  set_env ENABLE_ANONYMOUS_USERS false
 else
-  # Production : téléphone fermé tant qu'aucun fournisseur SMS n'est choisi.
+  # Production : téléphone fermé tant que les secrets NimbaSMS ne sont pas fournis.
   set_env ENABLE_PHONE_SIGNUP false
   set_env SMS_TEST_OTP ""
-  set_env ENABLE_ANONYMOUS_USERS true   # app « Bonjour » de test, à fermer avec l'onboarding
+  set_env SMS_HOOK_ENABLED false
+  set_env ENABLE_ANONYMOUS_USERS true   # app « Bonjour » de test
 fi
 set_env DASHBOARD_USERNAME admin
 set_env POOLER_TENANT_ID scolagrid
@@ -119,6 +128,18 @@ SUDO=sudo bash "$SRC/appliquer-migrations.sh" "$DB" "$SRC/migrations"
 pw=$(grep '^PS_POWERSYNC_PASSWORD=' .env | cut -d= -f2-)
 sudo docker exec -i "$DB" psql -q -X -v ON_ERROR_STOP=1 -U supabase_admin -d postgres -v pw="$pw" \
   <<<"alter role powersync_role with password :'pw';"
+if [ "$ENVIRONNEMENT" = prod ] && sudo test -f /opt/scolagrid/sms.env; then
+  # Identifiants NimbaSMS rangés dans la base, lus seulement par le crochet d'envoi.
+  # Passés par variables psql : jamais affichés.
+  ( set -a; eval "$(sudo cat /opt/scolagrid/sms.env)"; set +a
+    sudo docker exec -i "$DB" psql -q -X -v ON_ERROR_STOP=1 -U supabase_admin -d postgres \
+      -v sid="$NIMBA_SERVICE_ID" -v tok="$NIMBA_SECRET_TOKEN" -v exp="$NIMBA_EXPEDITEUR" <<'SQL'
+insert into scolagrid.reglages (cle, valeur) values
+  ('nimba_service_id', :'sid'), ('nimba_secret_token', :'tok'), ('nimba_expediteur', :'exp')
+on conflict (cle) do update set valeur = excluded.valeur;
+SQL
+  ) && echo "NimbaSMS configuré pour l'envoi des codes"
+fi
 
 step "Services"
 dc up -d --quiet-pull --remove-orphans db auth rest meta studio api-gw powersync-storage powersync

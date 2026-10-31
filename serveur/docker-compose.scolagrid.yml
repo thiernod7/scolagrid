@@ -20,6 +20,9 @@ services:
       GOTRUE_SMS_TEST_OTP: ${SMS_TEST_OTP:-}
       GOTRUE_SMS_OTP_LENGTH: "6"
       GOTRUE_SMS_TEMPLATE: "Votre code Scolagrid : {{ .Code }}"
+      # Production : envoi par NimbaSMS, via la fonction scolagrid.envoyer_sms.
+      GOTRUE_HOOK_SEND_SMS_ENABLED: ${SMS_HOOK_ENABLED:-false}
+      GOTRUE_HOOK_SEND_SMS_URI: ${SMS_HOOK_URI:-}
   rest:
     container_name: ${PREFIXE:-}supabase-rest
   meta:
