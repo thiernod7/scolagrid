@@ -30,7 +30,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
   bool _avecDoublons = false;
   bool _travail = false;
   String? _message;
-  Map<String, Object?> _classesParId = {};
+  Map<String, Map<String, Object?>> _classesParId = {};
 
   Future<void> _choisir() async {
     final choix = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx']);
