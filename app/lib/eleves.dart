@@ -886,7 +886,15 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
       'poste_id': poste?['poste_id'],
     });
     final derniere = annees.last;
+    final p = await db.getOptional('SELECT image FROM photos_eleves WHERE eleve_id = ?', [e['id']]);
+    Uint8List? photo;
+    try {
+      photo = p == null ? null : base64Decode(p['image'] as String);
+    } catch (_) {
+      photo = null;
+    }
     final pdf = await certificatPdf(
+      photo: photo,
       ecole: Map.of(ecole),
       eleve: e,
       parcours: [for (final a in annees) (annee: '${a['libelle']}', classe: '${a['classe']}')],

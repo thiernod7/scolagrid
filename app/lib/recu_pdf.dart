@@ -371,6 +371,7 @@ Future<Uint8List> certificatPdf({
   String? sortie,
   required DateTime date,
   required int rang,
+  Uint8List? photo,
 }) {
   final doc = pw.Document(title: 'Certificat ${eleve['matricule']}');
   final duplicata = rang > 1;
@@ -406,13 +407,27 @@ Future<Uint8List> certificatPdf({
       pw.Center(child: pw.Text('CERTIFICAT DE SCOLARITÉ', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, letterSpacing: 1))),
       if (duplicata) pw.Center(child: pw.Padding(padding: const pw.EdgeInsets.only(top: 4), child: pw.Text('Duplicata n° ${rang - 1}', style: gras))),
       pw.SizedBox(height: 32),
-      pw.Text(
-        'Je soussigné(e), ${ecole['responsable_nom'] ?? '[nom du responsable]'}, ${ecole['responsable_titre'] ?? '[titre]'} '
-        'de $nomEcole, certifie que l\'élève ${eleve['nom']} ${eleve['prenoms']}$naissance, matricule ${eleve['matricule']}'
-        '${eleve['matricule_etat'] != null ? " (matricule d'État ${eleve['matricule_etat']})" : ''}, '
-        'a été régulièrement $inscrit dans notre établissement pour les années scolaires suivantes :',
-        style: corps,
-      ),
+      // Le texte, avec la photo d'identité à droite quand l'élève en a une.
+      pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Expanded(
+          child: pw.Text(
+            'Je soussigné(e), ${ecole['responsable_nom'] ?? '[nom du responsable]'}, ${ecole['responsable_titre'] ?? '[titre]'} '
+            'de $nomEcole, certifie que l\'élève ${eleve['nom']} ${eleve['prenoms']}$naissance, matricule ${eleve['matricule']}'
+            '${eleve['matricule_etat'] != null ? " (matricule d'État ${eleve['matricule_etat']})" : ''}, '
+            'a été régulièrement $inscrit dans notre établissement pour les années scolaires suivantes :',
+            style: corps,
+          ),
+        ),
+        if (photo != null) ...[
+          pw.SizedBox(width: 16),
+          pw.Container(
+            width: 90,
+            height: 110,
+            decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.8, color: PdfColors.grey600)),
+            child: pw.Image(pw.MemoryImage(photo), fit: pw.BoxFit.cover),
+          ),
+        ],
+      ]),
       pw.SizedBox(height: 16),
       pw.Table(
         border: pw.TableBorder.all(width: 0.5),
