@@ -243,6 +243,21 @@ class _AccueilScreenState extends State<AccueilScreen> {
                             .push(MaterialPageRoute(builder: (_) => ElevesScreen(espace: _espace(org)))),
                       ),
                     ),
+                    FutureBuilder(
+                      future: jAiLeDroitQuelquePart(org['id'] as String, 'encaisser'),
+                      builder: (context, s) => s.data != true
+                          ? const SizedBox.shrink()
+                          : Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.point_of_sale),
+                                title: const Text('Caisse'),
+                                subtitle: const Text('Encaisser, reçus, journal du jour'),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => Navigator.of(context)
+                                    .push(MaterialPageRoute(builder: (_) => CaisseScreen(espace: _espace(org)))),
+                              ),
+                            ),
+                    ),
                     if (_cePoste == null)
                       Card(
                         color: Theme.of(context).colorScheme.secondaryContainer,

@@ -645,6 +645,7 @@ class FicheEleveScreen extends StatefulWidget {
 
 class _FicheEleveScreenState extends State<FicheEleveScreen> {
   bool _peutModifier = false;
+  bool _voitCaisse = false;
 
   @override
   void initState() {
@@ -652,7 +653,13 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
     db.getOptional('SELECT organisation_id, site_id FROM eleves WHERE id = ?', [widget.eleveId]).then((e) async {
       if (e == null) return;
       final ok = await jAiLeDroit(e['organisation_id'] as String, e['site_id'] as String?, 'gerer_inscriptions');
-      if (mounted) setState(() => _peutModifier = ok);
+      final caisse = await jAiLeDroit(e['organisation_id'] as String, e['site_id'] as String?, 'encaisser');
+      if (mounted) {
+        setState(() {
+          _peutModifier = ok;
+          _voitCaisse = caisse || ok;
+        });
+      }
     });
   }
 
@@ -885,6 +892,12 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
                     ].join('\n')),
                     isThreeLine: true,
                   ),
+                  if (_voitCaisse && !sorti)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: SituationFinanciere(
+                          espace: widget.espace, inscriptionId: ins['id'] as String, eleveId: widget.eleveId),
+                    ),
                   if (_peutModifier)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),

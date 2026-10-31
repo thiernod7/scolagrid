@@ -5,16 +5,20 @@ import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:printing/printing.dart' show Printing;
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import 'base.dart';
+import 'caisse.dart';
 import 'cloud.dart';
 import 'echeancier.dart';
 import 'fonctions.dart';
 import 'matricule.dart';
 import 'modele_guineen.dart';
+import 'recu_pdf.dart';
 
 part 'eleves.dart';
+part 'encaissement.dart';
 part 'frais.dart';
 part 'identite.dart';
 part 'personnel.dart';

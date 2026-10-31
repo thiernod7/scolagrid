@@ -1,7 +1,7 @@
 name: scolagrid
 description: Scolagrid, gestion scolaire hors ligne d'abord.
 publish_to: none
-version: 0.4.0+4
+version: 0.5.0+5
 
 environment:
   sdk: ^3.10.0
@@ -13,7 +13,9 @@ dependencies:
     sdk: flutter
   path: ^1.9.1
   path_provider: ^2.1.6
+  pdf: ^3.11.1
   powersync: ^2.5.0
+  printing: ^5.13.4
   supabase_flutter: ^2.18.3
   url_launcher: ^6.3.3
 

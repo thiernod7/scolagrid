@@ -5,7 +5,7 @@ part of 'configuration.dart';
 /// fabriquera seul, hors ligne, des numéros uniques (matricules, reçus).
 /// Le code PIN, propre à ce poste, rouvre l'app sans réseau.
 
-const versionApp = '0.4.0';
+const versionApp = '0.5.0';
 
 /// Ce poste, tel qu'enregistré localement (table locale, jamais synchronisée).
 Future<Map<String, Object?>?> cePoste() => db.getOptional('SELECT * FROM ce_poste LIMIT 1');

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolagrid/cloud.dart';
+import 'package:scolagrid/caisse.dart';
 import 'package:scolagrid/echeancier.dart';
 import 'package:scolagrid/matricule.dart';
 import 'package:scolagrid/configuration.dart' show empreintePin, gnf, pinValide;
@@ -10,7 +11,7 @@ import 'package:scolagrid/schema.dart';
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
-    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves']) {
+    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves', 'souscriptions', 'encaissements', 'lignes_encaissement']) {
       expect(tables, contains(t));
     }
   });
@@ -115,5 +116,44 @@ void main() {
     expect(ressemblance(nom: 'BAH', prenoms: 'Fanta', autreNom: 'BAH', autrePrenoms: 'Mariama', memeTuteurEtQuartier: true),
         Alerte.faible);
     expect(nomSimplifie('Aïssatou  Bérété'), 'AISSATOU BERETE');
+  });
+
+  test('tranches remplies dans l\'ordre', () {
+    final t = [
+      (libelle: 'Tranche 1', montant: 250000, dateLimite: DateTime(2026, 12, 31)),
+      (libelle: 'Tranche 2', montant: 250000, dateLimite: DateTime(2027, 3, 31)),
+      (libelle: 'Tranche 3', montant: 250000, dateLimite: DateTime(2027, 6, 30)),
+    ];
+    final f = situationFrais(
+        id: 'sco', libelle: 'Scolarité', type: 'scolarite', total: 750000, echeances: t, arrivee: DateTime(2026, 10, 1), dejaPaye: 600000);
+    expect(f.echeances.map((e) => e.paye), [250000, 250000, 100000]);
+    expect(f.reste, 150000);
+    expect(f.echeances[2].enRetard(DateTime(2027, 7, 1)), isTrue);
+    expect(f.echeances[0].enRetard(DateTime(2027, 7, 1)), isFalse);
+    // Un frais sans échéance : dû à l'arrivée de l'élève.
+    final ins = situationFrais(
+        id: 'ins', libelle: 'Inscription', type: 'inscription', total: 150000, echeances: const [], arrivee: DateTime(2026, 10, 5), dejaPaye: 0);
+    expect(ins.echeances.single.dateLimite, DateTime(2026, 10, 5));
+  });
+
+  test('versement réparti et plafonné', () {
+    final ins = situationFrais(
+        id: 'ins', libelle: 'Inscription', type: 'inscription', total: 150000, echeances: const [], arrivee: DateTime(2026, 10, 5), dejaPaye: 50000);
+    final sco = situationFrais(
+        id: 'sco', libelle: 'Scolarité', type: 'scolarite', total: 750000, echeances: const [], arrivee: DateTime(2026, 10, 5), dejaPaye: 0);
+    expect(repartir(300000, [sco, ins]), {'ins': 100000, 'sco': 200000});
+    // Jamais plus que le total dû.
+    expect(repartir(2000000, [sco, ins]), {'ins': 100000, 'sco': 750000});
+  });
+
+  test('numéros de reçu et carnet papier', () {
+    expect(numeroRecuSuivant(sigle: 'ALPHA', codeSite: 'DONKA', annee: '2026-2027', lettre: 'B', existants: []),
+        'REC-ALPHA-DONKA-2026-B0001');
+    expect(numeroRecuSuivant(sigle: 'ALPHA', codeSite: 'DONKA', annee: '2026-2027', lettre: 'B',
+        existants: ['REC-ALPHA-DONKA-2026-B0041', 'REC-ALPHA-DONKA-2026-A0099']), 'REC-ALPHA-DONKA-2026-B0042');
+    expect(RegExp(r'^REC-[A-Z0-9]{2,10}-[A-Z0-9]{2,10}-[0-9]{4}-[A-Z]{1,3}[0-9]{4,7}$').hasMatch('REC-ALPHA-DONKA-2026-B0042'), isTrue);
+    expect(feuilleSuivante('001452'), '001453');
+    expect(feuilleSuivante('A-099'), 'A-100');
+    expect(feuilleSuivante(null), isNull);
   });
 }

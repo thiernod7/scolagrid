@@ -90,9 +90,10 @@ streams:
       - SELECT * FROM eleves WHERE organisation_id IN mes_orgs
       - SELECT * FROM inscriptions WHERE organisation_id IN mes_orgs
       - SELECT * FROM historique_eleves WHERE organisation_id IN mes_orgs
+      - SELECT * FROM souscriptions WHERE organisation_id IN mes_orgs
 
-  # Contacts des familles (téléphones) : seulement les fonctions qui inscrivent
-  # ou encaissent. Le serveur vérifie aussi les droits accordés un par un.
+  # Contacts des familles (téléphones) et caisse : seulement les fonctions qui
+  # inscrivent, encaissent ou dirigent. Le serveur vérifie aussi les droits accordés un par un.
   familles:
     auto_subscribe: true
     priority: 3
@@ -101,6 +102,8 @@ streams:
     queries:
       - SELECT * FROM contacts WHERE organisation_id IN orgs_familles
       - SELECT * FROM eleves_contacts WHERE organisation_id IN orgs_familles
+      - SELECT * FROM encaissements WHERE organisation_id IN orgs_familles
+      - SELECT * FROM lignes_encaissement WHERE organisation_id IN orgs_familles
 
   # Table de test « Bonjour » (première version de l'app).
   hellos:
