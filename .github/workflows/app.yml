@@ -17,7 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environnement: ${{ steps.c.outputs.environnement }}
-      defines: ${{ steps.c.outputs.defines }}
     steps:
       - id: c
         env:
@@ -39,20 +38,34 @@ jobs:
           cle=$(ssh "$VPS" "grep '^ANON_KEY=' /opt/scolagrid/essai/supabase/.env | cut -d= -f2-")
           [ -n "$cle" ] || { echo "Clé de l'essai introuvable sur le serveur"; exit 1; }
           echo "environnement=essai" >> "$GITHUB_OUTPUT"
-          echo "defines=--dart-define=SCOLAGRID_ENV=essai --dart-define=SUPABASE_URL=https://api-essai.$host --dart-define=SUPABASE_ANON_KEY=$cle --dart-define=POWERSYNC_URL=https://sync-essai.$host" >> "$GITHUB_OUTPUT"
+          # Passé par un fichier : GitHub bloque les sorties qui ressemblent à un secret.
+          echo "--dart-define=SCOLAGRID_ENV=essai --dart-define=SUPABASE_URL=https://api-essai.$host --dart-define=SUPABASE_ANON_KEY=$cle --dart-define=POWERSYNC_URL=https://sync-essai.$host" > defines-essai.txt
           echo "App reliée à l'essai : https://api-essai.$host"
+      - if: steps.c.outputs.environnement == 'essai'
+        uses: actions/upload-artifact@v4
+        with:
+          name: defines-essai
+          path: defines-essai.txt
+          retention-days: 1
 
   windows:
     needs: config
     runs-on: windows-latest
     env:
-      DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || needs.config.outputs.defines }}
+      DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || '' }}
     defaults:
       run:
         working-directory: app
         shell: bash
     steps:
       - uses: actions/checkout@v4
+      - if: needs.config.outputs.environnement == 'essai'
+        uses: actions/download-artifact@v4
+        with:
+          name: defines-essai
+          path: app
+      - if: needs.config.outputs.environnement == 'essai'
+        run: echo "DART_DEFINES_ESSAI=$(cat defines-essai.txt)" >> "$GITHUB_ENV"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -61,7 +74,9 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
-      - run: flutter build windows --release $DART_DEFINES
+      - name: Vérifier que l'app connaît son serveur
+        run: '[ -n "$DART_DEFINES$DART_DEFINES_ESSAI" ] || { echo "Aucune adresse de serveur : compilation arrêtée"; exit 1; }'
+      - run: flutter build windows --release $DART_DEFINES $DART_DEFINES_ESSAI
       - uses: actions/upload-artifact@v4
         with:
           name: scolagrid-windows-${{ needs.config.outputs.environnement }}
@@ -71,12 +86,19 @@ jobs:
     needs: config
     runs-on: ubuntu-latest
     env:
-      DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || needs.config.outputs.defines }}
+      DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || '' }}
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
+      - if: needs.config.outputs.environnement == 'essai'
+        uses: actions/download-artifact@v4
+        with:
+          name: defines-essai
+          path: app
+      - if: needs.config.outputs.environnement == 'essai'
+        run: echo "DART_DEFINES_ESSAI=$(cat defines-essai.txt)" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -89,7 +111,9 @@ jobs:
       # Android exige une autorisation explicite pour accéder à internet.
       - run: sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
-      - run: flutter build apk --release $DART_DEFINES
+      - name: Vérifier que l'app connaît son serveur
+        run: '[ -n "$DART_DEFINES$DART_DEFINES_ESSAI" ] || { echo "Aucune adresse de serveur : compilation arrêtée"; exit 1; }'
+      - run: flutter build apk --release $DART_DEFINES $DART_DEFINES_ESSAI
       - uses: actions/upload-artifact@v4
         with:
           name: scolagrid-android-${{ needs.config.outputs.environnement }}
