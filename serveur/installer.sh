@@ -141,7 +141,7 @@ step "Proxy HTTPS (Caddy, partagé)"
 # L'ancien Caddy faisait partie de la production ; il est remplacé par celui-ci.
 ancien=$(sudo docker ps -aq --filter name='^scolagrid-caddy$' --filter label=com.docker.compose.project=supabase)
 [ -z "$ancien" ] || sudo docker rm -f $ancien >/dev/null
-sudo mkdir -p /opt/scolagrid/caddy
+sudo mkdir -p /opt/scolagrid/caddy /opt/scolagrid/web/prod /opt/scolagrid/web/essai
 sudo cp "$SRC/caddy/docker-compose.yml" "$SRC/caddy/Caddyfile" /opt/scolagrid/caddy/
 echo "SCOLAGRID_HOST=$HOST" | sudo tee /opt/scolagrid/caddy/.env >/dev/null
 ( cd /opt/scolagrid/caddy && sudo docker compose up -d --quiet-pull )
@@ -160,6 +160,11 @@ check() {
 }
 check -H "apikey: $anon" "https://$API/auth/v1/health"
 check "https://$SYNC/probes/liveness"
+# Le navigateur doit être autorisé à appeler l'API depuis le site web (CORS).
+cors=$(curl -s -o /dev/null -D - -X OPTIONS -H "Origin: https://app$SUFFIXE.$HOST" \
+  -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: apikey,content-type" \
+  "https://$API/auth/v1/otp" | grep -i '^access-control-allow-origin' || true)
+if [ -n "$cors" ]; then echo "OK   API autorisée depuis le site web"; else echo "ÉCHEC API non autorisée depuis le site web (CORS)"; fi
 if [ "$ENVIRONNEMENT" = essai ]; then
   # Parcours réel : code par téléphone, jeton, puis lecture protégée par les règles.
   # Numéro de test n°5, réservé à ce contrôle (les n°1 à 4 sont libres pour les essais à la main).

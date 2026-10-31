@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:powersync/powersync.dart' show SyncStatus;
+import 'package:url_launcher/url_launcher.dart';
 
 import 'base.dart';
 import 'cloud.dart';
@@ -198,6 +200,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                         )),
                       ),
                     ),
+                    if (kIsWeb) const _InstallerPostes(),
                     const SizedBox(height: 16),
                     Text('Sites (${_sites.length})', style: texte.titleMedium),
                     const SizedBox(height: 8),
@@ -213,6 +216,42 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   ],
                 ),
         ),
+      ),
+    );
+  }
+}
+
+/// Sur le web : les postes de l'école travaillent avec l'app installée,
+/// téléchargeable depuis ce même site (étape 4 de l'onboarding).
+class _InstallerPostes extends StatelessWidget {
+  const _InstallerPostes();
+
+  @override
+  Widget build(BuildContext context) {
+    Future<void> ouvrir(String fichier) => launchUrl(Uri.base.resolve('/telechargements/$fichier'));
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.download_outlined),
+            title: Text("Installer Scolagrid sur les postes de l'école"),
+            subtitle: Text("Les postes de l'école utilisent l'app installée : elle fonctionne même sans internet."),
+          ),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            OutlinedButton.icon(
+              onPressed: () => ouvrir('scolagrid-windows.zip'),
+              icon: const Icon(Icons.desktop_windows_outlined),
+              label: const Text('Windows'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => ouvrir('scolagrid-android.apk'),
+              icon: const Icon(Icons.android),
+              label: const Text('Android'),
+            ),
+          ]),
+        ]),
       ),
     );
   }

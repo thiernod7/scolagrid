@@ -118,3 +118,91 @@ jobs:
         with:
           name: scolagrid-android-${{ needs.config.outputs.environnement }}
           path: app/build/app/outputs/flutter-apk/app-release.apk
+
+  web:
+    needs: config
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    env:
+      DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: needs.config.outputs.environnement == 'essai'
+        uses: actions/download-artifact@v4
+        with:
+          name: defines-essai
+          path: app
+      - if: needs.config.outputs.environnement == 'essai'
+        run: echo "DART_DEFINES_ESSAI=$(cat defines-essai.txt)" >> "$GITHUB_ENV"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter create --platforms=web --org com.scolagrid --project-name scolagrid . && rm -f test/widget_test.dart
+      - run: flutter pub get
+      - name: Fichiers web de PowerSync (SQLite dans le navigateur)
+        run: dart run powersync:setup_web
+      - name: Titre et langue de la page
+        run: sed -i 's|<html>|<html lang="fr">|; s|<title>[^<]*</title>|<title>Scolagrid</title>|' web/index.html
+      - name: Vérifier que l'app connaît son serveur
+        run: '[ -n "$DART_DEFINES$DART_DEFINES_ESSAI" ] || { echo "Aucune adresse de serveur : compilation arrêtée"; exit 1; }'
+      - run: flutter build web --release $DART_DEFINES $DART_DEFINES_ESSAI
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scolagrid-web-${{ needs.config.outputs.environnement }}
+          path: app/build/web/
+
+  # Met en ligne le site web et les installables : app.<hôte> (production)
+  # ou app-essai.<hôte> (essai), téléchargements dans /telechargements/.
+  publier:
+    needs: [config, web, windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: scolagrid-web-${{ needs.config.outputs.environnement }}
+          path: site
+      - uses: actions/download-artifact@v4
+        with:
+          name: scolagrid-windows-${{ needs.config.outputs.environnement }}
+          path: windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: scolagrid-android-${{ needs.config.outputs.environnement }}
+          path: android
+      - name: Préparer les téléchargements
+        run: |
+          mkdir -p site/telechargements
+          (cd windows && zip -qr ../site/telechargements/scolagrid-windows.zip .)
+          cp android/app-release.apk site/telechargements/scolagrid-android.apk
+          ls -la site/telechargements
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Publier sur le serveur (${{ needs.config.outputs.environnement }})
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          ENVIRONNEMENT: ${{ needs.config.outputs.environnement }}
+        run: |
+          host="$(echo "$VPS_HOST" | tr . -).sslip.io"
+          suffixe=$([ "$ENVIRONNEMENT" = essai ] && echo -essai || true)
+          ssh "$VPS" 'rm -rf /tmp/scolagrid-web && mkdir -p /tmp/scolagrid-web'
+          scp -q -r site/. "$VPS":/tmp/scolagrid-web/
+          # Remplacement d'un bloc : le site n'est jamais à moitié copié.
+          ssh "$VPS" "cd /opt/scolagrid/web && sudo rm -rf $ENVIRONNEMENT.ancien \
+            && { sudo mv $ENVIRONNEMENT $ENVIRONNEMENT.ancien || true; } \
+            && sudo mv /tmp/scolagrid-web $ENVIRONNEMENT && sudo chmod -R a+rX $ENVIRONNEMENT \
+            && sudo rm -rf $ENVIRONNEMENT.ancien"
+          for chemin in / /telechargements/scolagrid-windows.zip /telechargements/scolagrid-android.apk; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://app$suffixe.$host$chemin")
+            echo "$code https://app$suffixe.$host$chemin"
+            [ "$code" = 200 ] || exit 1
+          done
+          echo "### Scolagrid en ligne : https://app$suffixe.$host" >> "$GITHUB_STEP_SUMMARY"
+

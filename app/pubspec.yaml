@@ -14,6 +14,7 @@ dependencies:
   path_provider: ^2.1.6
   powersync: ^2.5.0
   supabase_flutter: ^2.18.3
+  url_launcher: ^6.3.3
 
 dev_dependencies:
   flutter_test:
