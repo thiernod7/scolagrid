@@ -56,6 +56,21 @@ Future<Map<String, String>> _sitesOuJInscris(String orgId) async => {
 
 String _nomEleve(Map<String, Object?> e) => '${e['nom']} ${e['prenoms']}';
 
+/// Statut d'une inscription, écrit en toutes lettres sur sa couleur.
+Widget etatInscription(String statut) => Etat(
+      switch (statut) {
+        'en_attente' => 'En attente',
+        'transfert_sortant' => 'Parti',
+        _ => statutsInscription[statut] ?? statut,
+      },
+      ton: switch (statut) {
+        'actif' || 'diplome' => Ton.regle,
+        'en_attente' || 'suspendu' => Ton.attente,
+        'exclu' => Ton.retard,
+        _ => Ton.neutre,
+      },
+    );
+
 Future<DateTime?> _choisirDate(BuildContext context, DateTime? initiale, {DateTime? premier, DateTime? dernier}) =>
     showDatePicker(
       context: context,
@@ -69,16 +84,19 @@ Future<DateTime?> _choisirDate(BuildContext context, DateTime? initiale, {DateTi
 // Liste des élèves -------------------------------------------------------------
 
 class ElevesScreen extends StatefulWidget {
-  const ElevesScreen({super.key, required this.espace});
+  const ElevesScreen({super.key, required this.espace, this.rechercheInitiale});
 
   final Espace espace;
+
+  /// Texte tapé dans la barre de recherche du haut (PC).
+  final String? rechercheInitiale;
 
   @override
   State<ElevesScreen> createState() => _ElevesScreenState();
 }
 
 class _ElevesScreenState extends State<ElevesScreen> {
-  final _recherche = TextEditingController();
+  late final _recherche = TextEditingController(text: widget.rechercheInitiale ?? '');
   String? _classe;
   bool _peutInscrire = false;
 
@@ -213,16 +231,22 @@ class _ElevesScreenState extends State<ElevesScreen> {
                 for (final e in eleves)
                   Card(
                     child: ListTile(
-                      leading: CircleAvatar(child: Text('${e['nom']}'.isEmpty ? '?' : '${e['nom']}'[0])),
-                      title: Text(_nomEleve(e)),
-                      subtitle: Text([
-                        e['matricule'],
-                        e['classe'] ?? 'Pas inscrit cette année',
-                        if (e['statut'] != null) statutsInscription[e['statut']],
-                      ].join(' · ')),
-                      trailing: (e['allergies'] != null || e['sante'] != null)
-                          ? const Tooltip(message: 'Information de santé', child: Icon(Icons.medical_information, color: Colors.red))
-                          : null,
+                      leading: Initiales(_nomEleve(e)),
+                      title: Row(children: [
+                        Flexible(child: Text(_nomEleve(e), overflow: TextOverflow.ellipsis)),
+                        if (e['allergies'] != null || e['sante'] != null)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 6),
+                            child: Tooltip(
+                                message: 'Information de santé',
+                                child: Icon(Icons.medical_information, size: 18, color: Couleurs.retard)),
+                          ),
+                      ]),
+                      subtitle: Text.rich(TextSpan(children: [
+                        TextSpan(text: '${e['matricule']}', style: styleMono.copyWith(fontSize: 12)),
+                        TextSpan(text: '  ·  ${e['classe'] ?? 'Pas inscrit cette année'}'),
+                      ])),
+                      trailing: e['statut'] == null ? null : etatInscription(e['statut'] as String),
                       onTap: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: e['id'] as String))),
                     ),

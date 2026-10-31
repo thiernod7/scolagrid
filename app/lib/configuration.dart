@@ -19,6 +19,7 @@ import 'import_eleves.dart';
 import 'matricule.dart';
 import 'modele_guineen.dart';
 import 'recu_pdf.dart';
+import 'theme.dart';
 
 part 'eleves.dart';
 part 'encaissement.dart';
@@ -130,12 +131,13 @@ class _RequeteState extends State<Requete> {
 // Éléments communs ------------------------------------------------------------
 
 class _Page extends StatelessWidget {
-  const _Page({required this.titre, required this.corps, this.ajouter, this.libelleAjouter});
+  const _Page({required this.titre, required this.corps, this.ajouter, this.libelleAjouter, this.largeurMax = 960});
 
   final String titre;
   final Widget corps;
   final VoidCallback? ajouter;
   final String? libelleAjouter;
+  final double largeurMax;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -145,7 +147,7 @@ class _Page extends StatelessWidget {
             : FloatingActionButton.extended(
                 onPressed: ajouter, icon: const Icon(Icons.add), label: Text(libelleAjouter ?? 'Ajouter')),
         body: Center(
-          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: corps),
+          child: ConstrainedBox(constraints: BoxConstraints(maxWidth: largeurMax), child: corps),
         ),
       );
 }

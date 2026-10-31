@@ -7,6 +7,7 @@ import 'base.dart';
 import 'cloud.dart';
 import 'configuration.dart' show PorteDuPoste;
 import 'onboarding.dart';
+import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,12 +25,11 @@ class ScolagridApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const violet = Color(0xFF534AB7);
     return MaterialApp(
       title: 'Scolagrid',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: violet),
-      darkTheme: ThemeData(colorSchemeSeed: violet, brightness: Brightness.dark),
+      theme: themeScolagrid(Brightness.light),
+      darkTheme: themeScolagrid(Brightness.dark),
       // Bandeau visible sur les versions branchées sur l'environnement d'essai.
       builder: (context, child) => environnement == 'essai'
           ? Banner(message: 'ESSAI', location: BannerLocation.topEnd, child: child!)

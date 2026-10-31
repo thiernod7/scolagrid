@@ -1,7 +1,7 @@
 name: scolagrid
 description: Scolagrid, gestion scolaire hors ligne d'abord.
 publish_to: none
-version: 0.5.0+5
+version: 0.6.0+6
 
 environment:
   sdk: ^3.10.0
@@ -28,3 +28,18 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Polices intégrées (limitées aux caractères latins) : l'app reste belle sans internet.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/polices/Inter-Regular.ttf
+        - asset: assets/polices/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/polices/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/polices/Inter-Bold.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/polices/JetBrainsMono-Medium.ttf
+          weight: 500

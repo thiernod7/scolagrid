@@ -502,12 +502,29 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
   @override
   Widget build(BuildContext context) {
     final texte = Theme.of(context).textTheme;
+    final bouton = FilledButton.icon(
+      onPressed: _envoi ? null : _valider,
+      icon: const Icon(Icons.receipt_long),
+      label: Text(_envoi ? 'Enregistrement…' : 'Valider et voir le reçu'),
+    );
     return _Page(
       titre: 'Encaisser',
-      corps: ListView(padding: const EdgeInsets.all(16), children: [
-        TextField(controller: _payeur, textCapitalization: TextCapitalization.words, decoration: _champ('Reçu de (qui paie)')),
-        const SizedBox(height: 10),
-        _liste('Mode de paiement', _mode, modesPaiement, (v) => setState(() => _mode = v)),
+      largeurMax: 1280,
+      corps: LayoutBuilder(builder: (context, c) {
+      // Sur PC, le reçu se remplit en direct à droite pendant la saisie.
+      final large = c.maxWidth >= 900;
+      final liste = ListView(padding: const EdgeInsets.all(16), children: [
+        TextField(
+            controller: _payeur,
+            onChanged: (_) => setState(() {}),
+            textCapitalization: TextCapitalization.words,
+            decoration: _champ('Reçu de (qui paie)')),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          Text('Mode', style: texte.bodyMedium),
+          for (final m in modesPaiement.entries)
+            ChoiceChip(label: Text(m.value), selected: _mode == m.key, onSelected: (_) => setState(() => _mode = m.key)),
+        ]),
         if (_mode != 'especes') ...[
           const SizedBox(height: 10),
           TextField(controller: _reference, decoration: _champ('Référence', aide: 'N° de transaction (SMS), de chèque ou de virement')),
@@ -516,7 +533,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
         Row(children: [
           Expanded(child: TextField(controller: _carnet, decoration: _champ('Carnet', aide: 'Ex. Vert n° 3'))),
           const SizedBox(width: 8),
-          Expanded(child: TextField(controller: _feuille, decoration: _champ('N° du reçu papier'))),
+          Expanded(child: TextField(controller: _feuille, onChanged: (_) => setState(() {}), decoration: _champ('N° du reçu papier'))),
         ]),
         const SizedBox(height: 10),
         OutlinedButton.icon(
@@ -616,15 +633,83 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
               ]),
             ),
           ),
-        const SizedBox(height: 16),
-        Text('Total : ${gnf(_total)}', style: texte.titleLarge),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _envoi ? null : _valider,
-          icon: const Icon(Icons.receipt_long),
-          label: Text(_envoi ? 'Enregistrement…' : 'Valider et voir le reçu'),
+        if (!large) ...[
+          const SizedBox(height: 16),
+          Text('Total : ${gnf(_total)}', style: texte.titleLarge),
+          const SizedBox(height: 12),
+          bouton,
+        ],
+      ]);
+      if (!large) return liste;
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: liste),
+        SizedBox(
+          width: 380,
+          child: ListView(padding: const EdgeInsets.fromLTRB(0, 16, 16, 16), children: [
+            _ApercuRecu(
+              payeur: _payeur.text.trim(),
+              mode: modesPaiement[_mode] ?? _mode,
+              feuille: _feuille.text.trim(),
+              lignes: [
+                for (final l in _lignes)
+                  for (final f in l.frais)
+                    if (l.montant(f.id) > 0) ('${l.eleve['nom']} ${l.eleve['prenoms']} · ${f.libelle}', l.montant(f.id)),
+              ],
+              total: _total,
+            ),
+            const SizedBox(height: 12),
+            bouton,
+            const SizedBox(height: 8),
+            Text('Fonctionne sans internet : le reçu part au serveur dès que possible.',
+                textAlign: TextAlign.center, style: texte.bodySmall),
+          ]),
         ),
-      ]),
+      ]);
+      }),
+    );
+  }
+}
+
+/// Le reçu tel qu'il sera imprimé, rempli pendant la saisie.
+class _ApercuRecu extends StatelessWidget {
+  const _ApercuRecu({required this.payeur, required this.mode, required this.feuille, required this.lignes, required this.total});
+
+  final String payeur;
+  final String mode;
+  final String feuille;
+  final List<(String, int)> lignes;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final doux = t.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    Widget ligne(String a, String b, {TextStyle? style}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: Text(a, style: style ?? t.bodyMedium)),
+            const SizedBox(width: 12),
+            Text(b, style: style ?? t.bodyMedium),
+          ]),
+        );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('REÇU DE PAIEMENT', textAlign: TextAlign.center, style: t.titleSmall?.copyWith(letterSpacing: 0.8)),
+          const SizedBox(height: 4),
+          Text('Numéro attribué à l\'enregistrement', textAlign: TextAlign.center, style: doux),
+          const Divider(height: 24),
+          ligne('Reçu de', payeur.isEmpty ? '…' : payeur),
+          ligne('Mode', mode),
+          ligne('Reçu papier', feuille.isEmpty ? '…' : feuille, style: styleMono),
+          const Divider(height: 24),
+          if (lignes.isEmpty) Text('Les montants saisis apparaissent ici.', style: doux),
+          for (final (libelle, montant) in lignes) ligne(libelle, gnf(montant)),
+          const Divider(height: 24),
+          ligne('TOTAL', gnf(total), style: t.titleMedium),
+        ]),
+      ),
     );
   }
 }

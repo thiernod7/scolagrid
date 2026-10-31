@@ -7,7 +7,9 @@ import 'package:scolagrid/matricule.dart';
 import 'package:scolagrid/configuration.dart' show empreintePin, gnf, pinValide;
 import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_guineen.dart';
+import 'package:flutter/material.dart' show Brightness;
 import 'package:scolagrid/schema.dart';
+import 'package:scolagrid/theme.dart';
 
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
@@ -222,5 +224,11 @@ void main() {
     expect(f.echeances.map((e) => e.montant), [200000, 200000, 200000]);
     expect(f.total, 600000);
     expect(f.brut, 750000);
+  });
+
+  test('charte : thèmes clair et sombre', () {
+    final clair = themeScolagrid(Brightness.light);
+    expect(clair.colorScheme.primary, Couleurs.indigo);
+    expect(themeScolagrid(Brightness.dark).brightness, Brightness.dark);
   });
 }
