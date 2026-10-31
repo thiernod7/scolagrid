@@ -33,15 +33,14 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
   Map<String, Object?> _classesParId = {};
 
   Future<void> _choisir() async {
-    final choix = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx'], withData: true);
-    final octets = choix?.files.single.bytes;
-    if (octets == null) return;
+    final choix = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx']);
+    if (choix.isEmpty) return;
     setState(() {
       _travail = true;
       _message = null;
     });
     try {
-      final classeur = xl.Excel.decodeBytes(octets);
+      final classeur = xl.Excel.decodeBytes(await choix.single.readAsBytes());
       final feuille = classeur.tables[classeur.tables.keys.first]!;
       final lignes = [for (final r in feuille.rows) [for (final c in r) _texteCellule(c)]];
       final o = widget.espace.orgId;
@@ -60,7 +59,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
         ],
       );
       setState(() {
-        _fichier = choix!.files.single.name;
+        _fichier = choix.single.name;
         _lignes = resultat;
         _classesParId = {for (final c in classes) c['id'] as String: Map<String, Object?>.from(c)};
         if (resultat.isEmpty) _message = 'Aucune ligne lue. La première ligne doit contenir les titres des colonnes.';
