@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spécifications retenues</title>
+<link rel="stylesheet" href="vendor/tabler-icons.min.css">
+<script>if(/[?&]embed/.test(location.search))document.documentElement.classList.add("embed")</script>
+<style>.embed .back{display:none!important}.embed main{padding-top:6px}</style>
+<style>
+:root{--text-primary:#1f1e1d;--text-secondary:#5f5e5a;--text-muted:#888780;--surface-0:#f5f4ef;--surface-1:#faf9f5;--surface-2:#fff;--border:rgba(0,0,0,.1);--border-strong:rgba(0,0,0,.18);--accent:#534AB7;--ok-bg:#EAF3DE;--ok:#3B6D11;--todo-bg:#FAEEDA;--todo:#854F0B;--q-bg:#EEEDFE;--q:#3C3489}
+@media (prefers-color-scheme:dark){:root{--text-primary:#ecebe6;--text-secondary:#b4b2a9;--text-muted:#888780;--surface-0:#1a1a19;--surface-1:#232322;--surface-2:#2c2c2a;--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.2);--accent:#AFA9EC;--ok-bg:#27500A;--ok:#C0DD97;--todo-bg:#633806;--todo:#FAC775;--q-bg:#3C3489;--q:#CECBF6}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--surface-0);color:var(--text-primary);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.55;font-size:16px}
+main{max-width:760px;margin:0 auto;padding:16px 16px 64px}
+.back{display:inline-flex;align-items:center;gap:4px;font-size:14px;color:var(--text-secondary);text-decoration:none;margin-bottom:8px}
+h1{font-size:28px;font-weight:600;margin:8px 0 4px;letter-spacing:-.01em}
+.sub{color:var(--text-secondary);margin:0 0 24px}
+h2{font-size:20px;font-weight:600;margin:40px 0 10px;display:flex;align-items:center;gap:8px}
+h2 i{color:var(--accent);font-size:22px}
+h3{font-size:16px;font-weight:600;margin:20px 0 6px}
+p,li{color:var(--text-primary)}
+.muted{color:var(--text-secondary)}
+ul,ol{padding-left:22px;margin:6px 0 10px}
+li{margin:3px 0}
+a{color:var(--accent)}
+.tbl{overflow-x:auto;margin:10px 0 14px;border:.5px solid var(--border);border-radius:10px;background:var(--surface-2)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:8px 10px;border-bottom:.5px solid var(--border);vertical-align:top}
+th{font-weight:600;background:var(--surface-1);white-space:nowrap}
+tr:last-child td{border-bottom:none}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em;background:var(--surface-1);border:.5px solid var(--border);border-radius:4px;padding:0 4px}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.ok{background:var(--ok-bg);color:var(--ok)}
+.todo{background:var(--todo-bg);color:var(--todo)}
+.q{background:var(--q-bg);color:var(--q)}
+.card{border:.5px solid var(--border);border-radius:12px;background:var(--surface-2);padding:12px 14px;margin:10px 0}
+.principles{display:grid;gap:8px;margin:10px 0;padding:0;list-style:none}
+.principles li{display:flex;gap:10px;align-items:flex-start;border:.5px solid var(--border);border-radius:10px;background:var(--surface-2);padding:10px 12px;margin:0}
+.principles i{font-size:22px;color:var(--accent);flex:none;margin-top:1px}
+.layers{display:grid;gap:6px;margin:12px 0}
+.layer{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;border:.5px solid var(--border);border-radius:10px;background:var(--surface-2);padding:10px 12px}
+.layer i{font-size:22px;color:var(--accent)}
+.layer b{display:block;font-weight:600}
+.layer span{font-size:14px;color:var(--text-secondary)}
+.arrow{text-align:center;color:var(--text-muted);font-size:13px;margin:-2px 0}
+.cta{display:flex;align-items:center;gap:12px;padding:14px 16px;border:.5px solid var(--accent);border-radius:12px;background:var(--surface-2);color:var(--text-primary);text-decoration:none;margin:14px 0}
+.cta i{font-size:28px;color:var(--accent)}
+.cta small{display:block;color:var(--text-secondary)}
+.toc{font-size:14px;columns:2;column-gap:24px;padding-left:20px}
+@media (max-width:520px){.toc{columns:1}}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="index.html"><i class="ti ti-arrow-left" aria-hidden="true"></i> Tous les visuels</a>
+<h1>Ce qu'on retient des spécifications</h1>
+<p class="sub">Analyse des 13 documents de spécifications (métier et technique), 31 octobre 2026. Règle suivie : <b>notre architecture fait référence</b>. On ne reprend que ce qui est juste et cohérent avec un SaaS moderne, et chaque écart est justifié.</p>
+
+<ol class="toc">
+<li><a href="#decisions">Décisions validées</a></li>
+<li><a href="#ecarte">Ce qu'on écarte</a></li>
+<li><a href="#regles">Règles transversales adoptées</a></li>
+<li><a href="#modele">Apports à la modélisation</a></li>
+<li><a href="#modules">Apports par module</a></li>
+<li><a href="#hors-ligne">Ce que notre choix change</a></li>
+</ol>
+
+<h2 id="decisions"><i class="ti ti-circle-check" aria-hidden="true"></i>1. Décisions validées</h2>
+<div class="tbl"><table>
+<tr><th>Décision</th><th>Justification</th></tr>
+<tr><td><b>Un seul mode</b> : chaque appareil a sa base locale (SQLite) et se synchronise avec le serveur. Pas de Raspberry Pi.</td><td>Aucun matériel à acheter, alimenter ou réparer dans les écoles. Un seul mode à développer et tester. Le téléphone de l'enseignant chez lui est un poste comme un autre.</td></tr>
+<tr><td><b>Règles de sécurité PostgreSQL (RLS)</b> à la place d'OPA ou Casbin.</td><td>Standard des SaaS sur Postgres. Une même règle protège l'API, la synchronisation et les tests ; impossible de la contourner depuis l'app.</td></tr>
+<tr><td><b>Matricule avec code du poste</b>, par ex. <code>ALPHA-DONKA-2025-B042</code>, définitif dès sa création.</td><td>Le numéro est imprimé (reçu, attestation) : il ne doit jamais changer. Chaque poste reçoit un code à son activation : les numéros sont uniques sans réseau. Même règle pour les numéros de reçu.</td></tr>
+<tr><td><b>PDF générés sur le poste</b> (bibliothèque Dart, polices intégrées).</td><td>Un reçu doit s'imprimer au guichet même sans internet. Le rendu reste identique sur tous les postes. Documents lisibles en noir et blanc.</td></tr>
+</table></div>
+
+<h2 id="ecarte"><i class="ti ti-circle-x" aria-hidden="true"></i>2. Ce qu'on écarte, et pourquoi</h2>
+<div class="tbl"><table>
+<tr><th>Spécification</th><th>Notre choix</th><th>Pourquoi</th></tr>
+<tr><td>TypeScript, React + Vite, Node + Fastify + Drizzle</td><td><b>Flutter</b> (Dart) + <b>Supabase</b> + <b>PowerSync</b></td><td>Un seul code pour Windows, Android et web, hors ligne compris. L'API est générée par la base : pas de serveur d'API maison à maintenir.</td></tr>
+<tr><td>Trois modes : mono-poste, Raspberry Pi, poste principal ; PostgreSQL dans l'école</td><td>Un seul mode (§1)</td><td>Leur propre argument (« deux moteurs coûtent en permanence ») joue pour nous : un seul mode.</td></tr>
+<tr><td>Le Pi est la source de vérité, le cloud un agrégateur</td><td>Le <b>serveur</b> est la référence</td><td>Droits, sauvegardes et arbitrage au même endroit.</td></tr>
+<tr><td>Synchronisation développée sur mesure</td><td>PowerSync, éprouvé</td><td>C'est la partie la plus risquée d'une app hors ligne. Leurs règles (signalement des conflits, titulaire de saisie) se construisent par-dessus.</td></tr>
+<tr><td>OPA ou Casbin</td><td>RLS (§1)</td><td>Une seule couche de droits.</td></tr>
+<tr><td>Niveau « Groupe » (fondateur multi-écoles) séparé</td><td>Pas de table en plus</td><td>Un fondateur de plusieurs écoles est rattaché à plusieurs organisations ; sa vue web les additionne.</td></tr>
+<tr><td>PDF officiels générés par le serveur</td><td>Sur le poste (§1)</td><td>Impression hors ligne.</td></tr>
+</table></div>
+
+<h2 id="regles"><i class="ti ti-list-check" aria-hidden="true"></i>3. Règles transversales adoptées</h2>
+<p>Toutes compatibles avec nos principes ; elles deviennent des règles de tout le système.</p>
+<ul class="principles">
+<li><i class="ti ti-archive" aria-hidden="true"></i><span><b>On ne supprime jamais</b> : on annule, on clôt ou on archive, avec un journal d'audit (qui, quoi, quand).</span></li>
+<li><i class="ti ti-calendar-event" aria-hidden="true"></i><span><b>Deux dates</b> : la date effective (ce qui s'est passé) et la date de saisie (quand on l'a enregistré).</span></li>
+<li><i class="ti ti-math" aria-hidden="true"></i><span><b>Aucun arrondi intermédiaire</b>, ni dans les moyennes, ni dans les paies.</span></li>
+<li><i class="ti ti-alert-triangle" aria-hidden="true"></i><span><b>On alerte, on ne bloque pas</b>, sauf impossibilité réelle (une salle, deux cours).</span></li>
+<li><i class="ti ti-list" aria-hidden="true"></i><span><b>Listes par défaut extensibles</b> : types de frais, fonctions, types d'évaluation, primes…</span></li>
+<li><i class="ti ti-lock" aria-hidden="true"></i><span><b>Verrouillage en cours d'année</b> : grille tarifaire, barème et horaires se figent quand l'année est « en cours » ; correction d'erreur tracée.</span></li>
+<li><i class="ti ti-wifi-off" aria-hidden="true"></i><span><b>On saisit hors ligne, on publie en ligne</b> : rang, bulletins et clôtures globales demandent une vue complète.</span></li>
+<li><i class="ti ti-copy" aria-hidden="true"></i><span><b>Original puis duplicata</b> pour tout document à valeur de preuve.</span></li>
+<li><i class="ti ti-notebook" aria-hidden="true"></i><span><b>Le papier préexiste</b> : carnets de reçus, registres ; le système s'y relie (numéro de feuille).</span></li>
+</ul>
+
+<h2 id="modele"><i class="ti ti-hierarchy-2" aria-hidden="true"></i>4. Apports à la modélisation</h2>
+<div class="tbl"><table>
+<tr><th>Apport</th><th>Effet chez nous</th><th>Quand</th></tr>
+<tr><td><b>Fiche ≠ compte</b> : le gardien a une fiche, pas de compte</td><td>Table « personnel », liée de façon facultative à un compte</td><td>Étape 3</td></tr>
+<tr><td><b>Fonctions cumulables</b> (surveillant et enseignant)</td><td>Nos rôles deviennent des fonctions, plusieurs par personne</td><td>Étape 3</td></tr>
+<tr><td><b>12 droits attribuables</b> par l'école (<code>saisir_notes</code>, <code>valider_remboursement</code>…)</td><td>Droits par défaut selon la fonction, redistribuables ; vérifiés par RLS</td><td>Étape 3</td></tr>
+<tr><td><b>Statut de l'année</b> : brouillon → ouverte → en cours → clôturée → archivée</td><td>Remplace la case « en cours »</td><td>Avec les inscriptions</td></tr>
+<tr><td><b>Classe = niveau + option + groupe + année + site</b></td><td>Options de lycée (SM, SE, SS…) et groupe (A, B…) au lieu d'un nom libre</td><td>Avec les inscriptions</td></tr>
+<tr><td><b>Réglages portés par le cycle</b> : barème, périodes, horaires</td><td>Petite table « cycles » par organisation</td><td>Avec les notes</td></tr>
+<tr><td><b>Matières par défaut officielles</b> (Français scindé au collège…)</td><td>Correction du modèle guinéen</td><td>Prochaine mise à jour</td></tr>
+<tr><td>Photos et pièces jointes hors de la base</td><td>Stockage Supabase sur le VPS, vignettes</td><td>Avec les inscriptions</td></tr>
+<tr><td>Modules activables par école</td><td>Liste des modules actifs par organisation</td><td>Avant le 2e module</td></tr>
+<tr><td>Libellés et modèles de messages comme données</td><td>Préparer l'anglais sans le construire</td><td>Continu</td></tr>
+</table></div>
+
+<h2 id="modules"><i class="ti ti-apps" aria-hidden="true"></i>5. Apports par module</h2>
+<p class="muted">Ce que chaque spécification métier apporte, et sous quelle forme chez nous.</p>
+<div class="tbl"><table>
+<tr><th>Module</th><th>Ce qu'on retient</th></tr>
+<tr><td>Inscriptions</td><td>Élève = personne, inscription annuelle ; tuteur principal ≠ responsable financier ; matricule d'État facultatif ; import en 3 temps (dépôt, contrôle, validation) ; doublons ; mutation sans changer de matricule</td></tr>
+<tr><td>Paiements</td><td>Reçu = un encaissement + des lignes (plusieurs enfants) ; un mode par reçu ; affectation tranche par tranche ; plafond au total dû ; annulation sans suppression ; chèque « sous réserve » ; clôture de caisse par encaisseur, <b>possible hors ligne chez nous</b> (la caisse vit sur le poste de l'encaisseur)</td></tr>
+<tr><td>Dépenses</td><td>Sorties de caisse avec motif obligatoire, reçu facultatif ; bon de sortie ; seuil d'autorisation ; le journal de caisse rassemble toutes les sorties</td></tr>
+<tr><td>Personnel</td><td>Fiche unique + fonctions ; affectations datées (on clôt, on ne supprime pas) ; professeur principal : voit plus, ne saisit pas plus ; congé = remplaçant superposé</td></tr>
+<tr><td>Notes et bulletins</td><td>Périodes et barème par cycle ; sessions d'évaluation ; poids ≠ coefficient ; moyenne de période à partir des notes ; « non concerné » ≠ « absent » ; rang et bulletins après synchronisation</td></tr>
+<tr><td>Emplois du temps</td><td>Unités pédagogiques ≠ minutes ; grille par site et par cycle ; conflits sur les vraies plages horaires ; grille type + exceptions datées</td></tr>
+<tr><td>Paie</td><td>Volume contractuel ; taux par niveau, calcul ligne par ligne ; occurrences réelles du mois ; retenue = décision tracée ; préparer ≠ valider ≠ verser ; salaires visibles uniquement sur droit explicite</td></tr>
+<tr><td>Notifications</td><td>Consultation d'abord ; événements mis en file, jamais d'envoi direct ; modèles modifiables ; coût maîtrisé (crédit, plafond) ; dire la date de dernière mise à jour</td></tr>
+</table></div>
+
+<h2 id="hors-ligne"><i class="ti ti-scale" aria-hidden="true"></i>6. Ce que notre choix change, honnêtement</h2>
+<div class="card">
+<p><b>Sans internet, deux postes d'un même site ne voient pas leurs saisies respectives</b> jusqu'au retour du réseau. Avec un Raspberry Pi, ils se seraient vus.</p>
+<p class="muted">C'est acceptable : les écoles visées ont un ou deux postes, la saisie est cloisonnée (chacun sa caisse, chacun ses notes), et les téléphones ont souvent des données mobiles. Les opérations qui exigent une vue complète (rang, bulletins, clôtures globales) se font en ligne, comme le prévoient les spécifications.</p>
+</div>
+</main>
+</body>
+</html>

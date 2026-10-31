@@ -55,13 +55,13 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <main>
 <a class="back" href="index.html"><i class="ti ti-arrow-left" aria-hidden="true"></i> Tous les visuels</a>
 <h1>Architecture cible de Scolagrid</h1>
-<p class="sub">Les fondations à poser avant d'écrire les fonctionnalités. Version du 30 octobre 2026, à discuter. Les points marqués <span class="tag q">à valider</span> sont des hypothèses en attente de ta décision.</p>
+<p class="sub">Les fondations à poser avant d'écrire les fonctionnalités. Version du 31 octobre 2026, mise à jour après l'analyse des spécifications. Les points marqués <span class="tag q">à valider</span> sont des hypothèses en attente de ta décision.</p>
 
 <ol class="toc">
 <li><a href="#principes">Les principes</a></li>
 <li><a href="#couches">Vue d'ensemble</a></li>
 <li><a href="#organisation">Organisation des données</a></li>
-<li><a href="#roles">Comptes, rôles et droits</a></li>
+<li><a href="#roles">Personnel, fonctions et droits</a></li>
 <li><a href="#postes">Activation des postes</a></li>
 <li><a href="#conflits">Synchronisation et conflits</a></li>
 <li><a href="#evolution">Évolution de la base</a></li>
@@ -71,6 +71,8 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <li><a href="#questions">Questions à valider</a></li>
 </ol>
 
+<a class="cta" href="specifications.html"><i class="ti ti-file-check" aria-hidden="true"></i><span><b>Décisions du 31 octobre : ce qu'on retient des spécifications</b><small>Un seul mode sans Raspberry Pi, règles RLS, matricule avec code de poste, PDF sur le poste</small></span></a>
+
 <a class="cta" href="6-qui-voit-quoi.html"><i class="ti ti-eye-check" aria-hidden="true"></i><span><b>Visuel animé : qui voit quoi</b><small>Choisis une personne et regarde quelles données arrivent sur son appareil</small></span></a>
 
 <h2 id="principes"><i class="ti ti-compass" aria-hidden="true"></i>1. Les principes</h2>
@@ -79,20 +81,22 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <li><i class="ti ti-shield-lock" aria-hidden="true"></i><span><b>Le serveur est l'arbitre.</b> Il décide qui peut lire et écrire quoi. Une règle oubliée dans l'app ne doit jamais ouvrir une faille.</span></li>
 <li><i class="ti ti-filter" aria-hidden="true"></i><span><b>Chaque poste ne reçoit que ce qu'il doit voir.</b> Un enseignant n'a ni la caisse ni les autres sites sur son téléphone.</span></li>
 <li><i class="ti ti-receipt" aria-hidden="true"></i><span><b>L'argent ne se modifie jamais, il s'annule.</b> Un paiement erroné est corrigé par une ligne d'annulation. Il n'y a donc ni conflit, ni trou dans la caisse.</span></li>
+<li><i class="ti ti-cloud-upload" aria-hidden="true"></i><span><b>On saisit hors ligne, on publie en ligne.</b> Saisies, encaissements et appels marchent sans réseau ; rang, bulletins et clôtures globales attendent une vue complète.</span></li>
+<li><i class="ti ti-archive" aria-hidden="true"></i><span><b>On ne supprime jamais.</b> On annule, on clôt ou on archive, avec un journal d'audit.</span></li>
 <li><i class="ti ti-refresh" aria-hidden="true"></i><span><b>Tout se rejoue.</b> Serveur, base et app s'installent par script, depuis le repo. Si le serveur disparaît, on le reconstruit à l'identique et on restaure la sauvegarde.</span></li>
 </ul>
 
 <h2 id="couches"><i class="ti ti-stack-2" aria-hidden="true"></i>2. Vue d'ensemble</h2>
 <div class="layers">
 <div class="layer"><i class="ti ti-devices" aria-hidden="true"></i><div><b>Postes : app Windows et Android</b><span>Flutter, base SQLite locale, file d'envoi PowerSync</span></div><span class="tag ok">en place</span></div>
-<div class="layer"><i class="ti ti-world" aria-hidden="true"></i><div><b>Version web : fondateur et directeurs</b><span>Même code Flutter, en ligne, lecture des tableaux de bord</span></div><span class="tag todo">à faire</span></div>
+<div class="layer"><i class="ti ti-world" aria-hidden="true"></i><div><b>Version web : fondateur et directeurs</b><span>Même code Flutter, publié sur le VPS (app-essai…), avec les installables à télécharger</span></div><span class="tag ok">onboarding en ligne (essai)</span></div>
 <p class="arrow"><i class="ti ti-arrows-vertical" aria-hidden="true"></i> HTTPS</p>
 <div class="layer"><i class="ti ti-lock" aria-hidden="true"></i><div><b>Caddy</b><span>HTTPS automatique, seule porte d'entrée (ports 80 et 443)</span></div><span class="tag ok">en place</span></div>
-<div class="layer"><i class="ti ti-user-check" aria-hidden="true"></i><div><b>Supabase Auth et API</b><span>Comptes, connexion par code SMS, écriture contrôlée par les règles de sécurité</span></div><span class="tag todo">comptes à faire</span></div>
-<div class="layer"><i class="ti ti-refresh" aria-hidden="true"></i><div><b>PowerSync</b><span>Envoie à chaque poste uniquement ses données</span></div><span class="tag todo">filtres à faire</span></div>
+<div class="layer"><i class="ti ti-user-check" aria-hidden="true"></i><div><b>Supabase Auth et API</b><span>Comptes, connexion par code SMS, écriture contrôlée par les règles de sécurité</span></div><span class="tag ok">téléphone en place (essai)</span></div>
+<div class="layer"><i class="ti ti-refresh" aria-hidden="true"></i><div><b>PowerSync</b><span>Envoie à chaque poste uniquement ses données</span></div><span class="tag ok">filtres par organisation</span></div>
 <div class="layer"><i class="ti ti-database" aria-hidden="true"></i><div><b>PostgreSQL</b><span>Base centrale, référence unique</span></div><span class="tag ok">en place</span></div>
 <p class="arrow"><i class="ti ti-arrow-down" aria-hidden="true"></i> chaque nuit</p>
-<div class="layer"><i class="ti ti-cloud-upload" aria-hidden="true"></i><div><b>Sauvegardes hors du VPS</b><span>Copie chiffrée chez un autre hébergeur, 30 jours d'historique</span></div><span class="tag todo">à faire</span></div>
+<div class="layer"><i class="ti ti-cloud-upload" aria-hidden="true"></i><div><b>Sauvegardes hors du VPS</b><span>Copie chiffrée chez un autre hébergeur, 30 jours d'historique</span></div><span class="tag todo">prêtes, en attente du stockage</span></div>
 </div>
 
 <h2 id="organisation"><i class="ti ti-hierarchy-2" aria-hidden="true"></i>3. Organisation des données</h2>
@@ -108,13 +112,16 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <li><b>L'élève est une personne, l'inscription est annuelle.</b> Un élève qui change de site ou passe en classe supérieure garde son dossier.</li>
 <li><b>Les identifiants sont des UUID créés sur le poste</b>, ce qui permet de créer un élève hors ligne sans collision. <span class="tag ok">déjà le cas</span></li>
 <li><b>Chaque ligne garde sa trace :</b> <code>created_at</code>, <code>updated_at</code>, <code>created_by</code> et <code>device_id</code>.</li>
-<li><b>Une personne peut appartenir à plusieurs organisations</b>, par exemple un enseignant qui travaille dans deux groupes. Un fondateur peut aussi en posséder plusieurs. <span class="tag q">à valider</span></li>
+<li><b>Une personne peut appartenir à plusieurs organisations</b>, par exemple un enseignant qui travaille dans deux groupes. Un fondateur peut aussi en posséder plusieurs : sa vue web les additionne. <span class="tag ok">validé</span></li>
+<li><b>Les numéros imprimés sont définitifs dès leur création</b> : matricules et reçus portent le code du poste, par ex. <code>ALPHA-DONKA-2025-B042</code>. <span class="tag ok">validé</span></li>
 </ul>
 
-<h2 id="roles"><i class="ti ti-users-group" aria-hidden="true"></i>4. Comptes, rôles et droits</h2>
-<p>Un compte = une personne, identifiée par son numéro de téléphone. Ses droits viennent de ses <b>rattachements</b> : <i>(personne, organisation, site ou tous les sites, rôle)</i>.</p>
+<h2 id="roles"><i class="ti ti-users-group" aria-hidden="true"></i>4. Personnel, fonctions et droits</h2>
+<p><b>Fiche ≠ compte.</b> Tout le personnel a une fiche (le gardien aussi) ; seules les personnes qui utilisent l'app ont un compte, identifié par leur numéro de téléphone.</p>
+<p><b>Fonctions cumulables.</b> Une personne peut être surveillante <i>et</i> enseignante. Chaque fonction, sur un site ou sur tous, donne des <b>droits par défaut</b> ; l'école peut ensuite accorder ou retirer des droits précis (<code>saisir_notes</code>, <code>valider_remboursement</code>, <code>valider_paie</code>…). L'accès aux salaires n'est jamais automatique. <span class="tag ok">validé</span></p>
+<p class="muted">Profils types (fonctions par défaut, liste extensible par l'école) :</p>
 <div class="tbl"><table>
-<tr><th>Rôle</th><th>Périmètre</th><th>Voit</th><th>Ne voit pas</th><th>Appareil type</th></tr>
+<tr><th>Fonction</th><th>Périmètre</th><th>Voit</th><th>Ne voit pas</th><th>Appareil type</th></tr>
 <tr><td>Fondateur</td><td>Tous les sites</td><td>Tout, en lecture ; paramètres de l'organisation</td><td>—</td><td>Web, PC</td></tr>
 <tr><td>Directeur de site</td><td>Son site</td><td>Élèves, notes, absences, caisse, personnel du site</td><td>Les autres sites</td><td>PC direction</td></tr>
 <tr><td>Secrétaire / comptable</td><td>Son site</td><td>Élèves, inscriptions, paiements</td><td>Notes détaillées, autres sites</td><td>PC secrétariat</td></tr>
@@ -136,6 +143,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <h2 id="postes"><i class="ti ti-device-laptop" aria-hidden="true"></i>5. Activation des postes</h2>
 <ul>
 <li><b>Chaque appareil est enregistré</b> : nom, site, dernière synchro, état actif ou bloqué.</li>
+<li><b>Chaque appareil reçoit un code</b> (A, B, C…) : il fabrique lui-même ses numéros de matricule et de reçu, uniques sans réseau.</li>
 <li><b>Activation :</b> le directeur affiche un QR code valable 15 minutes, et le nouveau poste le scanne.</li>
 <li><b>Licence hors ligne :</b> le serveur remet au poste un jeton signé, valable 30 jours. Le poste le vérifie seul, et changer la date de l'appareil ne permet pas de tricher. <span class="tag q">à valider : durée</span></li>
 <li><b>Expiration :</b> le jeton se renouvelle à chaque synchro. Sans synchro pendant 30 jours, le poste passe en lecture seule.</li>
@@ -157,7 +165,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <ul>
 <li><b>Migrations numérotées</b> dans <code>serveur/migrations/</code> (<code>001_organisation.sql</code>, <code>002_roles.sql</code>…). L'installateur applique celles qui manquent, après les avoir testées sur une base jetable. <span class="tag ok">en place</span></li>
 <li><b>Dans l'app, uniquement des ajouts</b> : de nouvelles tables ou de nouvelles colonnes. Un poste resté plusieurs semaines sans mise à jour continue donc de fonctionner.</li>
-<li><b>Deux environnements :</b> « essai » pour tester, « production » pour les vraies écoles. On ne teste jamais sur les vraies données.</li>
+<li><b>Deux environnements :</b> « essai » pour tester, « production » pour les vraies écoles. On ne teste jamais sur les vraies données. <span class="tag ok">en place</span></li>
 </ul>
 
 <h2 id="exploitation"><i class="ti ti-server-2" aria-hidden="true"></i>8. Exploitation du serveur</h2>
@@ -165,10 +173,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <tr><th>Sujet</th><th>Cible</th><th>État</th></tr>
 <tr><td>Installation</td><td>Un clic, rejouable (workflow « VPS - Installer »)</td><td><span class="tag ok">en place</span></td></tr>
 <tr><td>Sauvegardes</td><td>Chaque nuit, chiffrées, chez un autre hébergeur, 30 jours ; test de restauration chaque mois</td><td><span class="tag todo">prêtes, en attente du stockage</span></td></tr>
-<tr><td>Surveillance</td><td>Alerte par e-mail ou SMS si le serveur ne répond plus ou si le disque se remplit</td><td><span class="tag todo">à faire</span></td></tr>
+<tr><td>Surveillance</td><td>Contrôle toutes les 30 minutes, alerte par e-mail de GitHub</td><td><span class="tag ok">en place</span></td></tr>
 <tr><td>Nom de domaine</td><td>Remplacer <code>sslip.io</code> par un vrai domaine (≈ 10 € par an)</td><td><span class="tag todo">avant les vraies écoles</span></td></tr>
 <tr><td>Distribution de l'app</td><td>Installateur Windows signé et mises à jour automatiques ; APK Android, puis Play Store</td><td><span class="tag todo">à faire</span></td></tr>
-<tr><td>Branche principale</td><td>Tout le travail validé sur la branche principale du repo</td><td><span class="tag todo">à faire</span></td></tr>
+<tr><td>Branche principale</td><td>Branche principale → production ; branches de travail → essai</td><td><span class="tag ok">en place</span></td></tr>
 </table></div>
 
 <h2 id="onboarding"><i class="ti ti-route" aria-hidden="true"></i>9. Lien avec l'onboarding</h2>
@@ -177,24 +185,24 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 <tr><th>Étape d'onboarding</th><th>Fondation</th></tr>
 <tr><td>1. Créer l'espace école</td><td>Organisation (§3), compte du fondateur (§4)</td></tr>
 <tr><td>2. Configurer l'établissement</td><td>Sites, année, classes (§3)</td></tr>
-<tr><td>3. Inviter les utilisateurs</td><td>Rattachements et rôles (§4)</td></tr>
+<tr><td>3. Inviter les utilisateurs</td><td>Personnel, fonctions et droits (§4)</td></tr>
 <tr><td>4. Activer chaque poste</td><td>Activation et licence (§5)</td></tr>
 <tr><td>5. Synchronisation initiale</td><td>Filtres par rôle (§4)</td></tr>
 <tr><td>6. Prêt hors ligne</td><td>Déjà en place <span class="tag ok">en place</span></td></tr>
 </table></div>
 
 <h2 id="feuille"><i class="ti ti-map-2" aria-hidden="true"></i>10. Feuille de route</h2>
-<h3>Phase A : fondations <span class="tag todo">prochaine</span></h3>
+<h3>Phase A : fondations <span class="tag todo">en cours</span></h3>
 <ol>
-<li>Migrations numérotées <span class="tag ok">fait</span>, et environnements essai / production.</li>
-<li>Tables organisation, sites et rattachements, avec <code>organisation_id</code> et <code>site_id</code> partout.</li>
-<li>Connexion par code SMS et PIN hors ligne, puis suppression de la connexion anonyme de test.</li>
-<li>Filtres PowerSync et règles de sécurité par rôle.</li>
+<li>Migrations numérotées et environnements essai / production <span class="tag ok">fait</span></li>
+<li>Tables organisation, sites et rattachements, avec <code>organisation_id</code> et <code>site_id</code> partout <span class="tag ok">fait</span></li>
+<li>Connexion par code SMS <span class="tag ok">fait (essai)</span>, PIN hors ligne <span class="tag todo">à faire</span></li>
+<li>Filtres PowerSync et règles de sécurité <span class="tag ok">par organisation</span>, puis par fonction et droit (étape 3)</li>
 <li>Enregistrement et activation des postes, licence hors ligne.</li>
-<li>Sauvegardes automatiques et surveillance.</li>
+<li>Sauvegardes automatiques <span class="tag todo">prêtes</span> et surveillance <span class="tag ok">fait</span></li>
 </ol>
-<h3>Phase B : onboarding</h3>
-<p>Les 6 étapes, construites sur la phase A. À la fin, une école peut s'inscrire, se configurer, inviter son équipe et activer ses postes.</p>
+<h3>Phase B : onboarding <span class="tag todo">en cours</span></h3>
+<p>Étapes 1 et 2 faites, dans l'app et sur le web <span class="tag ok">fait (essai)</span> ; étape 3 en cours. Les 6 étapes, construites sur la phase A. À la fin, une école peut s'inscrire, se configurer, inviter son équipe et activer ses postes.</p>
 <h3>Phase C : premières fonctionnalités</h3>
 <p>Élèves et inscriptions, puis paiements, puis notes et absences.</p>
 <h3>Phase D : version web du fondateur</h3>
@@ -202,8 +210,8 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 
 <h2 id="questions"><i class="ti ti-help-circle" aria-hidden="true"></i>11. Questions à valider</h2>
 <ol>
-<li><b>Organisation :</b> un fondateur a-t-il parfois plusieurs groupes scolaires distincts ? Un enseignant travaille-t-il parfois dans plusieurs groupes ?</li>
-<li><b>Rôles :</b> la liste ci-dessus est-elle complète ? Faut-il ajouter comptable, surveillant ou censeur ? Les parents auront-ils un accès, et quand ?</li>
+<li><b>Organisation</b> <span class="tag ok">tranché</span> : une personne peut appartenir à plusieurs organisations.</li>
+<li><b>Rôles</b> <span class="tag ok">tranché</span> : fonctions cumulables et extensibles, droits attribuables. Parents : consultation par le tuteur principal, plus tard.</li>
 <li><b>Connexion :</b> les enseignants ont-ils tous un smartphone ? Quel fournisseur SMS utiliser (Orange, MTN, autre) ?</li>
 <li><b>Hors ligne :</b> 30 jours de licence sans connexion, est-ce suffisant pour les écoles les plus isolées ?</li>
 <li><b>Paiement de l'abonnement :</b> Orange Money, MTN MoMo, les deux ?</li>
