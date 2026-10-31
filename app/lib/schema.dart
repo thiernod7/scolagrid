@@ -16,6 +16,8 @@ const schema = Schema([
     Column.text('email'),
     Column.text('responsable_nom'),
     Column.text('responsable_titre'),
+    Column.integer('reductions_cumul'),
+    Column.integer('reductions_plafond'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -306,6 +308,31 @@ const schema = Schema([
     Column.text('updated_at'),
   ], indexes: [
     Index('par_encaissement', [IndexedColumn('encaissement_id')]),
+    Index('par_inscription', [IndexedColumn('inscription_id')]),
+  ]),
+  // Réductions : règles de l'école et attributions aux élèves.
+  Table('regles_reduction', [
+    Column.text('organisation_id'),
+    Column.text('type'),
+    Column.text('libelle'),
+    Column.integer('pourcentage'),
+    Column.real('valeur'),
+    Column.text('portee'),
+    Column.integer('nb_enfants'),
+    Column.integer('actif'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
+  Table('reductions_eleves', [
+    Column.text('organisation_id'),
+    Column.text('inscription_id'),
+    Column.text('regle_id'),
+    Column.integer('actif'),
+    Column.text('motif'),
+    Column.text('accorde_par'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
     Index('par_inscription', [IndexedColumn('inscription_id')]),
   ]),
   // Table de test de la première version.

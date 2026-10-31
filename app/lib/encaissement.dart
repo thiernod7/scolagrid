@@ -12,12 +12,54 @@ Future<bool> jAiLeDroitQuelquePart(String orgId, String droit) async {
   return false;
 }
 
-/// Ce que doit un élève pour son inscription : frais applicables, échéances,
-/// déjà payé. Calculé sur le poste, d'après les données synchronisées.
-Future<List<FraisDu>> situationInscription(String inscriptionId) async {
+/// Réductions dont bénéficie une inscription (même calcul que le serveur).
+/// [paiementAnnuel] : compter la remise « année payée d'un coup » même si elle
+/// n'est pas encore attribuée (au moment où la famille paie).
+Future<({List<Regle> applicables, bool cumul, int plafond})> reductionsInscription(String inscriptionId,
+    {bool paiementAnnuel = false}) async {
+  final ins = await db.getOptional('SELECT * FROM inscriptions WHERE id = ?', [inscriptionId]);
+  if (ins == null) return (applicables: <Regle>[], cumul: false, plafond: 100);
+  final org = await db.get('SELECT reductions_cumul, reductions_plafond FROM organisations WHERE id = ?', [ins['organisation_id']]);
+  final regles = [
+    for (final r in await db.getAll(
+        'SELECT * FROM regles_reduction WHERE organisation_id = ? AND actif = 1 ORDER BY created_at', [ins['organisation_id']]))
+      Regle(
+        id: r['id'] as String,
+        type: r['type'] as String,
+        libelle: r['libelle'] as String,
+        pourcentage: r['pourcentage'] == 1,
+        valeur: r['valeur'] as num,
+        portee: r['portee'] as String,
+        nbEnfants: r['nb_enfants'] as int?,
+      ),
+  ];
+  final attribuees = {
+    for (final r in await db.getAll('SELECT regle_id FROM reductions_eleves WHERE inscription_id = ? AND actif = 1', [inscriptionId]))
+      r['regle_id'] as String,
+    if (paiementAnnuel) ...regles.where((r) => r.type == 'paiement_annuel').map((r) => r.id),
+  };
+  final enfants = await db.get('''
+      SELECT count(DISTINCT i2.id) AS n FROM eleves_contacts ec
+      JOIN eleves_contacts ec2 ON ec2.contact_id = ec.contact_id AND ec2.responsable_financier = 1
+      JOIN inscriptions i2 ON i2.eleve_id = ec2.eleve_id AND i2.annee_id = ?
+        AND i2.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
+      WHERE ec.eleve_id = ? AND ec.responsable_financier = 1''', [ins['annee_id'], ins['eleve_id']]);
+  final cumul = org['reductions_cumul'] == 1;
+  return (
+    applicables: reductionsApplicables(
+        regles: regles, attribuees: attribuees, enfantsDuPayeur: (enfants['n'] as int?) ?? 1, cumul: cumul),
+    cumul: cumul,
+    plafond: (org['reductions_plafond'] as int?) ?? 100,
+  );
+}
+
+/// Ce que doit un élève pour son inscription : frais applicables, réductions,
+/// échéances, déjà payé. Calculé sur le poste, d'après les données synchronisées.
+Future<List<FraisDu>> situationInscription(String inscriptionId, {bool paiementAnnuel = false}) async {
   final ins = await db.getOptional(
       'SELECT i.*, c.niveau_id FROM inscriptions i JOIN classes c ON c.id = i.classe_id WHERE i.id = ?', [inscriptionId]);
   if (ins == null) return [];
+  final red = await reductionsInscription(inscriptionId, paiementAnnuel: paiementAnnuel);
   final typeEntree = ins['type_admission'] == 'reinscription' ? 'reinscription' : 'inscription';
   final frais = await db.getAll('''
       SELECT f.*,
@@ -45,6 +87,12 @@ Future<List<FraisDu>> situationInscription(String inscriptionId) async {
         ],
         arrivee: arrivee,
         dejaPaye: f['paye'] as int? ?? 0,
+        reduction: reductionSurFrais(
+            typeFrais: f['type_frais'] as String? ?? 'optionnel',
+            total: f['montant_gnf'] as int,
+            applicables: red.applicables,
+            cumul: red.cumul,
+            plafond: red.plafond),
       ),
   ];
 }
@@ -63,7 +111,11 @@ class SituationFinanciere extends StatelessWidget {
         '''SELECT (SELECT count(*) FROM lignes_encaissement WHERE inscription_id = ?) AS n,
                   (SELECT count(*) FROM encaissements WHERE statut = 'annule') AS a,
                   (SELECT count(*) FROM souscriptions WHERE inscription_id = ?) AS s,
-                  (SELECT max(updated_at) FROM frais) AS f''',
+                  (SELECT max(updated_at) FROM frais) AS f,
+                  (SELECT max(updated_at) FROM reductions_eleves) AS r,
+                  (SELECT max(updated_at) FROM regles_reduction) AS g,
+                  (SELECT max(updated_at) FROM organisations) AS o,
+                  (SELECT max(updated_at) FROM eleves_contacts) AS c''',
         parametres: [inscriptionId, inscriptionId],
         builder: (context, _) => FutureBuilder(
           future: situationInscription(inscriptionId),
@@ -85,6 +137,7 @@ class SituationFinanciere extends StatelessWidget {
                     ListTile(
                       dense: true,
                       title: Text('${f.libelle} : ${gnf(f.total)}'),
+                      subtitle: f.reduction > 0 ? Text('au lieu de ${gnf(f.brut)}, réduction ${gnf(f.reduction)}') : null,
                       trailing: Text(f.reste <= 0 ? 'Payé' : 'Reste ${gnf(f.reste)}'),
                     ),
                     if (f.echeances.length > 1)
@@ -99,6 +152,7 @@ class SituationFinanciere extends StatelessWidget {
                         ),
                   ],
                   _Souscrire(espace: espace, inscriptionId: inscriptionId),
+                  _Reductions(espace: espace, inscriptionId: inscriptionId),
                   Padding(
                     padding: const EdgeInsets.all(8),
                     child: FilledButton.icon(
@@ -113,6 +167,83 @@ class SituationFinanciere extends StatelessWidget {
             );
           },
         ),
+      );
+}
+
+/// Réductions de l'élève : celles qui s'appliquent, et l'attribution des
+/// réductions personnalisées (bourse, orphelin…) par la direction.
+class _Reductions extends StatelessWidget {
+  const _Reductions({required this.espace, required this.inscriptionId});
+
+  final Espace espace;
+  final String inscriptionId;
+
+  Future<void> _attribuer(BuildContext context) async {
+    final ins = await db.get('SELECT organisation_id, site_id FROM inscriptions WHERE id = ?', [inscriptionId]);
+    final regles = await db.getAll(
+        '''SELECT g.*, r.id AS attribution, r.actif AS attribuee, r.motif FROM regles_reduction g
+           LEFT JOIN reductions_eleves r ON r.regle_id = g.id AND r.inscription_id = ?
+           WHERE g.organisation_id = ? AND g.actif = 1 AND g.type = 'personnalisee' ORDER BY g.created_at''',
+        [inscriptionId, ins['organisation_id']]);
+    if (!context.mounted) return;
+    if (regles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Aucune réduction personnalisée. Le fondateur les crée dans Configurer l'établissement → Réductions.")));
+      return;
+    }
+    final choix = {for (final r in regles) r['id'] as String: r['attribuee'] == 1};
+    final motif = TextEditingController();
+    final ok = await _formulaire(context, 'Réductions accordées', (maj) => [
+          for (final r in regles)
+            CheckboxListTile(
+              value: choix[r['id']],
+              title: Text('${r['libelle']}'),
+              subtitle: Text('${r['pourcentage'] == 1 ? '${'${r['valeur']}'.replaceAll('.0', '')} %' : gnf((r['valeur'] as num).toInt())}'
+                  ' · ${porteesReduction[r['portee']]}${r['motif'] != null ? ' · ${r['motif']}' : ''}'),
+              onChanged: (v) => maj(() => choix[r['id'] as String] = v ?? false),
+            ),
+          TextField(controller: motif, decoration: _champ('Motif (pour une nouvelle réduction)', aide: 'Ex. père décédé, bourse du mérite')),
+        ]);
+    if (!ok) return;
+    final m = _maintenant();
+    await db.writeTransaction((tx) async {
+      for (final r in regles) {
+        final voulu = choix[r['id']]!;
+        if (r['attribution'] == null) {
+          if (voulu) {
+            await tx.execute(
+                'INSERT INTO reductions_eleves (id, organisation_id, inscription_id, regle_id, actif, motif, accorde_par, created_at, updated_at) '
+                'VALUES (uuid(), ?, ?, ?, 1, ?, ?, ?, ?)',
+                [ins['organisation_id'], inscriptionId, r['id'], motif.text.trim().isEmpty ? null : motif.text.trim(), monId, m, m]);
+          }
+        } else if (voulu != (r['attribuee'] == 1)) {
+          await tx.execute('UPDATE reductions_eleves SET actif = ?, updated_at = ? WHERE id = ?', [voulu ? 1 : 0, m, r['attribution']]);
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder(
+        future: Future.wait([
+          reductionsInscription(inscriptionId),
+          db.get('SELECT site_id FROM inscriptions WHERE id = ?', [inscriptionId]),
+        ]),
+        builder: (context, s) {
+          if (!s.hasData) return const SizedBox.shrink();
+          final red = s.data![0] as ({List<Regle> applicables, bool cumul, int plafond});
+          final site = (s.data![1] as Map<String, Object?>)['site_id'] as String;
+          return ListTile(
+            dense: true,
+            leading: const Icon(Icons.discount_outlined),
+            title: Text(red.applicables.isEmpty
+                ? 'Aucune réduction'
+                : 'Réductions : ${red.applicables.map((r) => r.libelle).join(', ')}'),
+            trailing: espace.gereSite(site)
+                ? TextButton(onPressed: () => _attribuer(context), child: const Text('Accorder'))
+                : null,
+          );
+        },
       );
 }
 
@@ -163,13 +294,18 @@ class _Souscrire extends StatelessWidget {
 // Encaisser ---------------------------------------------------------------------
 
 class _LigneEleve {
-  _LigneEleve(this.eleve, this.inscription, this.frais)
+  _LigneEleve(this.eleve, this.inscription, this.frais, {this.regleAnnuelle})
       : montants = {for (final f in frais) f.id: TextEditingController()},
         global = TextEditingController();
 
   final Map<String, Object?> eleve;
   final Map<String, Object?> inscription;
-  final List<FraisDu> frais;
+  List<FraisDu> frais;
+
+  /// Remise « année payée d'un coup », proposée tant que rien de la scolarité
+  /// n'est payé ; [annuel] : la famille paie toute l'année maintenant.
+  final Map<String, Object?>? regleAnnuelle;
+  bool annuel = false;
   final Map<String, TextEditingController> montants;
   final TextEditingController global;
 
@@ -234,6 +370,14 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       return;
     }
     final frais = await situationInscription(ins['id'] as String);
+    final scolarite = frais.where((f) => f.type == 'scolarite');
+    final annuelle = scolarite.isEmpty || scolarite.any((f) => f.paye > 0)
+        ? null
+        : await db.getOptional(
+            '''SELECT g.* FROM regles_reduction g WHERE g.organisation_id = ? AND g.actif = 1 AND g.type = 'paiement_annuel'
+               AND NOT EXISTS (SELECT 1 FROM reductions_eleves r WHERE r.regle_id = g.id AND r.inscription_id = ? AND r.actif = 1)
+               ORDER BY g.created_at LIMIT 1''',
+            [ins['organisation_id'], ins['id']]);
     // Le payeur habituel : le responsable financier de l'élève.
     final rf = await db.getOptional(
         '''SELECT ct.id, ct.nom_complet FROM eleves_contacts ec JOIN contacts ct ON ct.id = ec.contact_id
@@ -250,7 +394,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
             .map((x) => Map<String, Object?>.from(x))
             .toList();
     setState(() {
-      _lignes.add(_LigneEleve(Map.of(eleve), Map.of(ins), frais));
+      _lignes.add(_LigneEleve(Map.of(eleve), Map.of(ins), frais, regleAnnuelle: annuelle == null ? null : Map.of(annuelle)));
       _freres = [
         ..._freres,
         ...freres.where((f) => !_freres.any((x) => x['id'] == f['id'])),
@@ -277,6 +421,10 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       for (final f in l.frais) {
         if (l.montant(f.id) > f.reste) {
           return erreur('${_nomEleve(l.eleve)} : ${f.libelle} dépasse le reste dû (${gnf(f.reste)}).');
+        }
+        if (l.annuel && f.type == 'scolarite' && l.montant(f.id) != f.reste) {
+          return erreur("${_nomEleve(l.eleve)} : la remise « année payée d'un coup » demande de payer toute la scolarité "
+              '(${gnf(f.reste)}).');
         }
       }
     }
@@ -327,6 +475,13 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
               maintenant, maintenant,
             ]);
         for (final l in _lignes) {
+          if (l.annuel && l.regleAnnuelle != null) {
+            // La remise est attribuée avec le paiement, dans la même opération.
+            await tx.execute(
+                'INSERT INTO reductions_eleves (id, organisation_id, inscription_id, regle_id, actif, motif, accorde_par, created_at, updated_at) '
+                "VALUES (uuid(), ?, ?, ?, 1, 'Année payée en une fois', ?, ?, ?)",
+                [o, l.inscription['id'], l.regleAnnuelle!['id'], monId, maintenant, maintenant]);
+          }
           for (final f in l.frais) {
             final m = l.montant(f.id);
             if (m <= 0) continue;
@@ -399,6 +554,23 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                   IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _lignes.remove(l))),
                 ]),
                 if (l.frais.isEmpty) const Text('Aucun frais configuré pour sa classe.'),
+                if (l.regleAnnuelle != null)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: l.annuel,
+                    title: Text("Toute l'année d'un coup : ${l.regleAnnuelle!['libelle']}"),
+                    subtitle: const Text('La scolarité entière est payée maintenant, avec la remise.'),
+                    onChanged: (v) async {
+                      final frais = await situationInscription(l.inscription['id'] as String, paiementAnnuel: v);
+                      setState(() {
+                        l.annuel = v;
+                        l.frais = frais;
+                        for (final f in frais.where((f) => f.type == 'scolarite')) {
+                          l.montants[f.id]!.text = v ? '${f.reste}' : '';
+                        }
+                      });
+                    },
+                  ),
                 if (l.frais.isNotEmpty)
                   Row(children: [
                     Expanded(

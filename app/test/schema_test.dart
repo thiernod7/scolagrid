@@ -12,7 +12,7 @@ import 'package:scolagrid/schema.dart';
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
-    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves', 'souscriptions', 'encaissements', 'lignes_encaissement']) {
+    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves', 'souscriptions', 'encaissements', 'lignes_encaissement', 'regles_reduction', 'reductions_eleves']) {
       expect(tables, contains(t));
     }
   });
@@ -192,5 +192,35 @@ void main() {
     expect(lireDate('2014-03-05'), DateTime(2014, 3, 5));
     expect(lireDate('31/02/2014'), isNull);
     expect(lireDate('vers 2014'), isNull);
+  });
+
+  test('réductions : mêmes règles que le serveur', () {
+    const fratrie2 = Regle(id: 'f2', type: 'fratrie', libelle: '2 enfants', pourcentage: true, valeur: 10, portee: 'scolarite', nbEnfants: 2);
+    const fratrie3 = Regle(id: 'f3', type: 'fratrie', libelle: '3 enfants', pourcentage: true, valeur: 15, portee: 'scolarite', nbEnfants: 3);
+    const orphelin = Regle(id: 'o', type: 'personnalisee', libelle: 'Orphelin', pourcentage: true, valeur: 100, portee: 'inscription');
+    const annuel = Regle(id: 'a', type: 'paiement_annuel', libelle: 'Annuel', pourcentage: true, valeur: 5, portee: 'scolarite');
+    final regles = [fratrie2, fratrie3, orphelin, annuel];
+    // Fratrie : le seuil le plus haut atteint.
+    expect(reductionsApplicables(regles: regles, attribuees: {}, enfantsDuPayeur: 4, cumul: false).single.id, 'f3');
+    expect(reductionsApplicables(regles: regles, attribuees: {}, enfantsDuPayeur: 1, cumul: false), isEmpty);
+    // Sans cumul : la fratrie passe avant tout le reste.
+    final seule = reductionsApplicables(regles: regles, attribuees: {'o', 'a'}, enfantsDuPayeur: 2, cumul: false);
+    expect(seule.map((r) => r.id), ['f2']);
+    expect(reductionSurFrais(typeFrais: 'inscription', total: 150000, applicables: seule, cumul: false, plafond: 100), 0);
+    // Avec cumul : tout s'additionne, dans la limite du plafond.
+    final toutes = reductionsApplicables(regles: regles, attribuees: {'o', 'a'}, enfantsDuPayeur: 2, cumul: true);
+    expect(reductionSurFrais(typeFrais: 'scolarite', total: 750000, applicables: toutes, cumul: true, plafond: 100), 112500);
+    expect(reductionSurFrais(typeFrais: 'scolarite', total: 750000, applicables: toutes, cumul: true, plafond: 12), 90000);
+    expect(reductionSurFrais(typeFrais: 'inscription', total: 150000, applicables: toutes, cumul: true, plafond: 100), 150000);
+    // La réduction se répartit sur les tranches : 750 000 - 20 % = 3 × 200 000.
+    final f = situationFrais(id: 'sco', libelle: 'Scolarité', type: 'scolarite', total: 750000, reduction: 150000, dejaPaye: 0,
+        arrivee: DateTime(2026, 10, 1), echeances: [
+          (libelle: 'Tranche 1', montant: 250000, dateLimite: DateTime(2026, 12, 31)),
+          (libelle: 'Tranche 2', montant: 250000, dateLimite: DateTime(2027, 3, 31)),
+          (libelle: 'Tranche 3', montant: 250000, dateLimite: DateTime(2027, 6, 30)),
+        ]);
+    expect(f.echeances.map((e) => e.montant), [200000, 200000, 200000]);
+    expect(f.total, 600000);
+    expect(f.brut, 750000);
   });
 }

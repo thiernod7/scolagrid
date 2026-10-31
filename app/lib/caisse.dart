@@ -27,13 +27,17 @@ class EcheanceDue {
 }
 
 class FraisDu {
-  FraisDu({required this.id, required this.libelle, required this.type, required this.total, required this.echeances});
+  FraisDu({required this.id, required this.libelle, required this.type, required this.total, required this.echeances, this.reduction = 0});
 
   final String id;
   final String libelle;
   final String type;
+  /// Montant dû, réduction déduite.
   final int total;
   final List<EcheanceDue> echeances;
+  final int reduction;
+
+  int get brut => total + reduction;
 
   int get paye => echeances.fold(0, (s, e) => s + e.paye);
   int get reste => total - paye;
@@ -49,10 +53,15 @@ FraisDu situationFrais({
   required List<({String libelle, int montant, DateTime dateLimite})> echeances,
   required DateTime arrivee,
   required int dejaPaye,
+  int reduction = 0,
 }) {
+  // La réduction se répartit sur les échéances au prorata : 750 000 en 3 tranches,
+  // moins 20 %, donne 3 tranches de 200 000.
+  final brut = total;
+  total = brut - reduction;
   final liste = echeances.isEmpty
       ? [EcheanceDue(libelle, total, arrivee)]
-      : [for (final e in echeances) EcheanceDue(e.libelle, e.montant, e.dateLimite)];
+      : [for (final e in echeances) EcheanceDue(e.libelle, brut == 0 ? 0 : (e.montant * total / brut).floor(), e.dateLimite)];
   // Si les échéances ne font pas exactement le total, la dernière s'ajuste.
   final somme = liste.fold(0, (s, e) => s + e.montant);
   if (somme != total && liste.isNotEmpty) {
@@ -65,7 +74,7 @@ FraisDu situationFrais({
     e.paye = part < 0 ? 0 : part;
     reste -= e.paye;
   }
-  return FraisDu(id: id, libelle: libelle, type: type, total: total, echeances: liste);
+  return FraisDu(id: id, libelle: libelle, type: type, total: total, echeances: liste, reduction: reduction);
 }
 
 /// Répartit un versement sur les frais d'un élève : inscription d'abord, puis
@@ -105,4 +114,80 @@ String? feuilleSuivante(String? derniere) {
   if (m == null) return null;
   final n = int.parse(m[2]!) + 1;
   return '${m[1]}${n.toString().padLeft(m[2]!.length, '0')}';
+}
+
+// Réductions --------------------------------------------------------------------
+// Même calcul que la fonction serveur scolagrid.reduction_frais (migration 011).
+
+const typesReduction = {
+  'fratrie': 'Fratrie (même payeur)',
+  'paiement_annuel': "Paiement de l'année en une fois",
+  'personnalisee': 'Personnalisée (bourse, orphelin, mérite…)',
+};
+
+const porteesReduction = {
+  'scolarite': 'Scolarité',
+  'inscription': 'Inscription et réinscription',
+  'tous': 'Tous les frais',
+};
+
+class Regle {
+  const Regle({
+    required this.id,
+    required this.type,
+    required this.libelle,
+    required this.pourcentage,
+    required this.valeur,
+    required this.portee,
+    this.nbEnfants,
+  });
+
+  final String id;
+  final String type;
+  final String libelle;
+  final bool pourcentage;
+  final num valeur;
+  final String portee;
+  final int? nbEnfants;
+
+  bool couvre(String typeFrais) => switch (portee) {
+        'scolarite' => typeFrais == 'scolarite',
+        'inscription' => typeFrais == 'inscription' || typeFrais == 'reinscription',
+        _ => true,
+      };
+
+  int montantSur(int total) => pourcentage ? (total * valeur / 100).floor() : (valeur < total ? valeur.toInt() : total);
+}
+
+/// Réductions dont l'élève bénéficie : fratrie selon le nombre d'enfants du même
+/// payeur (le barème au seuil le plus haut atteint), paiement annuel et
+/// réductions personnalisées si elles lui sont attribuées. Sans cumul, une seule :
+/// Fratrie, puis Paiement annuel, puis Personnalisée.
+List<Regle> reductionsApplicables({
+  required List<Regle> regles,
+  required Set<String> attribuees,
+  required int enfantsDuPayeur,
+  required bool cumul,
+}) {
+  final fratries = regles.where((r) => r.type == 'fratrie' && (r.nbEnfants ?? 2) <= enfantsDuPayeur && enfantsDuPayeur >= 2).toList()
+    ..sort((a, b) => (b.nbEnfants ?? 2).compareTo(a.nbEnfants ?? 2));
+  final liste = [
+    if (fratries.isNotEmpty) fratries.first,
+    ...regles.where((r) => r.type == 'paiement_annuel' && attribuees.contains(r.id)),
+    ...regles.where((r) => r.type == 'personnalisee' && attribuees.contains(r.id)),
+  ];
+  return cumul || liste.isEmpty ? liste : [liste.first];
+}
+
+/// Montant de réduction sur un frais, plafonné (cumul) et jamais plus que le frais.
+int reductionSurFrais({required String typeFrais, required int total, required List<Regle> applicables, required bool cumul, required int plafond}) {
+  var r = 0;
+  for (final x in applicables.where((x) => x.couvre(typeFrais))) {
+    r += x.montantSur(total);
+  }
+  if (cumul) {
+    final max = (total * plafond / 100).floor();
+    if (r > max) r = max;
+  }
+  return r > total ? total : r;
 }
