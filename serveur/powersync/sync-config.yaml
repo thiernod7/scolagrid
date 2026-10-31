@@ -17,6 +17,20 @@ streams:
       - SELECT * FROM rattachements WHERE user_id = auth.user_id()
       - SELECT * FROM personnes WHERE id = auth.user_id()
 
+  # Configuration de l'établissement (étape 2) : année, niveaux, classes,
+  # matières et frais des organisations de la personne.
+  configuration:
+    auto_subscribe: true
+    priority: 2
+    with:
+      mes_orgs: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true
+    queries:
+      - SELECT * FROM annees_scolaires WHERE organisation_id IN mes_orgs
+      - SELECT * FROM niveaux WHERE organisation_id IN mes_orgs
+      - SELECT * FROM classes WHERE organisation_id IN mes_orgs
+      - SELECT * FROM matieres WHERE organisation_id IN mes_orgs
+      - SELECT * FROM frais WHERE organisation_id IN mes_orgs
+
   # Table de test « Bonjour » (première version de l'app).
   hellos:
     auto_subscribe: true

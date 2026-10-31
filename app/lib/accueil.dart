@@ -5,6 +5,7 @@ import 'package:powersync/powersync.dart' show SyncStatus;
 
 import 'base.dart';
 import 'cloud.dart';
+import 'configuration.dart';
 import 'onboarding.dart';
 
 const _roles = {
@@ -176,6 +177,25 @@ class _AccueilScreenState extends State<AccueilScreen> {
                         subtitle: Text(_enAttente == 0
                             ? 'Toutes les données de ce poste sont sur le serveur.'
                             : "$_enAttente changement(s) en attente d'envoi."),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.tune),
+                        title: const Text("Configurer l'établissement"),
+                        subtitle: const Text('Année, niveaux, matières, classes, frais'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => ConfigurationScreen(
+                            espace: Espace(
+                              orgId: org['id'] as String,
+                              ville: org['ville'] as String? ?? '',
+                              role: _rattachement?['role'] as String? ?? '',
+                              siteId: _rattachement?['site_id'] as String?,
+                            ),
+                          ),
+                        )),
                       ),
                     ),
                     const SizedBox(height: 16),

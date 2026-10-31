@@ -35,6 +35,58 @@ const schema = Schema([
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
+  // Configuration de l'établissement (étape 2).
+  Table('annees_scolaires', [
+    Column.text('organisation_id'),
+    Column.text('libelle'),
+    Column.text('debut'),
+    Column.text('fin'),
+    Column.integer('en_cours'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
+  Table('niveaux', [
+    Column.text('organisation_id'),
+    Column.text('cycle'),
+    Column.text('nom'),
+    Column.integer('ordre'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
+  Table('classes', [
+    Column.text('organisation_id'),
+    Column.text('site_id'),
+    Column.text('annee_id'),
+    Column.text('niveau_id'),
+    Column.text('nom'),
+    Column.text('salle'),
+    Column.integer('capacite'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_site', [IndexedColumn('site_id')]),
+  ]),
+  Table('matieres', [
+    Column.text('organisation_id'),
+    Column.text('niveau_id'),
+    Column.text('nom'),
+    Column.real('coefficient'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_niveau', [IndexedColumn('niveau_id')]),
+  ]),
+  Table('frais', [
+    Column.text('organisation_id'),
+    Column.text('annee_id'),
+    Column.text('site_id'),
+    Column.text('niveau_id'),
+    Column.text('libelle'),
+    Column.integer('montant_gnf'),
+    Column.text('periodicite'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
   // Table de test de la première version.
   Table('hellos', [
     Column.text('message'),

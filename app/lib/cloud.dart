@@ -96,6 +96,21 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     return PowerSyncCredentials(endpoint: powersyncUrl, token: session.accessToken);
   }
 
+  // La base locale stocke les booléens en 0/1 ; le serveur attend true/false.
+  static const _booleens = {
+    'annees_scolaires': ['en_cours'],
+    'rattachements': ['actif'],
+  };
+
+  static Map<String, dynamic> _pourServeur(String table, Map<String, dynamic> donnees) {
+    final copie = {...donnees};
+    for (final c in _booleens[table] ?? const <String>[]) {
+      final v = copie[c];
+      if (v is num) copie[c] = v != 0;
+    }
+    return copie;
+  }
+
   @override
   Future<void> uploadData(PowerSyncDatabase database) async {
     final tx = await database.getNextCrudTransaction();
@@ -106,9 +121,9 @@ class SupabaseConnector extends PowerSyncBackendConnector {
         final table = rest.from(op.table);
         switch (op.op) {
           case UpdateType.put:
-            await table.upsert({...?op.opData, 'id': op.id});
+            await table.upsert(_pourServeur(op.table, {...?op.opData, 'id': op.id}));
           case UpdateType.patch:
-            await table.update(op.opData ?? {}).eq('id', op.id);
+            await table.update(_pourServeur(op.table, op.opData ?? {})).eq('id', op.id);
           case UpdateType.delete:
             await table.delete().eq('id', op.id);
         }
