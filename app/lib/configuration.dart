@@ -1,8 +1,14 @@
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import 'base.dart';
+import 'cloud.dart';
+import 'fonctions.dart';
 import 'modele_guineen.dart';
+
+part 'personnel.dart';
 
 /// Étape 2 de l'onboarding : configurer l'établissement.
 /// Tout s'écrit dans la base locale, donc fonctionne hors ligne ;

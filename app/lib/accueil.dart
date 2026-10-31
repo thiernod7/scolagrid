@@ -8,14 +8,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'base.dart';
 import 'cloud.dart';
 import 'configuration.dart';
+import 'fonctions.dart';
 import 'onboarding.dart';
 
-const _roles = {
-  'fondateur': 'Fondateur',
-  'directeur': 'Directeur de site',
-  'secretaire': 'Secrétaire-comptable',
-  'enseignant': 'Enseignant',
-};
 
 /// Accueil : l'espace de l'école tel qu'il est dans la base locale.
 /// Tout s'affiche et se modifie hors ligne ; la synchro suit quand elle peut.
@@ -41,7 +36,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
     final moi = monId;
     _abonnements
       ..add(db.watch('SELECT * FROM rattachements WHERE user_id = ? AND actif = 1 '
-          "ORDER BY role = 'fondateur' DESC LIMIT 1", parameters: [moi]).listen((r) {
+          // La fonction qui donne le plus de droits de gestion d'abord.
+          "ORDER BY CASE role WHEN 'fondateur' THEN 0 WHEN 'directeur' THEN 1 ELSE 2 END, site_id IS NOT NULL "
+          'LIMIT 1', parameters: [moi]).listen((r) {
         setState(() => _rattachement = r.isEmpty ? null : r.first);
       }))
       ..add(db.watch('SELECT o.* FROM organisations o JOIN rattachements r ON r.organisation_id = o.id '
@@ -75,6 +72,13 @@ class _AccueilScreenState extends State<AccueilScreen> {
   }
 
   bool get _estFondateur => _rattachement?['role'] == 'fondateur';
+
+  Espace _espace(Map<String, Object?> org) => Espace(
+        orgId: org['id'] as String,
+        ville: org['ville'] as String? ?? '',
+        role: _rattachement?['role'] as String? ?? '',
+        siteId: _rattachement?['site_id'] as String?,
+      );
 
   Future<void> _ajouterSite() async {
     final nom = TextEditingController();
@@ -159,7 +163,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   children: [
                     if (_nom != null) Text('Bonjour $_nom', style: texte.headlineSmall),
                     const SizedBox(height: 4),
-                    Text('${_roles[_rattachement?['role']] ?? ''} · ${org['ville']}', style: texte.bodyMedium),
+                    Text('${fonctions[_rattachement?['role']] ?? ''} · ${org['ville']}', style: texte.bodyMedium),
                     if (org['statut'] == 'en_attente')
                       Card(
                         margin: const EdgeInsets.only(top: 16),
@@ -189,17 +193,21 @@ class _AccueilScreenState extends State<AccueilScreen> {
                         subtitle: const Text('Année, niveaux, matières, classes, frais'),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => ConfigurationScreen(
-                            espace: Espace(
-                              orgId: org['id'] as String,
-                              ville: org['ville'] as String? ?? '',
-                              role: _rattachement?['role'] as String? ?? '',
-                              siteId: _rattachement?['site_id'] as String?,
-                            ),
-                          ),
+                          builder: (_) => ConfigurationScreen(espace: _espace(org)),
                         )),
                       ),
                     ),
+                    if (_espace(org).gestionnaire)
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.groups_outlined),
+                          title: const Text('Personnel et accès'),
+                          subtitle: const Text("Fiches, fonctions, droits, invitations à l'app"),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.of(context)
+                              .push(MaterialPageRoute(builder: (_) => PersonnelScreen(espace: _espace(org)))),
+                        ),
+                      ),
                     if (kIsWeb) const _InstallerPostes(),
                     const SizedBox(height: 16),
                     Text('Sites (${_sites.length})', style: texte.titleMedium),

@@ -183,8 +183,11 @@ class _CodeScreenState extends State<CodeScreen> {
         Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const AccueilScreen()), (_) => false);
       } else {
+        // Pas encore d'espace : soit on crée celui de son école, soit on a été invité.
         Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const CreerEspaceScreen()), (_) => false);
+            MaterialPageRoute(
+                builder: (_) => widget.nouvelEspace ? const CreerEspaceScreen() : const InvitationScreen()),
+            (_) => false);
       }
     } catch (e) {
       setState(() => _erreur = _messageErreur(e));
@@ -298,6 +301,89 @@ class _CreerEspaceScreenState extends State<CreerEspaceScreen> {
         FilledButton(
           onPressed: _envoi ? null : _creer,
           child: Text(_envoi ? 'Création…' : "Créer l'espace"),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: () => Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const InvitationScreen())),
+          child: const Text("Votre école utilise déjà Scolagrid ? J'ai un code d'invitation"),
+        ),
+      ],
+    );
+  }
+}
+
+/// Une personne invitée par son école saisit le code reçu : son compte est
+/// relié à sa fiche du personnel, et ses fonctions lui donnent ses accès.
+class InvitationScreen extends StatefulWidget {
+  const InvitationScreen({super.key});
+
+  @override
+  State<InvitationScreen> createState() => _InvitationScreenState();
+}
+
+class _InvitationScreenState extends State<InvitationScreen> {
+  final _code = TextEditingController();
+  bool _envoi = false;
+  String? _erreur;
+
+  Future<void> _valider() async {
+    if (_code.text.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').length != 8) {
+      setState(() => _erreur = 'Le code a 8 signes, par exemple K7PQ-4XZM.');
+      return;
+    }
+    setState(() {
+      _envoi = true;
+      _erreur = null;
+    });
+    try {
+      final org = await accepterInvitation(_code.text);
+      if (!mounted) return;
+      if (org == null) {
+        setState(() => _erreur = 'Code inconnu, déjà utilisé ou expiré. Demandez un nouveau code à votre école.');
+        return;
+      }
+      await demarrerSynchro(db);
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AccueilScreen()), (_) => false);
+    } catch (e) {
+      setState(() => _erreur = _messageErreur(e));
+    } finally {
+      if (mounted) setState(() => _envoi = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _Page(
+      titre: "Code d'invitation",
+      sousTitre: 'Votre école vous a donné un code de 8 signes. Il est valable 7 jours.',
+      enfants: [
+        TextField(
+          controller: _code,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          maxLength: 9,
+          decoration: InputDecoration(
+            labelText: 'Code',
+            hintText: 'K7PQ-4XZM',
+            errorText: _erreur,
+            errorMaxLines: 3,
+            border: const OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => _valider(),
+        ),
+        const SizedBox(height: 8),
+        FilledButton(
+          onPressed: _envoi ? null : _valider,
+          child: Text(_envoi ? 'Vérification…' : 'Rejoindre mon école'),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: () => Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const CreerEspaceScreen())),
+          child: const Text("Je n'ai pas de code : créer l'espace de mon école"),
         ),
       ],
     );

@@ -87,6 +87,38 @@ const schema = Schema([
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
+  // Personnel, fonctions et droits (étape 3).
+  Table('personnel', [
+    Column.text('organisation_id'),
+    Column.text('site_id'),
+    Column.text('nom_complet'),
+    Column.text('telephone'),
+    Column.text('user_id'),
+    Column.text('statut'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
+  Table('affectations', [
+    Column.text('organisation_id'),
+    Column.text('personnel_id'),
+    Column.text('site_id'),
+    Column.text('fonction'),
+    Column.text('libelle'),
+    Column.integer('actif'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_personnel', [IndexedColumn('personnel_id')]),
+  ]),
+  Table('droits_personnel', [
+    Column.text('organisation_id'),
+    Column.text('personnel_id'),
+    Column.text('site_id'),
+    Column.text('droit'),
+    Column.integer('accorde'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
   // Table de test de la première version.
   Table('hellos', [
     Column.text('message'),

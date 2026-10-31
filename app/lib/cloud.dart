@@ -62,6 +62,16 @@ Future<String> creerEspaceEcole({
   return id as String;
 }
 
+/// Étape 3 : crée un code d'invitation pour une fiche du personnel (8 signes,
+/// valable 7 jours, usage unique). Le serveur annule les codes précédents.
+Future<String> inviterPersonnel(String ficheId) async =>
+    await Supabase.instance.client.rpc('inviter_personnel', params: {'fiche': ficheId}) as String;
+
+/// Relie le compte connecté à sa fiche grâce au code reçu.
+/// Renvoie l'organisation, ou null si le code est faux ou expiré.
+Future<String?> accepterInvitation(String code) async =>
+    await Supabase.instance.client.rpc('accepter_invitation', params: {'code_saisi': code}) as String?;
+
 /// Lance la synchronisation de la personne connectée.
 /// Hors ligne, PowerSync réessaie tout seul ; l'app reste utilisable.
 Future<void> demarrerSynchro(PowerSyncDatabase db) async {
@@ -100,6 +110,8 @@ class SupabaseConnector extends PowerSyncBackendConnector {
   static const _booleens = {
     'annees_scolaires': ['en_cours'],
     'rattachements': ['actif'],
+    'affectations': ['actif'],
+    'droits_personnel': ['accorde'],
   };
 
   static Map<String, dynamic> _pourServeur(String table, Map<String, dynamic> donnees) {

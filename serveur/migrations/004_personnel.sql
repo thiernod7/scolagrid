@@ -161,10 +161,9 @@ create trigger personnel_protege before insert or update on public.personnel
 -- Reprise de l'existant : une fiche et des fonctions pour chaque compte déjà rattaché.
 insert into public.personnel (organisation_id, nom_complet, telephone, user_id)
 select distinct on (r.organisation_id, r.user_id)
-       r.organisation_id, coalesce(p.nom_complet, 'Sans nom'), u.phone, r.user_id
+       r.organisation_id, coalesce(p.nom_complet, 'Sans nom'), p.telephone, r.user_id
 from public.rattachements r
-left join public.personnes p on p.id = r.user_id
-left join auth.users u on u.id = r.user_id;
+left join public.personnes p on p.id = r.user_id;
 
 insert into public.affectations (organisation_id, personnel_id, site_id, fonction, actif)
 select r.organisation_id, f.id, r.site_id, r.role, r.actif

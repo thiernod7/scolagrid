@@ -1,13 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolagrid/cloud.dart';
 import 'package:scolagrid/configuration.dart' show gnf;
+import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_guineen.dart';
 import 'package:scolagrid/schema.dart';
 
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
-    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais']) {
+    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel']) {
       expect(tables, contains(t));
     }
   });
@@ -32,5 +33,20 @@ void main() {
   test('le modèle guinéen couvre tous les cycles', () {
     expect(niveauxParCycle.keys, containsAll(cycles.keys));
     expect(niveauxParCycle['college']!.map((n) => n.nom), contains('10ème'));
+  });
+
+  test('droits par défaut des fonctions', () {
+    expect(droitsDesFonctions(['enseignant']), {'saisir_notes', 'faire_appel'});
+    expect(droitsDesFonctions(['fondateur']), droits.keys.toSet());
+    // Fonctions cumulées : les droits s'additionnent.
+    expect(droitsDesFonctions(['enseignant', 'surveillant']), containsAll(['saisir_notes', 'justifier_absence']));
+    // La paie n'est jamais automatique, sauf pour le fondateur.
+    for (final f in fonctions.keys.where((f) => f != 'fondateur')) {
+      expect(droitsDesFonctions([f]).intersection({'preparer_paie', 'valider_paie', 'verser_paie'}), isEmpty);
+    }
+  });
+
+  test("code d'invitation lisible", () {
+    expect(codeLisible('K7PQ4XZM'), 'K7PQ-4XZM');
   });
 }
