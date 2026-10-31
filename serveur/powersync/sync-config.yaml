@@ -30,6 +30,7 @@ streams:
       - SELECT * FROM classes WHERE organisation_id IN mes_orgs
       - SELECT * FROM matieres WHERE organisation_id IN mes_orgs
       - SELECT * FROM frais WHERE organisation_id IN mes_orgs
+      - SELECT * FROM echeances WHERE organisation_id IN mes_orgs
 
   # Sa propre fiche du personnel, ses fonctions et ses droits particuliers :
   # l'app en déduit ce que la personne peut faire.

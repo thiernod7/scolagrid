@@ -8,6 +8,14 @@ const schema = Schema([
     Column.text('ville'),
     Column.text('statut'),
     Column.text('cree_par'),
+    Column.text('code'),
+    Column.text('nom_officiel'),
+    Column.text('slogan'),
+    Column.text('quartier'),
+    Column.text('telephone'),
+    Column.text('email'),
+    Column.text('responsable_nom'),
+    Column.text('responsable_titre'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -15,6 +23,9 @@ const schema = Schema([
     Column.text('organisation_id'),
     Column.text('nom'),
     Column.text('ville'),
+    Column.text('code'),
+    Column.text('quartier'),
+    Column.text('telephone'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [
@@ -84,8 +95,22 @@ const schema = Schema([
     Column.text('libelle'),
     Column.integer('montant_gnf'),
     Column.text('periodicite'),
+    Column.text('type_frais'),
     Column.text('created_at'),
     Column.text('updated_at'),
+  ]),
+  // Échéances d'un frais : tranches ou mois de la scolarité.
+  Table('echeances', [
+    Column.text('organisation_id'),
+    Column.text('frais_id'),
+    Column.integer('ordre'),
+    Column.text('libelle'),
+    Column.integer('montant_gnf'),
+    Column.text('date_limite'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_frais', [IndexedColumn('frais_id')]),
   ]),
   // Personnel, fonctions et droits (étape 3).
   Table('personnel', [

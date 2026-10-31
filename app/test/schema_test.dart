@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolagrid/cloud.dart';
+import 'package:scolagrid/echeancier.dart';
 import 'package:scolagrid/configuration.dart' show empreintePin, gnf, pinValide;
 import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_guineen.dart';
@@ -8,7 +9,7 @@ import 'package:scolagrid/schema.dart';
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
-    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste']) {
+    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances']) {
       expect(tables, contains(t));
     }
   });
@@ -59,5 +60,35 @@ void main() {
     expect(empreintePin('1234', 'sel'), isNot(empreintePin('1235', 'sel')));
     expect(empreintePin('1234', 'sel'), isNot(empreintePin('1234', 'autre')));
     expect(empreintePin('1234', 'sel'), isNot(contains('1234')));
+  });
+
+  test('sigles proposés', () {
+    expect(codeSuggere('Groupe scolaire Les Palmiers'), 'PALMIERS');
+    expect(codeSuggere('Site de Donka'), 'DONKA');
+    expect(codeSuggere('École Élite'), 'ELITE');
+    expect(codeValide('ALPHA'), isTrue);
+    expect(codeValide('AL PHA'), isFalse);
+    expect(codeValide('A'), isFalse);
+  });
+
+  test('scolarité en tranches', () {
+    expect(moisParTranche(9, 3), [3, 3, 3]);
+    expect(moisParTranche(9, 2), [5, 4]);
+    final t = echeancesEnTranches(total: 750000, premierMois: DateTime(2026, 10), mois: [3, 3, 3]);
+    expect(t.map((e) => e.montant), [250000, 250000, 250000]);
+    expect(t.map((e) => e.dateLimite), [DateTime(2026, 12, 31), DateTime(2027, 3, 31), DateTime(2027, 6, 30)]);
+    expect(t.first.libelle, 'Tranche 1');
+    // Le reste de la division va sur la première tranche ; le total est toujours juste.
+    final r = echeancesEnTranches(total: 1000000, premierMois: DateTime(2026, 10), mois: [3, 3, 3]);
+    expect(r.fold<int>(0, (s, e) => s + e.montant), 1000000);
+    expect(r[1].montant, 333000);
+  });
+
+  test('scolarité au mois', () {
+    final m = echeancesMensuelles(parMois: 83000, premierMois: DateTime(2026, 10), nbMois: 9);
+    expect(m.length, 9);
+    expect(m.first.libelle, 'Octobre');
+    expect(m.last.libelle, 'Juin');
+    expect(m.last.dateLimite, DateTime(2027, 6, 30));
   });
 }

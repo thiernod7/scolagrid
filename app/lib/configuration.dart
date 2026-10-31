@@ -9,9 +9,12 @@ import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import 'base.dart';
 import 'cloud.dart';
+import 'echeancier.dart';
 import 'fonctions.dart';
 import 'modele_guineen.dart';
 
+part 'frais.dart';
+part 'identite.dart';
 part 'personnel.dart';
 part 'poste.dart';
 
@@ -204,8 +207,11 @@ class ConfigurationScreen extends StatelessWidget {
              (SELECT count(*) FROM niveaux WHERE organisation_id = ?) AS niveaux,
              (SELECT count(*) FROM matieres WHERE organisation_id = ?) AS matieres,
              (SELECT count(*) FROM classes WHERE organisation_id = ?) AS classes,
-             (SELECT count(*) FROM frais WHERE organisation_id = ?) AS frais''',
-        parametres: [o, o, o, o, o],
+             (SELECT count(*) FROM frais WHERE organisation_id = ?) AS frais,
+             (SELECT code FROM organisations WHERE id = ?) AS sigle,
+             (SELECT count(*) FROM sites WHERE organisation_id = ? AND code IS NULL) AS sites_sans_code,
+             (SELECT responsable_nom FROM organisations WHERE id = ?) AS responsable''',
+        parametres: [o, o, o, o, o, o, o, o],
         builder: (context, l) {
           final r = l.first;
           Widget etape(int n, String titre, String detail, bool fait, Widget ecran) => Card(
@@ -227,6 +233,10 @@ class ConfigurationScreen extends StatelessWidget {
               padding: EdgeInsets.only(bottom: 12),
               child: Text('Étape 2 sur 6. Tout fonctionne hors ligne : la synchronisation suivra.'),
             ),
+            etape(0, "Identité de l'école", r['sigle'] == null ? 'Sigle, code du site, responsable légal'
+                : 'Sigle ${r['sigle']}${(r['sites_sans_code'] as int? ?? 0) > 0 ? ' · code du site à choisir' : ''}',
+                r['sigle'] != null && r['sites_sans_code'] == 0 && r['responsable'] != null,
+                IdentiteEcoleScreen(espace: espace)),
             etape(1, 'Année scolaire', r['annee'] == null ? 'À créer' : '${r['annee']} en cours', r['annee'] != null,
                 AnneesScreen(espace: espace)),
             etape(2, 'Niveaux', niveaux == 0 ? 'Partir du modèle guinéen' : '$niveaux niveaux', niveaux > 0,
@@ -235,7 +245,7 @@ class ConfigurationScreen extends StatelessWidget {
                 MatieresScreen(espace: espace)),
             etape(4, 'Classes et salles', '${r['classes']} classes', (r['classes'] as int? ?? 0) > 0,
                 ClassesScreen(espace: espace)),
-            etape(5, 'Frais scolaires', '${r['frais']} frais', (r['frais'] as int? ?? 0) > 0,
+            etape(5, 'Frais scolaires', '${r['frais']} frais · inscription, scolarité en tranches', (r['frais'] as int? ?? 0) > 0,
                 FraisScreen(espace: espace)),
           ]);
         },
@@ -607,110 +617,6 @@ class ClassesScreen extends StatelessWidget {
                           onPressed: () async {
                             if (await _confirmer(context, 'Supprimer la classe ${c['nom']} ?')) {
                               await _supprimer('classes', c['id'] as String);
-                            }
-                          },
-                        )
-                      : null,
-                ),
-              ),
-          ]);
-        }),
-      );
-}
-
-// Frais scolaires -------------------------------------------------------------
-
-const _periodicites = {
-  'unique': 'Une fois',
-  'mensuel': 'Par mois',
-  'trimestriel': 'Par trimestre',
-  'annuel': 'Par an',
-};
-
-class FraisScreen extends StatelessWidget {
-  const FraisScreen({super.key, required this.espace});
-
-  final Espace espace;
-
-  Future<void> _ajouter(BuildContext context) async {
-    final annee = await db.getOptional(
-        'SELECT id FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [espace.orgId]);
-    final sites = <String?, String>{
-      if (espace.fondateur) null: 'Tous les sites',
-      for (final s in await db.getAll('SELECT id, nom FROM sites WHERE organisation_id = ? ORDER BY created_at',
-          [espace.orgId]))
-        if (espace.gereSite(s['id'] as String)) s['id'] as String: s['nom'] as String,
-    };
-    final niveaux = <String?, String>{
-      null: 'Tous les niveaux',
-      for (final n in await db.getAll('SELECT id, nom FROM niveaux WHERE organisation_id = ? ORDER BY ordre, nom',
-          [espace.orgId]))
-        n['id'] as String: n['nom'] as String,
-    };
-    if (!context.mounted) return;
-    if (annee == null) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Il faut d'abord une année scolaire en cours.")));
-      return;
-    }
-    final libelle = TextEditingController(text: 'Scolarité');
-    final montant = TextEditingController();
-    var periodicite = 'mensuel';
-    String? site = sites.keys.first;
-    String? niveau;
-    final ok = await _formulaire(context, 'Nouveaux frais', (maj) => [
-          TextField(controller: libelle, decoration: _champ('Libellé', aide: 'Inscription, Scolarité, Cantine…')),
-          TextField(
-              controller: montant,
-              keyboardType: TextInputType.number,
-              decoration: _champ('Montant', suffixe: 'GNF')),
-          _liste('Périodicité', periodicite, _periodicites, (v) => maj(() => periodicite = v)),
-          _liste('Niveau', niveau, niveaux, (v) => maj(() => niveau = v)),
-          if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
-        ]);
-    final m = int.tryParse(montant.text.replaceAll(RegExp(r'[^0-9]'), ''));
-    if (!ok || libelle.text.trim().length < 2 || m == null) return;
-    await _inserer('frais', {
-      'organisation_id': espace.orgId,
-      'annee_id': annee['id'],
-      'site_id': site,
-      'niveau_id': niveau,
-      'libelle': libelle.text.trim(),
-      'montant_gnf': m,
-      'periodicite': periodicite,
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => _Page(
-        titre: 'Frais scolaires',
-        ajouter: espace.gestionnaire ? () => _ajouter(context) : null,
-        libelleAjouter: 'Frais',
-        corps: Requete(
-            '''SELECT f.*, n.nom AS niveau, s.nom AS site
-               FROM frais f
-               JOIN annees_scolaires a ON a.id = f.annee_id AND a.en_cours = 1
-               LEFT JOIN niveaux n ON n.id = f.niveau_id
-               LEFT JOIN sites s ON s.id = f.site_id
-               WHERE f.organisation_id = ?
-               ORDER BY f.libelle, n.ordre''',
-            parametres: [espace.orgId], builder: (context, frais) {
-          if (frais.isEmpty) return _vide("Aucun frais pour l'année en cours.");
-          return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 88), children: [
-            for (final f in frais)
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.payments_outlined),
-                  title: Text('${f['libelle']} · ${gnf(f['montant_gnf'])}'),
-                  subtitle: Text('${_periodicites[f['periodicite']]} · ${f['niveau'] ?? 'Tous les niveaux'}'
-                      ' · ${f['site'] ?? 'Tous les sites'}'),
-                  trailing: (f['site_id'] == null ? espace.fondateur : espace.gereSite(f['site_id'] as String))
-                      ? IconButton(
-                          tooltip: 'Supprimer',
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            if (await _confirmer(context, 'Supprimer ces frais ?')) {
-                              await _supprimer('frais', f['id'] as String);
                             }
                           },
                         )

@@ -91,6 +91,11 @@ Future<({String id, String code})> activerPoste({
   return (id: r['id'] as String, code: r['code'] as String);
 }
 
+/// Enregistre le sigle de l'école, en ligne : il doit être unique sur tout
+/// Scolagrid et ne change plus ensuite (il entre dans les matricules).
+Future<void> definirSigle(String orgId, String code) =>
+    Supabase.instance.client.from('organisations').update({'code': code}).eq('id', orgId);
+
 /// Lance la synchronisation de la personne connectée.
 /// Hors ligne, PowerSync réessaie tout seul ; l'app reste utilisable.
 Future<void> demarrerSynchro(PowerSyncDatabase db) async {
