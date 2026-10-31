@@ -136,6 +136,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     'rattachements': ['actif'],
     'affectations': ['actif'],
     'droits_personnel': ['accorde'],
+    'eleves_contacts': ['tuteur_principal', 'responsable_financier'],
   };
 
   static Map<String, dynamic> _pourServeur(String table, Map<String, dynamic> donnees) {

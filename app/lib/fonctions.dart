@@ -31,6 +31,8 @@ const droits = {
   'verser_paie': 'Verser la paie',
   'consulter_tableau_bord': 'Consulter le tableau de bord',
   'autoriser_depense': 'Autoriser une dépense',
+  'gerer_inscriptions': 'Inscrire et modifier les élèves',
+  'encaisser': 'Encaisser les paiements',
 };
 
 /// Droits par défaut de chaque fonction (le fondateur a tous les droits).
@@ -38,12 +40,14 @@ const droits = {
 const droitsParDefaut = <String, Set<String>>{
   'directeur': {
     'valider_remboursement', 'annuler_recu', 'gerer_emploi_du_temps',
-    'planifier_evaluations', 'justifier_absence', 'consulter_tableau_bord',
+    'planifier_evaluations', 'justifier_absence', 'consulter_tableau_bord', 'gerer_inscriptions',
   },
   'directeur_etudes': {'gerer_emploi_du_temps', 'planifier_evaluations', 'justifier_absence'},
   'surveillant': {'faire_appel', 'justifier_absence'},
   'enseignant': {'saisir_notes', 'faire_appel'},
-  'comptable': {'consulter_tableau_bord'},
+  'secretaire': {'gerer_inscriptions', 'encaisser'},
+  'comptable': {'consulter_tableau_bord', 'gerer_inscriptions', 'encaisser'},
+  'caissier': {'encaisser'},
 };
 
 /// Droits qu'apportent ces fonctions, sans les exceptions.

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolagrid/cloud.dart';
 import 'package:scolagrid/echeancier.dart';
+import 'package:scolagrid/matricule.dart';
 import 'package:scolagrid/configuration.dart' show empreintePin, gnf, pinValide;
 import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_guineen.dart';
@@ -9,7 +10,7 @@ import 'package:scolagrid/schema.dart';
 void main() {
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
-    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances']) {
+    for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves']) {
       expect(tables, contains(t));
     }
   });
@@ -90,5 +91,29 @@ void main() {
     expect(m.first.libelle, 'Octobre');
     expect(m.last.libelle, 'Juin');
     expect(m.last.dateLimite, DateTime(2027, 6, 30));
+  });
+
+  test('matricules', () {
+    final p = prefixeMatricule(sigle: 'ALPHA', codeSite: 'DONKA', annee: '2026-2027', lettre: 'B');
+    expect(p, 'ALPHA-DONKA-2026-B');
+    expect(matriculeSuivant(p, []), 'ALPHA-DONKA-2026-B001');
+    expect(matriculeSuivant(p, ['ALPHA-DONKA-2026-B041', 'ALPHA-DONKA-2026-B007', 'ALPHA-DONKA-2026-A099']),
+        'ALPHA-DONKA-2026-B042');
+    expect(matriculeSuivant(p, ['ALPHA-DONKA-2026-B999']), 'ALPHA-DONKA-2026-B1000');
+    // Le serveur accepte ce format.
+    expect(RegExp(r'^[A-Z0-9]{2,10}-[A-Z0-9]{2,10}-[0-9]{4}-[A-Z]{1,3}[0-9]{3,6}$').hasMatch('ALPHA-DONKA-2026-B042'), isTrue);
+  });
+
+  test('doublons', () {
+    final n = DateTime(2014, 3, 15);
+    expect(ressemblance(nom: 'DIALLO', prenoms: 'Amadou', naissance: n, autreNom: 'Diallo', autrePrenoms: 'Amadou', autreNaissance: n),
+        Alerte.forte);
+    expect(ressemblance(nom: 'DIALO', prenoms: 'Amadou', naissance: n, autreNom: 'DIALLO', autrePrenoms: 'Amadou',
+        autreNaissance: DateTime(2014, 5, 1)), Alerte.moyenne);
+    expect(ressemblance(nom: 'BAH', prenoms: 'Fanta', naissance: n, autreNom: 'DIALLO', autrePrenoms: 'Amadou', autreNaissance: n),
+        Alerte.aucune);
+    expect(ressemblance(nom: 'BAH', prenoms: 'Fanta', autreNom: 'BAH', autrePrenoms: 'Mariama', memeTuteurEtQuartier: true),
+        Alerte.faible);
+    expect(nomSimplifie('Aïssatou  Bérété'), 'AISSATOU BERETE');
   });
 }

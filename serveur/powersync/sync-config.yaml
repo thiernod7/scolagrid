@@ -80,6 +80,28 @@ streams:
       - SELECT * FROM postes WHERE organisation_id IN orgs_dirigees AND site_id IS NOT NULL
       - SELECT * FROM postes WHERE site_id IN sites_diriges
 
+  # Élèves et inscriptions : tous les membres de l'école (listes de classe).
+  eleves:
+    auto_subscribe: true
+    priority: 3
+    with:
+      mes_orgs: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true
+    queries:
+      - SELECT * FROM eleves WHERE organisation_id IN mes_orgs
+      - SELECT * FROM inscriptions WHERE organisation_id IN mes_orgs
+      - SELECT * FROM historique_eleves WHERE organisation_id IN mes_orgs
+
+  # Contacts des familles (téléphones) : seulement les fonctions qui inscrivent
+  # ou encaissent. Le serveur vérifie aussi les droits accordés un par un.
+  familles:
+    auto_subscribe: true
+    priority: 3
+    with:
+      orgs_familles: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND (role = 'fondateur' OR role = 'directeur' OR role = 'secretaire' OR role = 'comptable' OR role = 'caissier')
+    queries:
+      - SELECT * FROM contacts WHERE organisation_id IN orgs_familles
+      - SELECT * FROM eleves_contacts WHERE organisation_id IN orgs_familles
+
   # Table de test « Bonjour » (première version de l'app).
   hellos:
     auto_subscribe: true

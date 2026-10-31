@@ -233,6 +233,16 @@ class _AccueilScreenState extends State<AccueilScreen> {
                         )),
                       ),
                     ),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.school_outlined),
+                        title: const Text('Élèves et inscriptions'),
+                        subtitle: const Text('Inscrire, rechercher, listes de classe'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => Navigator.of(context)
+                            .push(MaterialPageRoute(builder: (_) => ElevesScreen(espace: _espace(org)))),
+                      ),
+                    ),
                     if (_cePoste == null)
                       Card(
                         color: Theme.of(context).colorScheme.secondaryContainer,

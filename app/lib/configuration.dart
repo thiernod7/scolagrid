@@ -11,8 +11,10 @@ import 'base.dart';
 import 'cloud.dart';
 import 'echeancier.dart';
 import 'fonctions.dart';
+import 'matricule.dart';
 import 'modele_guineen.dart';
 
+part 'eleves.dart';
 part 'frais.dart';
 part 'identite.dart';
 part 'personnel.dart';
