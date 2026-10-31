@@ -18,6 +18,7 @@ services:
       GOTRUE_SMS_TWILIO_AUTH_TOKEN: ${SMS_TWILIO_AUTH_TOKEN:-aucun}
       GOTRUE_SMS_TWILIO_MESSAGE_SERVICE_SID: ${SMS_TWILIO_MESSAGE_SERVICE_SID:-aucun}
       GOTRUE_SMS_TEST_OTP: ${SMS_TEST_OTP:-}
+      GOTRUE_SMS_TEST_OTP_VALID_UNTIL: ${SMS_TEST_OTP_VALID_UNTIL:-}
       GOTRUE_SMS_OTP_LENGTH: "6"
       GOTRUE_SMS_TEMPLATE: "Votre code Scolagrid : {{ .Code }}"
       # Production : envoi par NimbaSMS, via la fonction scolagrid.envoyer_sms.

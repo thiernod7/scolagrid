@@ -107,6 +107,17 @@ jobs:
           } | ssh "$VPS" 'sudo mkdir -p /opt/scolagrid && sudo sh -c "umask 077; cat > /opt/scolagrid/sms.env.tmp && mv /opt/scolagrid/sms.env.tmp /opt/scolagrid/sms.env"'
           echo "Accès transmis"
 
+      - name: Transmettre les codes fixes provisoires
+        if: env.ENVIRONNEMENT == 'prod'
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+          CODES: ${{ secrets.CODES_FIXES }}
+        run: |
+          # Toujours transmis : un secret vidé ou supprimé arrête les codes fixes.
+          printf 'CODES_FIXES=%q\n' "$CODES" \
+            | ssh "$VPS" 'sudo mkdir -p /opt/scolagrid && sudo sh -c "umask 077; cat > /opt/scolagrid/codes.env.tmp && mv /opt/scolagrid/codes.env.tmp /opt/scolagrid/codes.env"'
+          if [ -n "$CODES" ]; then echo "Codes fixes transmis"; else echo "Pas de codes fixes"; fi
+
       - name: Installer (${{ env.ENVIRONNEMENT }})
         env:
           VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}

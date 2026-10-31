@@ -103,6 +103,32 @@ else
   set_env SMS_HOOK_ENABLED false
   set_env ENABLE_ANONYMOUS_USERS true   # app « Bonjour » de test
 fi
+if [ "$ENVIRONNEMENT" = prod ]; then
+  # Codes fixes provisoires (en attendant les SMS) : quelques numéros choisis,
+  # chacun avec son code secret, valables 30 jours après cette installation.
+  # Format du secret CODES_FIXES : 224620000000:482913,224621111111:739204
+  codes=""
+  if sudo test -f /opt/scolagrid/codes.env; then
+    codes=$(sudo sed -n 's/^CODES_FIXES=//p' /opt/scolagrid/codes.env | tr -d "' \"")
+  fi
+  if [ -n "$codes" ]; then
+    if ! [[ "$codes" =~ ^224[0-9]{9}:[0-9]{6}(,224[0-9]{9}:[0-9]{6})*$ ]]; then
+      echo "CODES_FIXES ignoré : format attendu 224620000000:482913,224621111111:739204"; codes=""
+    elif [[ "$codes" =~ :(123456|000000|111111|654321|123123)(,|$) ]]; then
+      echo "CODES_FIXES ignoré : un code est trop facile à deviner"; codes=""
+    fi
+  fi
+  if [ -n "$codes" ]; then
+    set_env SMS_TEST_OTP "$codes"
+    set_env SMS_TEST_OTP_VALID_UNTIL "$(date -u -d '+30 days' +%Y-%m-%dT%H:%M:%SZ)"
+    set_env ENABLE_PHONE_SIGNUP true
+    set_env ENABLE_PHONE_AUTOCONFIRM true
+    set_env ENABLE_ANONYMOUS_USERS false
+    echo "Codes fixes provisoires : $(echo "$codes" | tr ',' '\n' | wc -l) numéro(s), jusqu'au $(date -u -d '+30 days' +%d/%m/%Y)"
+  else
+    set_env SMS_TEST_OTP_VALID_UNTIL ""
+  fi
+fi
 set_env DASHBOARD_USERNAME admin
 set_env POOLER_TENANT_ID scolagrid
 jwt_secret=$(grep '^JWT_SECRET=' .env | cut -d= -f2-)
