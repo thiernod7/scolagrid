@@ -344,3 +344,97 @@ Future<Uint8List> dechargePdf({required Map<String, Object?> ecole, required Map
   ));
   return doc.save();
 }
+
+/// Certificat de scolarité (A4) : tout le parcours de l'élève dans l'école,
+/// année par année. Reste disponible après son départ.
+Future<Uint8List> certificatPdf({
+  required Map<String, Object?> ecole,
+  required Map<String, Object?> eleve,
+  required List<({String annee, String classe})> parcours,
+  String? sortie,
+  required DateTime date,
+  required int rang,
+}) {
+  final doc = pw.Document(title: 'Certificat ${eleve['matricule']}');
+  final duplicata = rang > 1;
+  final nomEcole = '${ecole['nom_officiel'] ?? ecole['nom']}';
+  final ville = '${ecole['ville'] ?? ''}';
+  final fille = eleve['sexe'] == 'F';
+  final ne = fille ? 'née' : (eleve['sexe'] == 'M' ? 'né' : 'né(e)');
+  final inscrit = fille ? 'inscrite' : (eleve['sexe'] == 'M' ? 'inscrit' : 'inscrit(e)');
+  final corps = pw.TextStyle(fontSize: 12, lineSpacing: 4);
+  final gras = pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold);
+  final naissance = eleve['date_naissance'] == null
+      ? ''
+      : ', $ne le ${_date(eleve['date_naissance'] as String?)}${eleve['lieu_naissance'] != null ? ' à ${eleve['lieu_naissance']}' : ''}';
+  doc.addPage(pw.Page(
+    pageTheme: pw.PageTheme(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(56, 48, 56, 48),
+      buildBackground: !duplicata
+          ? null
+          : (_) => pw.FullPage(
+                ignoreMargins: true,
+                child: pw.Center(
+                  child: pw.Transform.rotate(angle: 0.6, child: pw.Text('DUPLICATA', style: pw.TextStyle(fontSize: 90, color: PdfColors.grey300))),
+                ),
+              ),
+    ),
+    build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text(nomEcole, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+      if (ecole['slogan'] != null) pw.Text('« ${ecole['slogan']} »', style: const pw.TextStyle(fontSize: 10)),
+      pw.Text([ecole['quartier'], ecole['ville']].where((x) => x != null).join(', '), style: const pw.TextStyle(fontSize: 10)),
+      if (ecole['telephone'] != null) pw.Text('Tél. ${ecole['telephone']}', style: const pw.TextStyle(fontSize: 10)),
+      pw.SizedBox(height: 36),
+      pw.Center(child: pw.Text('CERTIFICAT DE SCOLARITÉ', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, letterSpacing: 1))),
+      if (duplicata) pw.Center(child: pw.Padding(padding: const pw.EdgeInsets.only(top: 4), child: pw.Text('Duplicata n° ${rang - 1}', style: gras))),
+      pw.SizedBox(height: 32),
+      pw.Text(
+        'Je soussigné(e), ${ecole['responsable_nom'] ?? '[nom du responsable]'}, ${ecole['responsable_titre'] ?? '[titre]'} '
+        'de $nomEcole, certifie que l\'élève ${eleve['nom']} ${eleve['prenoms']}$naissance, matricule ${eleve['matricule']}'
+        '${eleve['matricule_etat'] != null ? " (matricule d'État ${eleve['matricule_etat']})" : ''}, '
+        'a été régulièrement $inscrit dans notre établissement pour les années scolaires suivantes :',
+        style: corps,
+      ),
+      pw.SizedBox(height: 16),
+      pw.Table(
+        border: pw.TableBorder.all(width: 0.5),
+        columnWidths: const {0: pw.FixedColumnWidth(140), 1: pw.FlexColumnWidth()},
+        children: [
+          pw.TableRow(children: [
+            pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Année scolaire', style: gras)),
+            pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Classe', style: gras)),
+          ]),
+          for (final p in parcours)
+            pw.TableRow(children: [
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(p.annee, style: corps)),
+              pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(p.classe, style: corps)),
+            ]),
+        ],
+      ),
+      if (sortie != null) ...[
+        pw.SizedBox(height: 12),
+        pw.Text('${fille ? 'Elle' : 'Il'} a quitté l\'établissement le ${_date(sortie)}.', style: corps),
+      ],
+      pw.SizedBox(height: 16),
+      pw.Text('En foi de quoi, le présent certificat est délivré pour servir et valoir ce que de droit.', style: corps),
+      pw.SizedBox(height: 32),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Column(children: [
+          pw.Text('Fait à ${ville.isEmpty ? '[ville]' : ville}, le ${_dateLongue(date)}', style: corps),
+          pw.SizedBox(height: 8),
+          pw.Text('${ecole['responsable_titre'] ?? 'Le responsable'}', style: gras),
+          pw.SizedBox(height: 70),
+          pw.Text('Signature et cachet', style: const pw.TextStyle(fontSize: 10)),
+        ]),
+      ),
+      pw.Spacer(),
+      pw.Divider(color: PdfColors.grey500),
+      pw.Text('Seules figurent les années enregistrées dans Scolagrid. Certificat édité le ${_dateLongue(date)}'
+          '${duplicata ? ' (duplicata n° ${rang - 1})' : ''}.',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+    ]),
+  ));
+  return doc.save();
+}

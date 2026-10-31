@@ -804,6 +804,58 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
         onLayout: (_) async => pdf, name: 'Attestation ${e['matricule']}${deja > 0 ? ' duplicata $deja' : ''}');
   }
 
+  /// Certificat de scolarité : toutes les années passées dans l'école (même
+  /// après le départ de l'élève). Original, puis duplicatas avec motif.
+  Future<void> _certificat(Map<String, Object?> e) async {
+    final messager = ScaffoldMessenger.of(context);
+    final annees = await db.getAll(
+        '''SELECT a.libelle, c.nom AS classe, i.statut, i.date_sortie FROM inscriptions i
+           JOIN annees_scolaires a ON a.id = i.annee_id JOIN classes c ON c.id = i.classe_id
+           WHERE i.eleve_id = ? AND i.statut <> 'annule' ORDER BY a.debut''',
+        [e['id']]);
+    if (annees.isEmpty) {
+      messager.showSnackBar(const SnackBar(content: Text("Aucune année de scolarité enregistrée pour cet élève.")));
+      return;
+    }
+    final deja = (await db.get(
+        "SELECT count(*) AS n FROM impressions_documents WHERE eleve_id = ? AND type_document = 'certificat_scolarite'",
+        [e['id']]))['n'] as int;
+    String? motif;
+    if (deja > 0) {
+      final m = TextEditingController();
+      if (!mounted) return;
+      final ok = await _formulaire(context, 'Duplicata n° $deja', (_) => [
+            const Text('Le certificat a déjà été imprimé. Cette nouvelle impression portera la mention DUPLICATA.'),
+            TextField(controller: m, autofocus: true, decoration: _champ('Motif', aide: 'Ex. dossier de transfert, bourse')),
+          ]);
+      if (!ok || m.text.trim().length < 3) return;
+      motif = m.text.trim();
+    }
+    final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [e['organisation_id']]);
+    final poste = await cePoste();
+    await _inserer('impressions_documents', {
+      'organisation_id': e['organisation_id'],
+      'eleve_id': e['id'],
+      'inscription_id': null,
+      'type_document': 'certificat_scolarite',
+      'rang': deja + 1,
+      'motif': motif,
+      'par': monId,
+      'poste_id': poste?['poste_id'],
+    });
+    final derniere = annees.last;
+    final pdf = await certificatPdf(
+      ecole: Map.of(ecole),
+      eleve: e,
+      parcours: [for (final a in annees) (annee: '${a['libelle']}', classe: '${a['classe']}')],
+      sortie: const {'transfert_sortant', 'exclu', 'diplome'}.contains(derniere['statut']) ? derniere['date_sortie'] as String? : null,
+      date: DateTime.now(),
+      rang: deja + 1,
+    );
+    await Printing.layoutPdf(
+        onLayout: (_) async => pdf, name: 'Certificat ${e['matricule']}${deja > 0 ? ' duplicata $deja' : ''}');
+  }
+
   Future<void> _reprendre(Map<String, Object?> ins) async {
     if (await _confirmer(context, 'Reprendre cet élève (suspension levée) ?')) {
       await _modifier('inscriptions', ins['id'] as String, {'statut': ins['date_actif'] == null ? 'en_attente' : 'actif'});
@@ -1077,15 +1129,26 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
                LEFT JOIN personnel p ON p.user_id = d.par AND p.organisation_id = d.organisation_id
                WHERE d.eleve_id = ? ORDER BY d.created_at DESC''',
             parametres: [widget.eleveId],
-            builder: (context, docs) => docs.isEmpty
-                ? const SizedBox.shrink()
-                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Text('Documents imprimés', style: texte.titleMedium),
+            builder: (context, docs) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Row(children: [
+                      Expanded(child: Text('Documents', style: texte.titleMedium)),
+                      if (_peutModifier)
+                        TextButton.icon(
+                            onPressed: () => _certificat(e),
+                            icon: const Icon(Icons.history_edu_outlined),
+                            label: const Text('Certificat de scolarité')),
+                    ]),
+                    if (docs.isEmpty) const Text('Aucun document imprimé.'),
                     for (final d in docs)
                       ListTile(
                         dense: true,
                         leading: const Icon(Icons.description_outlined),
-                        title: Text("Attestation d'inscription · ${d['rang'] == 1 ? 'original' : 'duplicata n° ${(d['rang'] as int) - 1}'}"),
+                        title: Text('${const {
+                              'attestation_inscription': "Attestation d'inscription",
+                              'certificat_scolarite': 'Certificat de scolarité',
+                              'decharge_remboursement': 'Décharge de remboursement',
+                            }[d['type_document']] ?? d['type_document']} · '
+                            '${d['rang'] == 1 ? 'original' : 'duplicata n° ${(d['rang'] as int) - 1}'}'),
                         subtitle: Text('${_dateLisible(d['created_at'])}${d['auteur'] != null ? ' · ${d['auteur']}' : ''}'
                             '${d['motif'] != null ? ' · ${d['motif']}' : ''}'),
                       ),
