@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:scolagrid/cloud.dart';
 import 'package:scolagrid/caisse.dart';
 import 'package:scolagrid/echeancier.dart';
+import 'package:scolagrid/import_eleves.dart';
 import 'package:scolagrid/matricule.dart';
 import 'package:scolagrid/configuration.dart' show empreintePin, gnf, pinValide;
 import 'package:scolagrid/fonctions.dart';
@@ -155,5 +156,41 @@ void main() {
     expect(feuilleSuivante('001452'), '001453');
     expect(feuilleSuivante('A-099'), 'A-100');
     expect(feuilleSuivante(null), isNull);
+  });
+
+  test('import : contrôle des lignes', () {
+    final r = analyserImport(
+      lignes: [
+        ['Nom', 'Prénoms', 'Sexe', 'Né(e) le', 'Classe', 'Parent', 'Téléphone', 'Type'],
+        ['Diallo', 'Amadou', 'M', '15/03/2014', '7ème A', 'Mamadou Diallo', '620 00 00 01', ''],
+        ['Bah', 'Fanta', 'F', '', '7EME A', 'Oumar Bah', '', 'Nouvelle'],
+        ['Camara', 'Kadiatou', 'F', '01/01/2015', '13ème', '', '', ''],
+        ['', 'Sans nom', '', '', '7ème A', '', '', ''],
+        ['DIALLO', 'Amadou', 'M', '15/03/2014', '7ème A', '', '620000001', ''],
+        [null, null, null, null, null, null, null, null],
+        ['Sow', 'Ibrahima', 'G', '41000', '7ème A', 'X Sow', '621000000', ''],
+      ],
+      classes: {nomSimplifie('7ème A'): 'c7a'},
+      existants: const [],
+    );
+    expect(r.length, 6); // la ligne vide est ignorée
+    expect(r[0].etat, EtatLigne.valide);
+    expect(r[0].type, 'reinscription');
+    expect(r[0].naissance, DateTime(2014, 3, 15));
+    expect(r[1].etat, EtatLigne.incomplete);
+    expect(r[1].type, 'nouvelle');
+    expect(r[1].classeId, 'c7a');
+    expect(r[2].etat, EtatLigne.rejetee); // classe inconnue
+    expect(r[3].etat, EtatLigne.rejetee); // nom manquant
+    expect(r[4].etat, EtatLigne.doublon); // même enfant que la ligne 2
+    expect(r[5].sexe, 'M');
+    expect(r[5].naissance, DateTime(2012, 4, 1)); // date restée en nombre dans Excel
+  });
+
+  test('dates saisies à la main', () {
+    expect(lireDate('5/3/2014'), DateTime(2014, 3, 5));
+    expect(lireDate('2014-03-05'), DateTime(2014, 3, 5));
+    expect(lireDate('31/02/2014'), isNull);
+    expect(lireDate('vers 2014'), isNull);
   });
 }

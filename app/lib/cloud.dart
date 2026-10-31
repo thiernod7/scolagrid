@@ -149,31 +149,58 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     return copie;
   }
 
+  /// Exécute une écriture ; un refus définitif est abandonné (signalé dans la
+  /// console) sans bloquer le reste de la file. Une erreur réseau remonte :
+  /// PowerSync réessaiera toute la transaction (les écritures sont rejouables).
+  static Future<bool> _essayer(Future<void> Function() ecriture) async {
+    try {
+      await ecriture();
+      return true;
+    } on PostgrestException catch (e) {
+      if (!_refusDefinitif.hasMatch(e.code ?? '')) rethrow;
+      debugPrint('Changement refusé par le serveur, abandonné : ${e.code} ${e.message}');
+      return false;
+    }
+  }
+
   @override
   Future<void> uploadData(PowerSyncDatabase database) async {
     final tx = await database.getNextCrudTransaction();
     if (tx == null) return;
     final rest = Supabase.instance.client.rest;
-    try {
-      for (final op in tx.crud) {
-        final table = rest.from(op.table);
-        switch (op.op) {
-          case UpdateType.put:
-            await table.upsert(_pourServeur(op.table, {...?op.opData, 'id': op.id}));
-          case UpdateType.patch:
-            await table.update(_pourServeur(op.table, op.opData ?? {})).eq('id', op.id);
-          case UpdateType.delete:
-            await table.delete().eq('id', op.id);
+    final ops = tx.crud;
+    for (var i = 0; i < ops.length;) {
+      final op = ops[i];
+      if (op.op == UpdateType.put) {
+        // Les créations qui se suivent dans la même table partent ensemble
+        // (import de centaines d'élèves : quelques requêtes au lieu de milliers).
+        final cles = ([...?op.opData?.keys]..sort()).join(',');
+        var j = i + 1;
+        while (j < ops.length && j - i < 200 && ops[j].op == UpdateType.put && ops[j].table == op.table &&
+            ([...?ops[j].opData?.keys]..sort()).join(',') == cles) {
+          j++;
         }
+        final lot = [for (final o in ops.sublist(i, j)) _pourServeur(o.table, {...?o.opData, 'id': o.id})];
+        final ok = await _essayer(() => rest.from(op.table).upsert(lot));
+        if (!ok && lot.length > 1) {
+          // Une ligne refusée : on renvoie une par une pour ne perdre que celle-là.
+          for (final ligne in lot) {
+            await _essayer(() => rest.from(op.table).upsert(ligne));
+          }
+        }
+        i = j;
+        continue;
       }
-      await tx.complete();
-    } on PostgrestException catch (e) {
-      if (_refusDefinitif.hasMatch(e.code ?? '')) {
-        debugPrint('Changement refusé par le serveur, abandonné : ${e.code} ${e.message}');
-        await tx.complete();
-      } else {
-        rethrow;
-      }
+      final table = rest.from(op.table);
+      await _essayer(() async {
+        if (op.op == UpdateType.patch) {
+          await table.update(_pourServeur(op.table, op.opData ?? {})).eq('id', op.id);
+        } else {
+          await table.delete().eq('id', op.id);
+        }
+      });
+      i++;
     }
+    await tx.complete();
   }
 }

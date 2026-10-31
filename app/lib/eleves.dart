@@ -90,6 +90,21 @@ class _ElevesScreenState extends State<ElevesScreen> {
     });
   }
 
+  Future<void> _imprimerListe() async {
+    final c = await db.get(
+        '''SELECT c.nom, a.libelle, coalesce(o.nom_officiel, o.nom) AS ecole FROM classes c
+           JOIN annees_scolaires a ON a.id = c.annee_id JOIN organisations o ON o.id = c.organisation_id WHERE c.id = ?''',
+        [_classe]);
+    final eleves = await db.getAll(
+        '''SELECT e.* FROM eleves e JOIN inscriptions i ON i.eleve_id = e.id
+           WHERE i.classe_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
+           ORDER BY e.nom, e.prenoms''',
+        [_classe]);
+    final pdf = await listeClassePdf(
+        ecole: '${c['ecole']}', classe: '${c['nom']}', annee: '${c['libelle']}', eleves: [for (final e in eleves) Map.of(e)]);
+    await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Liste ${c['nom']}');
+  }
+
   @override
   Widget build(BuildContext context) {
     final o = widget.espace.orgId;
@@ -117,6 +132,20 @@ class _ElevesScreenState extends State<ElevesScreen> {
                   : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(_recherche.clear)),
             ),
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Wrap(spacing: 8, children: [
+            if (_peutInscrire)
+              TextButton.icon(
+                onPressed: () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => ImportElevesScreen(espace: widget.espace))),
+                icon: const Icon(Icons.upload_file),
+                label: const Text('Importer depuis Excel'),
+              ),
+            if (_classe != null)
+              TextButton.icon(onPressed: _imprimerListe, icon: const Icon(Icons.print), label: const Text('Imprimer la liste')),
+          ]),
         ),
         // Classes de l'année en cours, avec effectif et capacité.
         SizedBox(

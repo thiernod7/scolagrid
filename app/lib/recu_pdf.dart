@@ -146,3 +146,57 @@ Future<Uint8List> recuPdf({
   ));
   return doc.save();
 }
+
+/// Liste de classe imprimable (document de travail).
+Future<Uint8List> listeClassePdf({
+  required String ecole,
+  required String classe,
+  required String annee,
+  required List<Map<String, Object?>> eleves,
+}) {
+  final doc = pw.Document(title: 'Liste $classe');
+  final petit = pw.TextStyle(fontSize: 9);
+  pw.Widget cellule(String t, {bool gras = false}) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        child: pw.Text(t, style: gras ? pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold) : petit),
+      );
+  doc.addPage(pw.MultiPage(
+    pageFormat: PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.all(32),
+    header: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text(ecole, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+      pw.Text('Liste de la classe $classe - $annee - ${eleves.length} élèves'),
+      pw.SizedBox(height: 8),
+    ]),
+    build: (_) => [
+      pw.Table(
+        border: pw.TableBorder.all(width: 0.5),
+        columnWidths: const {
+          0: pw.FixedColumnWidth(24),
+          1: pw.FlexColumnWidth(3),
+          2: pw.FlexColumnWidth(4),
+          3: pw.FixedColumnWidth(28),
+          4: pw.FlexColumnWidth(2),
+        },
+        children: [
+          pw.TableRow(children: [
+            cellule('N°', gras: true),
+            cellule('Matricule', gras: true),
+            cellule('Nom et prénoms', gras: true),
+            cellule('Sexe', gras: true),
+            cellule('Naissance', gras: true),
+          ]),
+          for (var i = 0; i < eleves.length; i++)
+            pw.TableRow(children: [
+              cellule('${i + 1}'),
+              cellule('${eleves[i]['matricule']}'),
+              cellule('${eleves[i]['nom']} ${eleves[i]['prenoms']}'),
+              cellule('${eleves[i]['sexe'] ?? ''}'),
+              cellule(_date(eleves[i]['date_naissance'] as String?)),
+            ]),
+        ],
+      ),
+    ],
+  ));
+  return doc.save();
+}

@@ -2,6 +2,8 @@ import 'dart:convert' show base64Url, utf8;
 import 'dart:math' show Random;
 
 import 'package:crypto/crypto.dart' show sha256;
+import 'package:excel/excel.dart' as xl;
+import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
@@ -13,6 +15,7 @@ import 'caisse.dart';
 import 'cloud.dart';
 import 'echeancier.dart';
 import 'fonctions.dart';
+import 'import_eleves.dart';
 import 'matricule.dart';
 import 'modele_guineen.dart';
 import 'recu_pdf.dart';
@@ -21,6 +24,7 @@ part 'eleves.dart';
 part 'encaissement.dart';
 part 'frais.dart';
 part 'identite.dart';
+part 'import_ecran.dart';
 part 'personnel.dart';
 part 'poste.dart';
 
