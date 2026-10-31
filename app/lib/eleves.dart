@@ -756,6 +756,54 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
     await _modifier('inscriptions', ins['id'] as String, {'statut': statut, 'motif': motif.text.trim()});
   }
 
+  /// Attestation d'inscription : seulement pour un élève actif (frais
+  /// d'inscription réglés). La première impression est l'original ; ensuite,
+  /// duplicata numéroté avec motif. Chaque impression est notée.
+  Future<void> _attestation(Map<String, Object?> e, Map<String, Object?> ins) async {
+    final messager = ScaffoldMessenger.of(context);
+    if (ins['statut'] != 'actif') {
+      messager.showSnackBar(const SnackBar(
+          content: Text("Attestation disponible uniquement après règlement des frais d'inscription (élève actif).")));
+      return;
+    }
+    final deja = (await db.get(
+        "SELECT count(*) AS n FROM impressions_documents WHERE inscription_id = ? AND type_document = 'attestation_inscription'",
+        [ins['id']]))['n'] as int;
+    String? motif;
+    if (deja > 0) {
+      final m = TextEditingController();
+      if (!mounted) return;
+      final ok = await _formulaire(context, 'Duplicata n° $deja', (_) => [
+            Text("L'attestation a déjà été imprimée. Cette nouvelle impression portera la mention DUPLICATA."),
+            TextField(controller: m, autofocus: true, decoration: _champ('Motif', aide: 'Ex. original perdu')),
+          ]);
+      if (!ok || m.text.trim().length < 3) return;
+      motif = m.text.trim();
+    }
+    final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [e['organisation_id']]);
+    final poste = await cePoste();
+    await _inserer('impressions_documents', {
+      'organisation_id': e['organisation_id'],
+      'eleve_id': e['id'],
+      'inscription_id': ins['id'],
+      'type_document': 'attestation_inscription',
+      'rang': deja + 1,
+      'motif': motif,
+      'par': monId,
+      'poste_id': poste?['poste_id'],
+    });
+    final pdf = await attestationPdf(
+      ecole: Map.of(ecole),
+      eleve: e,
+      classe: '${ins['classe']}',
+      annee: '${ins['annee']}',
+      date: DateTime.now(),
+      rang: deja + 1,
+    );
+    await Printing.layoutPdf(
+        onLayout: (_) async => pdf, name: 'Attestation ${e['matricule']}${deja > 0 ? ' duplicata $deja' : ''}');
+  }
+
   Future<void> _reprendre(Map<String, Object?> ins) async {
     if (await _confirmer(context, 'Reprendre cet élève (suspension levée) ?')) {
       await _modifier('inscriptions', ins['id'] as String, {'statut': ins['date_actif'] == null ? 'en_attente' : 'actif'});
@@ -968,6 +1016,10 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
                         if (ins['statut'] == 'suspendu')
                           OutlinedButton.icon(
                               onPressed: () => _reprendre(ins), icon: const Icon(Icons.undo), label: const Text('Reprendre')),
+                        OutlinedButton.icon(
+                            onPressed: () => _attestation(e, ins),
+                            icon: const Icon(Icons.verified_outlined),
+                            label: const Text("Attestation d'inscription")),
                       ]),
                     ),
                 ]),
@@ -1020,6 +1072,26 @@ class _FicheEleveScreenState extends State<FicheEleveScreen> {
             ]),
           ),
           const SizedBox(height: 8),
+          Requete(
+            '''SELECT d.*, p.nom_complet AS auteur FROM impressions_documents d
+               LEFT JOIN personnel p ON p.user_id = d.par AND p.organisation_id = d.organisation_id
+               WHERE d.eleve_id = ? ORDER BY d.created_at DESC''',
+            parametres: [widget.eleveId],
+            builder: (context, docs) => docs.isEmpty
+                ? const SizedBox.shrink()
+                : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text('Documents imprimés', style: texte.titleMedium),
+                    for (final d in docs)
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.description_outlined),
+                        title: Text("Attestation d'inscription · ${d['rang'] == 1 ? 'original' : 'duplicata n° ${(d['rang'] as int) - 1}'}"),
+                        subtitle: Text('${_dateLisible(d['created_at'])}${d['auteur'] != null ? ' · ${d['auteur']}' : ''}'
+                            '${d['motif'] != null ? ' · ${d['motif']}' : ''}'),
+                      ),
+                    const SizedBox(height: 8),
+                  ]),
+          ),
           Text('Historique', style: texte.titleMedium),
           Requete(
             '''SELECT h.*, cd.nom AS de_classe, cv.nom AS vers_classe, p.nom_complet AS auteur

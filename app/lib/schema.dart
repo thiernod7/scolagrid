@@ -326,6 +326,21 @@ const schema = Schema([
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
+  // Documents officiels imprimés (attestations) : original puis duplicatas.
+  Table('impressions_documents', [
+    Column.text('organisation_id'),
+    Column.text('eleve_id'),
+    Column.text('inscription_id'),
+    Column.text('type_document'),
+    Column.integer('rang'),
+    Column.text('motif'),
+    Column.text('par'),
+    Column.text('poste_id'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_eleve', [IndexedColumn('eleve_id')]),
+  ]),
   // Réductions : règles de l'école et attributions aux élèves.
   Table('regles_reduction', [
     Column.text('organisation_id'),

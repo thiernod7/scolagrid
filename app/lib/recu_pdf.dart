@@ -200,3 +200,95 @@ Future<Uint8List> listeClassePdf({
   ));
   return doc.save();
 }
+
+const _mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+String _dateLongue(DateTime d) => '${d.day} ${_mois[d.month - 1]} ${d.year}';
+
+/// Attestation d'inscription (A4) : document officiel, « DUPLICATA n° » dès la
+/// deuxième impression.
+Future<Uint8List> attestationPdf({
+  required Map<String, Object?> ecole,
+  required Map<String, Object?> eleve,
+  required String classe,
+  required String annee,
+  required DateTime date,
+  required int rang,
+}) {
+  final doc = pw.Document(title: 'Attestation ${eleve['matricule']}');
+  final duplicata = rang > 1;
+  final nomEcole = '${ecole['nom_officiel'] ?? ecole['nom']}';
+  final ville = '${ecole['ville'] ?? ''}';
+  final ne = eleve['sexe'] == 'F' ? 'née' : (eleve['sexe'] == 'M' ? 'né' : 'né(e)');
+  final inscrit = eleve['sexe'] == 'F' ? 'inscrite' : (eleve['sexe'] == 'M' ? 'inscrit' : 'inscrit(e)');
+  final naissance = DateTime.tryParse('${eleve['date_naissance']}');
+  final corps = pw.TextStyle(fontSize: 12, lineSpacing: 4);
+  final gras = pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold);
+  pw.Widget ligne(String libelle, String valeur) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 3),
+        child: pw.Row(children: [
+          pw.SizedBox(width: 150, child: pw.Text(libelle, style: corps)),
+          pw.Expanded(child: pw.Text(valeur, style: gras)),
+        ]),
+      );
+  doc.addPage(pw.Page(
+    pageTheme: pw.PageTheme(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.fromLTRB(56, 48, 56, 48),
+      buildBackground: !duplicata
+          ? null
+          : (_) => pw.FullPage(
+                ignoreMargins: true,
+                child: pw.Center(
+                  child: pw.Transform.rotate(
+                    angle: 0.6,
+                    child: pw.Text('DUPLICATA', style: pw.TextStyle(fontSize: 90, color: PdfColors.grey300)),
+                  ),
+                ),
+              ),
+    ),
+    build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text(nomEcole, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+      if (ecole['slogan'] != null) pw.Text('« ${ecole['slogan']} »', style: const pw.TextStyle(fontSize: 10)),
+      pw.Text([ecole['quartier'], ecole['ville']].where((x) => x != null).join(', '), style: const pw.TextStyle(fontSize: 10)),
+      if (ecole['telephone'] != null) pw.Text('Tél. ${ecole['telephone']}', style: const pw.TextStyle(fontSize: 10)),
+      if (ecole['email'] != null) pw.Text('${ecole['email']}', style: const pw.TextStyle(fontSize: 10)),
+      pw.SizedBox(height: 36),
+      pw.Center(child: pw.Text("ATTESTATION D'INSCRIPTION", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, letterSpacing: 1))),
+      if (duplicata)
+        pw.Center(child: pw.Padding(padding: const pw.EdgeInsets.only(top: 4), child: pw.Text('Duplicata n° ${rang - 1}', style: gras))),
+      pw.SizedBox(height: 32),
+      pw.Text(
+        'Je soussigné(e), ${ecole['responsable_nom'] ?? '[nom du responsable]'}, '
+        '${ecole['responsable_titre'] ?? '[titre]'} de $nomEcole, certifie que l\'élève :',
+        style: corps,
+      ),
+      pw.SizedBox(height: 16),
+      ligne('Nom et prénoms', '${eleve['nom']} ${eleve['prenoms']}'),
+      ligne('${ne[0].toUpperCase()}${ne.substring(1)} le',
+          naissance == null ? '—' : '${_date(eleve['date_naissance'] as String?)}${eleve['lieu_naissance'] != null ? ' à ${eleve['lieu_naissance']}' : ''}'),
+      ligne('Matricule', '${eleve['matricule']}'),
+      if (eleve['matricule_etat'] != null) ligne("Matricule d'État", '${eleve['matricule_etat']}'),
+      pw.SizedBox(height: 16),
+      pw.Text('est régulièrement $inscrit en classe de $classe pour l\'année scolaire $annee.', style: corps),
+      pw.SizedBox(height: 16),
+      pw.Text('En foi de quoi, la présente attestation lui est délivrée pour servir et valoir ce que de droit.', style: corps),
+      pw.SizedBox(height: 32),
+      pw.Align(
+        alignment: pw.Alignment.centerRight,
+        child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
+          pw.Text('Fait à ${ville.isEmpty ? '[ville]' : ville}, le ${_dateLongue(date)}', style: corps),
+          pw.SizedBox(height: 8),
+          pw.Text('${ecole['responsable_titre'] ?? 'Le responsable'}', style: gras),
+          pw.SizedBox(height: 70),
+          pw.Text('Signature et cachet', style: const pw.TextStyle(fontSize: 10)),
+        ]),
+      ),
+      pw.Spacer(),
+      pw.Divider(color: PdfColors.grey500),
+      pw.Text('Attestation éditée par Scolagrid le ${_dateLongue(date)}${duplicata ? ' (duplicata n° ${rang - 1})' : ''}.',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+    ]),
+  ));
+  return doc.save();
+}
