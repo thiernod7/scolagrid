@@ -137,6 +137,8 @@ if [ "$ENVIRONNEMENT" = prod ] && sudo test -f /opt/scolagrid/sms.env; then
 insert into scolagrid.reglages (cle, valeur) values
   ('nimba_service_id', :'sid'), ('nimba_secret_token', :'tok'), ('nimba_expediteur', :'exp')
 on conflict (cle) do update set valeur = excluded.valeur;
+-- Expéditeur facultatif : vide, la demande part sans nom d'expéditeur.
+delete from scolagrid.reglages where cle = 'nimba_expediteur' and trim(valeur) = '';
 SQL
   ) && echo "NimbaSMS configuré pour l'envoi des codes"
 fi

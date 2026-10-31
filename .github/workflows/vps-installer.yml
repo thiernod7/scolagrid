@@ -98,7 +98,8 @@ jobs:
           TOK: ${{ secrets.NIMBA_SECRET_TOKEN }}
           EXP: ${{ secrets.NIMBA_EXPEDITEUR }}
         run: |
-          if [ -z "$SID" ] || [ -z "$TOK" ] || [ -z "$EXP" ]; then echo "NimbaSMS non configuré"; exit 0; fi
+          if [ -z "$SID" ] || [ -z "$TOK" ]; then echo "NimbaSMS non configuré"; exit 0; fi
+          [ -n "$EXP" ] || echo "Pas de nom d'expéditeur : envoi avec l'expéditeur par défaut de NimbaSMS
           {
             printf 'NIMBA_SERVICE_ID=%q\n' "$SID"
             printf 'NIMBA_SECRET_TOKEN=%q\n' "$TOK"
