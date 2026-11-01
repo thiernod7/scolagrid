@@ -77,6 +77,8 @@ const schema = Schema([
     Column.text('debut'),
     Column.text('fin'),
     Column.integer('en_cours'),
+    Column.text('etat'),
+    Column.text('cloturee_le'),
     Column.text('periodicite'),
     Column.integer('nb_mois'),
     Column.text('created_at'),

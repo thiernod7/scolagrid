@@ -524,17 +524,30 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
   Future<void> _ajouterEleve(String eleveId) async {
     if (_lignes.any((l) => l.eleve['id'] == eleveId)) return;
     final eleve = await db.getOptional('SELECT * FROM eleves WHERE id = ?', [eleveId]);
-    final ins = await db.getOptional(
-        '''SELECT i.*, c.nom AS classe FROM inscriptions i JOIN classes c ON c.id = i.classe_id
-           JOIN annees_scolaires a ON a.id = i.annee_id AND a.en_cours = 1
-           WHERE i.eleve_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')''',
+    // L'année en cours, la suivante si ses inscriptions sont ouvertes, et les
+    // années clôturées tant qu'il reste des arriérés.
+    final candidates = await db.getAll(
+        '''SELECT i.*, c.nom AS classe, a.libelle AS annee_libelle, a.en_cours AS annee_en_cours, a.etat AS annee_etat
+           FROM inscriptions i JOIN classes c ON c.id = i.classe_id
+           JOIN annees_scolaires a ON a.id = i.annee_id AND (a.en_cours = 1 OR a.etat IN ('inscriptions', 'cloturee'))
+           WHERE i.eleve_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
+           ORDER BY a.debut''',
         [eleveId]);
+    final retenues = <(Map<String, Object?>, List<FraisDu>)>[];
+    for (final c in candidates) {
+      final situation = await situationInscription(c['id'] as String);
+      final reste = situation.fold<int>(0, (t, f) => t + f.reste);
+      if (c['annee_etat'] == 'cloturee' && reste <= 0) continue;
+      retenues.add((Map<String, Object?>.from(c), situation));
+    }
     if (!mounted) return;
-    if (eleve == null || ins == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cet élève n'est pas inscrit cette année.")));
+    if (eleve == null || retenues.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cet élève n'est pas inscrit cette année et ne doit rien.")));
       return;
     }
-    final frais = await situationInscription(ins['id'] as String);
+    // La ligne principale (paiement annuel, frères et sœurs) : l'année en cours s'il y en a une.
+    final principale = retenues.firstWhere((r) => r.$1['annee_en_cours'] == 1, orElse: () => retenues.first);
+    final (ins, frais) = principale;
     final scolarite = frais.where((f) => f.type == 'scolarite');
     final annuelle = scolarite.isEmpty || scolarite.any((f) => f.paye > 0)
         ? null
@@ -561,8 +574,12 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     final photo = await db.getOptional('SELECT updated_at FROM photos_eleves WHERE eleve_id = ?', [eleveId]);
     if (!mounted) return;
     setState(() {
-      _lignes.add(_LigneEleve({...eleve, 'payeur_id': rf?['id'], 'photo_maj': photo?['updated_at']}, Map.of(ins), frais,
-          regleAnnuelle: annuelle == null ? null : Map.of(annuelle)));
+      final e = {...eleve, 'payeur_id': rf?['id'], 'photo_maj': photo?['updated_at']};
+      // Une ligne par année : arriéré de l'an dernier, année en cours, rentrée prochaine.
+      for (final (autre, autresFrais) in retenues.where((r) => r.$1['id'] != ins['id'])) {
+        _lignes.add(_LigneEleve(e, autre, autresFrais));
+      }
+      _lignes.add(_LigneEleve(e, Map.of(ins), frais, regleAnnuelle: annuelle == null ? null : Map.of(annuelle)));
       _freres = [
         ..._freres,
         ...freres.where((f) => !_freres.any((x) => x['id'] == f['id'])),
@@ -959,14 +976,16 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     final resultats = _cherche.text.trim().length < 2
         ? null
         : Requete(
-            '''SELECT e.id, e.nom, e.prenoms, e.matricule, c.nom AS classe,
+            '''SELECT e.id, e.nom, e.prenoms, e.matricule,
+                 coalesce(max(CASE WHEN a.en_cours = 1 THEN c.nom END), max(c.nom)) AS classe,
                  (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj
                FROM eleves e
                JOIN inscriptions i ON i.eleve_id = e.id AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
-               JOIN annees_scolaires a ON a.id = i.annee_id AND a.en_cours = 1
+               JOIN annees_scolaires a ON a.id = i.annee_id AND (a.en_cours = 1 OR a.etat IN ('inscriptions', 'cloturee'))
                JOIN classes c ON c.id = i.classe_id
                WHERE e.organisation_id = ? AND (upper(e.nom || ' ' || e.prenoms) LIKE ? OR upper(e.prenoms || ' ' || e.nom) LIKE ?
                  OR e.matricule LIKE ? OR upper(c.nom) LIKE ?)
+               GROUP BY e.id
                ORDER BY e.nom, e.prenoms LIMIT 8''',
             parametres: [widget.espace.orgId, q, q, q, q],
             builder: (context, eleves) => Container(
@@ -1028,6 +1047,9 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                   const SizedBox(height: 2),
                   Wrap(spacing: 10, children: [
                     Text('${l.inscription['classe']}', style: TextStyle(fontSize: 12, color: gris)),
+                    if (l.inscription['annee_en_cours'] != 1 && l.inscription['annee_libelle'] != null)
+                      Etat(l.inscription['annee_etat'] == 'cloturee' ? 'Arriéré ${l.inscription['annee_libelle']}' : 'Année ${l.inscription['annee_libelle']}',
+                          ton: l.inscription['annee_etat'] == 'cloturee' ? Ton.retard : Ton.info),
                     Text('${l.eleve['matricule']}', style: styleMono.copyWith(fontSize: 12, color: gris)),
                     Text('solde ${gnf(reste)}', style: TextStyle(fontSize: 12, color: gris)),
                   ]),

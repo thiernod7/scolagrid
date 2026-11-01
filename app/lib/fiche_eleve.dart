@@ -527,6 +527,9 @@ class _FicheEleveState extends State<FicheEleve> {
         '''SELECT e.*, s.nom AS site, so.nom AS site_origine,
              (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj,
              (SELECT max(h.quand) FROM historique_eleves h WHERE h.eleve_id = e.id AND h.evenement = 'mutation') AS date_mutation,
+             (SELECT a2.libelle FROM annees_scolaires a2 WHERE a2.organisation_id = e.organisation_id AND a2.etat = 'inscriptions'
+              AND NOT EXISTS (SELECT 1 FROM inscriptions i2 WHERE i2.eleve_id = e.id AND i2.annee_id = a2.id AND i2.statut <> 'annule')
+              LIMIT 1) AS reinscription_ouverte,
              i.id AS ins_id, i.statut, i.type_admission, i.date_effective, i.date_actif, i.date_sortie, i.motif,
              i.created_at AS ins_saisie, i.redoublant, nv.cycle AS cycle, i.classe_id, i.annee_id, i.site_id AS ins_site, c.nom AS classe, a.libelle AS annee
            FROM eleves e
@@ -626,6 +629,14 @@ class _FicheEleveState extends State<FicheEleve> {
           icon: const Icon(Icons.edit_outlined, size: 15),
           label: const Text('Modifier'),
         ),
+        // Inscriptions de la rentrée prochaine ouvertes, élève pas encore réinscrit.
+        if (ins != null && e['reinscription_ouverte'] != null && ins['statut'] != 'diplome')
+          FilledButton.tonalIcon(
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => InscrireScreen(espace: widget.espace, eleveId: widget.eleveId))),
+            icon: const Icon(Icons.how_to_reg_outlined, size: 15),
+            label: Text('Réinscrire pour ${e['reinscription_ouverte']}'),
+          ),
         if (ins == null)
           OutlinedButton.icon(
             onPressed: () => Navigator.of(context)

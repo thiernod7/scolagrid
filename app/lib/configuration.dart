@@ -26,6 +26,7 @@ import 'modele_guineen.dart';
 import 'recu_pdf.dart';
 import 'theme.dart';
 
+part 'annees.dart';
 part 'eleves.dart';
 part 'encaissement.dart';
 part 'fiche_eleve.dart';
@@ -508,83 +509,6 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       ]),
     );
   }
-}
-
-// Années scolaires ------------------------------------------------------------
-
-class AnneesScreen extends StatelessWidget {
-  const AnneesScreen({super.key, required this.espace});
-
-  final Espace espace;
-
-  Future<void> _ajouter(BuildContext context) async {
-    final libelle = TextEditingController(text: anneeScolairePour(DateTime.now()));
-    final depart = int.parse(libelle.text.substring(0, 4));
-    var debut = DateTime(depart, 10, 1);
-    var fin = DateTime(depart + 1, 7, 15);
-    Future<void> choisir(StateSetter maj, bool estDebut) async {
-      final d = await showDatePicker(
-          context: context, initialDate: estDebut ? debut : fin, firstDate: DateTime(2020), lastDate: DateTime(2040));
-      if (d != null) maj(() => estDebut ? debut = d : fin = d);
-    }
-
-    final ok = await _formulaire(context, 'Nouvelle année scolaire', (maj) => [
-          TextField(controller: libelle, decoration: _champ('Année', aide: 'Par exemple 2026-2027')),
-          OutlinedButton.icon(
-              onPressed: () => choisir(maj, true),
-              icon: const Icon(Icons.event),
-              label: Text('Rentrée : ${_dateLisible(_date(debut))}')),
-          OutlinedButton.icon(
-              onPressed: () => choisir(maj, false),
-              icon: const Icon(Icons.event_available),
-              label: Text('Fin : ${_dateLisible(_date(fin))}')),
-        ]);
-    if (!ok || libelle.text.trim().length < 4 || !fin.isAfter(debut)) return;
-    final enCours = await db.getOptional(
-        'SELECT id FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [espace.orgId]);
-    await _inserer('annees_scolaires', {
-      'organisation_id': espace.orgId,
-      'libelle': libelle.text.trim(),
-      'debut': _date(debut),
-      'fin': _date(fin),
-      'en_cours': enCours == null ? 1 : 0,
-    });
-  }
-
-  Future<void> _mettreEnCours(String id) => db.writeTransaction((tx) async {
-        // D'abord retirer l'ancienne, pour respecter « une seule année en cours ».
-        await tx.execute('UPDATE annees_scolaires SET en_cours = 0, updated_at = ? '
-            'WHERE organisation_id = ? AND en_cours = 1', [_maintenant(), espace.orgId]);
-        await tx.execute(
-            'UPDATE annees_scolaires SET en_cours = 1, updated_at = ? WHERE id = ?', [_maintenant(), id]);
-      });
-
-  @override
-  Widget build(BuildContext context) => _Page(
-        titre: 'Années scolaires',
-        ajouter: espace.fondateur ? () => _ajouter(context) : null,
-        libelleAjouter: 'Nouvelle année',
-        corps: Requete('SELECT * FROM annees_scolaires WHERE organisation_id = ? ORDER BY debut DESC',
-            parametres: [espace.orgId], builder: (context, annees) {
-          if (annees.isEmpty) return _vide("Aucune année scolaire. Créez celle de cette rentrée.");
-          return ListView(padding: const EdgeInsets.all(16), children: [
-            for (final a in annees)
-              Card(
-                child: ListTile(
-                  leading: Icon(a['en_cours'] == 1 ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: a['en_cours'] == 1 ? Couleurs.regle : null),
-                  title: Text('${a['libelle']}'),
-                  subtitle: Text('Du ${_dateLisible(a['debut'])} au ${_dateLisible(a['fin'])}'
-                      '${a['en_cours'] == 1 ? ' · en cours' : ''}'),
-                  onTap: espace.fondateur && a['en_cours'] != 1 ? () => _mettreEnCours(a['id'] as String) : null,
-                ),
-              ),
-            if (espace.fondateur && annees.length > 1)
-              const Padding(
-                  padding: EdgeInsets.all(8), child: Text("Touchez une année pour en faire l'année en cours.")),
-          ]);
-        }),
-      );
 }
 
 // Matières et coefficients ----------------------------------------------------

@@ -126,6 +126,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
   int _redoublementsMax = 1;
 
   Map<String, Object?>? _annee;
+  List<Map<String, Object?>> _annees = [];
   Lignes _classes = [];
   Lignes _frais = [];
   List<Regle> _regles = [];
@@ -165,23 +166,24 @@ class _InscrireScreenState extends State<InscrireScreen> {
 
   Future<void> _charger() async {
     final o = widget.espace.orgId;
-    final annee = await db.getOptional('SELECT * FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [o]);
-    final sites = await _sitesOuJInscris(o);
-    final classes = annee == null
-        ? <Map<String, Object?>>[]
-        : (await db.getAll('''SELECT c.*, s.code AS code_site, s.nom AS site, n.nom AS niveau, n.ordre AS ordre_niveau, n.cycle AS cycle,
-                 (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
-                  AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
-               FROM classes c JOIN niveaux n ON n.id = c.niveau_id JOIN sites s ON s.id = c.site_id
-               WHERE c.annee_id = ? AND c.fermee = 0 ORDER BY n.ordre, c.nom, s.created_at''', [annee['id']]))
-            .where((c) => sites.containsKey(c['site_id']))
-            .map((c) => Map<String, Object?>.from(c))
-            .toList();
-    final frais = annee == null
-        ? <Map<String, Object?>>[]
-        : (await db.getAll('SELECT * FROM frais WHERE annee_id = ? ORDER BY created_at', [annee['id']]))
-            .map((f) => Map<String, Object?>.from(f))
-            .toList();
+    // Années où l'on inscrit : celle en cours et, si elles sont ouvertes, les inscriptions de la suivante.
+    final annees = [
+      for (final a in await db.getAll(
+          "SELECT * FROM annees_scolaires WHERE organisation_id = ? AND (etat IN ('inscriptions', 'en_cours') "
+          'OR (etat IS NULL AND en_cours = 1)) ORDER BY debut',
+          [o]))
+        Map<String, Object?>.from(a),
+    ];
+    var annee = annees.where((a) => a['en_cours'] == 1).firstOrNull ?? annees.firstOrNull;
+    // Réinscription d'un élève déjà inscrit cette année : c'est pour l'année suivante.
+    if (widget.eleveId != null && annee != null && annees.length > 1) {
+      final deja = await db.getOptional("SELECT 1 FROM inscriptions WHERE eleve_id = ? AND annee_id = ? AND statut <> 'annule'",
+          [widget.eleveId, annee['id']]);
+      if (deja != null) annee = annees.last;
+    }
+    final donnees = await _donneesAnnee(annee);
+    final classes = donnees.classes;
+    final frais = donnees.frais;
     final org = await db.get(
         'SELECT reductions_cumul, reductions_plafond, arrivee_par_defaut, redoublements_max FROM organisations WHERE id = ?', [o]);
     final regles = [
@@ -207,13 +209,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
     final parents = <_Parent>[];
     if (widget.eleveId != null) {
       existant = await db.getOptional('SELECT * FROM eleves WHERE id = ?', [widget.eleveId]);
-      final p = await db.getOptional('''
-          SELECT i.id, i.statut, c.niveau_id, n.nom AS niveau, n.ordre, n.niveau_final, a.libelle AS annee
-          FROM inscriptions i JOIN classes c ON c.id = i.classe_id JOIN niveaux n ON n.id = c.niveau_id
-          JOIN annees_scolaires a ON a.id = i.annee_id
-          WHERE i.eleve_id = ? AND i.annee_id IS NOT ? AND i.statut <> 'annule'
-          ORDER BY a.debut DESC LIMIT 1''', [widget.eleveId, annee?['id']]);
-      precedente = p == null ? null : Map<String, Object?>.from(p);
+      precedente = donnees.precedente;
       redoublements = ((await db.get('SELECT count(*) AS n FROM inscriptions WHERE eleve_id = ? AND redoublant = 1',
           [widget.eleveId]))['n'] as int?) ?? 0;
       photo = (await db.getOptional('SELECT updated_at FROM photos_eleves WHERE eleve_id = ?', [widget.eleveId]))?['updated_at']
@@ -236,7 +232,9 @@ class _InscrireScreenState extends State<InscrireScreen> {
     }
     if (!mounted) return;
     setState(() {
+      _annees = annees;
       _annee = annee;
+      if (annee != null) _dateEffective = _dateParDefaut(annee);
       _classes = classes;
       _frais = frais;
       _regles = regles;
@@ -247,15 +245,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
       _precedente = precedente;
       _redoublements = redoublements;
       _redoublementsMax = (org['redoublements_max'] as int?) ?? 1;
-      // Réinscription : on propose le niveau au-dessus de celui de l'an dernier.
-      if (precedente != null && precedente['niveau_final'] != 1) {
-        final suivant = classes.where((c) => (c['ordre_niveau'] as int? ?? 0) > (precedente!['ordre'] as int? ?? 0)).firstOrNull;
-        if (suivant != null) {
-          _niveau = suivant['niveau_id'] as String;
-          final dansNiveau = classes.where((x) => x['niveau_id'] == _niveau).toList();
-          if (dansNiveau.length == 1) _classe = dansNiveau.first['id'] as String;
-        }
-      }
+      _proposerNiveau();
       _listePieces = listePieces;
       _existant = existant;
       _photoExistante = photo;
@@ -268,6 +258,72 @@ class _InscrireScreenState extends State<InscrireScreen> {
       _pret = true;
     });
     _majFratrie();
+  }
+
+  /// Classes et frais de l'année choisie, et l'inscription de l'élève l'année d'avant.
+  Future<({List<Map<String, Object?>> classes, List<Map<String, Object?>> frais, Map<String, Object?>? precedente})> _donneesAnnee(
+      Map<String, Object?>? annee) async {
+    final sites = await _sitesOuJInscris(widget.espace.orgId);
+    final classes = annee == null
+        ? <Map<String, Object?>>[]
+        : (await db.getAll('''SELECT c.*, s.code AS code_site, s.nom AS site, n.nom AS niveau, n.ordre AS ordre_niveau, n.cycle AS cycle,
+                 (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
+                  AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
+               FROM classes c JOIN niveaux n ON n.id = c.niveau_id JOIN sites s ON s.id = c.site_id
+               WHERE c.annee_id = ? AND c.fermee = 0 ORDER BY n.ordre, c.nom, s.created_at''', [annee['id']]))
+            .where((c) => sites.containsKey(c['site_id']))
+            .map((c) => Map<String, Object?>.from(c))
+            .toList();
+    final frais = annee == null
+        ? <Map<String, Object?>>[]
+        : (await db.getAll('SELECT * FROM frais WHERE annee_id = ? ORDER BY created_at', [annee['id']]))
+            .map((f) => Map<String, Object?>.from(f))
+            .toList();
+    Map<String, Object?>? precedente;
+    if (widget.eleveId != null) {
+      final p = await db.getOptional('''
+          SELECT i.id, i.statut, c.niveau_id, n.nom AS niveau, n.ordre, n.niveau_final, a.libelle AS annee
+          FROM inscriptions i JOIN classes c ON c.id = i.classe_id JOIN niveaux n ON n.id = c.niveau_id
+          JOIN annees_scolaires a ON a.id = i.annee_id
+          WHERE i.eleve_id = ? AND a.debut < ? AND i.statut <> 'annule'
+          ORDER BY a.debut DESC LIMIT 1''', [widget.eleveId, annee?['debut'] ?? '9999-12-31']);
+      precedente = p == null ? null : Map<String, Object?>.from(p);
+    }
+    return (classes: classes, frais: frais, precedente: precedente);
+  }
+
+  /// Réinscription : on propose le niveau au-dessus de celui de l'an dernier.
+  void _proposerNiveau() {
+    _niveau = null;
+    _classe = null;
+    final p = _precedente;
+    if (p == null || p['niveau_final'] == 1) return;
+    final suivant = _classes.where((c) => (c['ordre_niveau'] as int? ?? 0) > (p['ordre'] as int? ?? 0)).firstOrNull;
+    if (suivant == null) return;
+    _niveau = suivant['niveau_id'] as String;
+    final dansNiveau = _classes.where((x) => x['niveau_id'] == _niveau).toList();
+    if (dansNiveau.length == 1) _classe = dansNiveau.first['id'] as String;
+  }
+
+  /// Une année qui n'a pas commencé : l'élève arrive à la rentrée.
+  DateTime _dateParDefaut(Map<String, Object?> annee) {
+    final debut = DateTime.tryParse('${annee['debut']}');
+    final maintenant = DateTime.now();
+    return debut != null && debut.isAfter(maintenant) ? debut : maintenant;
+  }
+
+  Future<void> _changerAnnee(String id) async {
+    final annee = _annees.firstWhere((a) => a['id'] == id);
+    final d = await _donneesAnnee(annee);
+    if (!mounted) return;
+    setState(() {
+      _annee = annee;
+      _classes = d.classes;
+      _frais = d.frais;
+      _precedente = d.precedente;
+      _dateEffective = _dateParDefaut(annee);
+      _proposerNiveau();
+    });
   }
 
   // Étape 1 : l'élève est-il déjà connu ? -------------------------------------
@@ -1285,6 +1341,17 @@ class _InscrireScreenState extends State<InscrireScreen> {
       complet: _classeOk,
       sousTitre: 'Année ${_annee!['libelle']}',
       enfants: [
+        if (_annees.length > 1) ...[
+          Segments<String>(
+            valeur: _annee!['id'] as String,
+            choix: {
+              for (final a in _annees)
+                a['id'] as String: a['en_cours'] == 1 ? '${a['libelle']} (en cours)' : '${a['libelle']} (rentrée prochaine)',
+            },
+            onChanged: _changerAnnee,
+          ),
+          const SizedBox(height: 12),
+        ],
         if (_classes.isEmpty)
           const Text("Aucune classe où vous pouvez inscrire. Créez les classes de l'année (Paramètres).")
         else ...[

@@ -81,8 +81,8 @@ end $$;
 -- Redoublement : même niveau l'année suivante. Le poste ne peut pas le cacher.
 select statut as statut_avant from public.inscriptions where id = :'ins' \gset
 update public.inscriptions set statut = 'actif' where id = :'ins';
-insert into public.annees_scolaires (organisation_id, libelle, debut, fin)
-  values (:'org_a', 'Suivante', :'fin'::date + 60, :'fin'::date + 360) returning id as suivante \gset
+insert into public.annees_scolaires (organisation_id, libelle, debut, fin, etat)
+  values (:'org_a', 'Suivante', :'fin'::date + 60, :'fin'::date + 360, 'inscriptions') returning id as suivante \gset
 insert into public.niveaux (organisation_id, cycle, nom, ordre) values (:'org_a', 'college', 'Niveau test 022', 99) returning id as autre \gset
 insert into public.classes (organisation_id, site_id, annee_id, niveau_id, nom)
   values (:'org_a', :'site', :'suivante', :'niveau', 'Même niveau') returning id as meme \gset

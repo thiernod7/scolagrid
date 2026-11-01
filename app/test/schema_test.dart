@@ -4,7 +4,7 @@ import 'package:scolagrid/caisse.dart';
 import 'package:scolagrid/echeancier.dart';
 import 'package:scolagrid/import_eleves.dart';
 import 'package:scolagrid/matricule.dart';
-import 'package:scolagrid/configuration.dart' show empreintePin, gnf, lettresSuivantes, nomDeClasse, pinValide;
+import 'package:scolagrid/configuration.dart' show decalerDate, empreintePin, gnf, lettresSuivantes, libelleSuivant, nomDeClasse, pinValide;
 import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_guineen.dart';
 import 'package:flutter/material.dart' show Brightness;
@@ -316,5 +316,12 @@ void main() {
     expect(reductionsApplicables(regles: regles, attribuees: {'a', 'p'}, enfantsDuPayeur: 2, cumul: false).single.id, 'f');
     expect(reductionsApplicables(regles: regles, attribuees: {'a', 'p'}, enfantsDuPayeur: 2, cumul: true).map((r) => r.id), ['f', 'p', 'a']);
     expect(typesReduction.keys, containsAll(['fratrie', 'personnel', 'paiement_annuel', 'personnalisee']));
+  });
+
+  test("Année suivante : libellé et dates décalées", () {
+    expect(libelleSuivant('2026-2027'), '2027-2028');
+    expect(libelleSuivant('Année A'), '');
+    expect(decalerDate('2026-10-31', 364), '2027-10-30');
+    expect(decalerDate('2027-02-28', 366), '2028-02-29');
   });
 }

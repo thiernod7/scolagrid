@@ -296,6 +296,10 @@ class _ClassesScreenState extends State<ClassesScreen> {
   String? _niveau;
   bool _fermees = false;
 
+  /// L'année affichée : celle en cours, ou la suivante en préparation.
+  String? _anneeId;
+  Map<String, Object?>? _annee;
+
   Espace get _e => widget.espace;
 
   Future<Map<String, String>> _profs(String site) async => {
@@ -307,7 +311,7 @@ class _ClassesScreenState extends State<ClassesScreen> {
       };
 
   Future<void> _creer() async {
-    final annee = await db.getOptional('SELECT id FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [_e.orgId]);
+    final annee = _annee;
     final sites = {
       for (final s in await db.getAll('SELECT id, nom FROM sites WHERE organisation_id = ? ORDER BY created_at', [_e.orgId]))
         if (_e.gereSite(s['id'] as String)) s['id'] as String: s['nom'] as String,
@@ -464,11 +468,40 @@ class _ClassesScreenState extends State<ClassesScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => _Page(
-        titre: 'Classes',
-        ajouter: _e.gestionnaire ? _creer : null,
-        libelleAjouter: 'Créer des classes',
-        corps: Requete('''
+  Widget build(BuildContext context) => Requete(
+        "SELECT * FROM annees_scolaires WHERE organisation_id = ? AND (en_cours = 1 OR etat IN ('preparation', 'inscriptions')) ORDER BY debut",
+        parametres: [_e.orgId],
+        builder: (context, annees) {
+          final annee = annees.where((a) => a['id'] == _anneeId).firstOrNull ??
+              annees.where((a) => a['en_cours'] == 1).firstOrNull ??
+              annees.firstOrNull;
+          _annee = annee == null ? null : Map<String, Object?>.from(annee);
+          return _Page(
+            titre: annee == null ? 'Classes' : 'Classes ${annee['libelle']}',
+            ajouter: _e.gestionnaire && annee != null ? _creer : null,
+            libelleAjouter: 'Créer des classes',
+            corps: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (annees.length > 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Segments<String>(
+                      valeur: annee!['id'] as String,
+                      choix: {for (final a in annees) a['id'] as String: '${a['libelle']} · ${etatsAnnee[a['etat']] ?? ''}'},
+                      onChanged: (v) => setState(() => _anneeId = v),
+                    ),
+                  ),
+                ),
+              Expanded(child: _corps(annee?['id'] as String?)),
+            ]),
+          );
+        },
+      );
+
+  Widget _corps(String? anneeId) => anneeId == null
+      ? _vide("Il faut d'abord une année scolaire en cours.")
+      : Requete('''
             SELECT c.*, n.nom AS niveau, s.nom AS site, p.nom_complet AS prof,
               (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id AND i.statut IN $_statutsPresents) AS effectif,
               (SELECT count(*) FROM inscriptions i JOIN eleves e ON e.id = i.eleve_id
@@ -478,12 +511,12 @@ class _ClassesScreenState extends State<ClassesScreen> {
               (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id AND i.statut IN $_statutsPresents AND i.redoublant = 1) AS redoublants,
               (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id) AS inscriptions_toutes
             FROM classes c
-            JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1
+            JOIN annees_scolaires a ON a.id = c.annee_id AND a.id = ?
             JOIN niveaux n ON n.id = c.niveau_id
             JOIN sites s ON s.id = c.site_id
             LEFT JOIN personnel p ON p.id = c.professeur_principal_id
             WHERE c.organisation_id = ?
-            ORDER BY s.created_at, n.ordre, c.nom''', parametres: [_e.orgId], builder: (context, toutes) {
+            ORDER BY s.created_at, n.ordre, c.nom''', parametres: [anneeId, _e.orgId], builder: (context, toutes) {
           if (toutes.isEmpty) {
             return _vide(_e.gestionnaire
                 ? "Aucune classe pour l'année en cours. « Créer des classes » : un niveau, une série, le nombre de groupes."
@@ -614,6 +647,5 @@ class _ClassesScreenState extends State<ClassesScreen> {
             Text('Une classe qui a eu des élèves ne se supprime pas : on la referme, après avoir réparti ses élèves.',
                 style: TextStyle(fontSize: 12, color: gris)),
           ]);
-        }),
-      );
+        });
 }

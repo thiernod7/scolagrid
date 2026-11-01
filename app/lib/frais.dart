@@ -42,6 +42,9 @@ class _FraisScreenState extends State<FraisScreen> {
   /// null : tarifs de toute l'école ; sinon tarifs propres à un site.
   String? _site;
 
+  /// L'année affichée : celle en cours, ou la suivante en préparation.
+  String? _anneeId;
+
   Espace get _e => widget.espace;
 
   bool get _modifiable => _site == null ? _e.fondateur : _e.gereSite(_site!);
@@ -140,13 +143,15 @@ class _FraisScreenState extends State<FraisScreen> {
 
   @override
   Widget build(BuildContext context) => Requete(
-        'SELECT * FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1',
+        "SELECT * FROM annees_scolaires WHERE organisation_id = ? AND (en_cours = 1 OR etat IN ('preparation', 'inscriptions')) ORDER BY debut",
         parametres: [_e.orgId],
         builder: (context, annees) {
           if (annees.isEmpty) {
             return _Page(titre: 'Frais scolaires', corps: _vide("Il faut d'abord une année scolaire en cours."));
           }
-          final annee = annees.first;
+          final annee = annees.where((a) => a['id'] == _anneeId).firstOrNull ??
+              annees.where((a) => a['en_cours'] == 1).firstOrNull ??
+              annees.first;
           final gris = Theme.of(context).colorScheme.onSurfaceVariant;
           return _Page(
             titre: 'Frais scolaires ${annee['libelle']}',
@@ -154,6 +159,16 @@ class _FraisScreenState extends State<FraisScreen> {
               'SELECT id, nom FROM sites WHERE organisation_id = ? ORDER BY created_at',
               parametres: [_e.orgId],
               builder: (context, sites) => ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
+                if (annees.length > 1) ...[
+                  Segments<String>(
+                    valeur: annee['id'] as String,
+                    choix: {
+                      for (final a in annees) a['id'] as String: '${a['libelle']} · ${etatsAnnee[a['etat']] ?? ''}',
+                    },
+                    onChanged: (v) => setState(() => _anneeId = v),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _ReglesPaiement(espace: _e),
                 const SizedBox(height: 12),
                 _Calendrier(espace: _e, annee: annee),
