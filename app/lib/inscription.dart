@@ -452,11 +452,15 @@ class _InscrireScreenState extends State<InscrireScreen> {
     final entree = _type == 'reinscription' ? 'reinscription' : 'inscription';
     final applicables =
         reductionsApplicables(regles: _regles, attribuees: const {}, enfantsDuPayeur: _freres.length + 1, cumul: _cumul);
-    return [
+    final siens = fraisRetenus([
       for (final f in _frais)
         if ((f['site_id'] == null || f['site_id'] == c['site_id']) &&
             (f['niveau_id'] == null || f['niveau_id'] == c['niveau_id']) &&
             (f['type_frais'] == entree || f['type_frais'] == 'scolarite'))
+          f,
+    ]);
+    return [
+      for (final f in siens)
           (
             libelle: '${f['libelle']}',
             type: '${f['type_frais']}',

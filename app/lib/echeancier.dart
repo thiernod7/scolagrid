@@ -84,3 +84,54 @@ List<Echeance> echeancesEnTranches({required int total, required DateTime premie
       ),
   ];
 }
+
+/// Une tranche du calendrier de l'école : sa part de la scolarité (en %).
+typedef TrancheCalendrier = ({String libelle, DateTime dateLimite, double part});
+
+/// Calendrier proposé selon la périodicité choisie par l'école.
+/// Mensuelle : un mois par échéance. Tranches : les mois répartis en
+/// [nbTranches]. Annuelle : une seule échéance à la fin du premier mois.
+List<TrancheCalendrier> calendrierPropose({
+  required String periodicite,
+  required DateTime rentree,
+  required int nbMois,
+  int nbTranches = 3,
+}) {
+  final premier = DateTime(rentree.year, rentree.month);
+  switch (periodicite) {
+    case 'mensuelle':
+      return [
+        for (final e in echeancesMensuelles(parMois: 1, premierMois: premier, nbMois: nbMois))
+          (libelle: e.libelle, dateLimite: e.dateLimite, part: 100 / nbMois),
+      ];
+    case 'annuelle':
+      return [(libelle: 'Année', dateLimite: _finDuMois(premier.year, premier.month), part: 100.0)];
+    default:
+      final mois = moisParTranche(nbMois, nbTranches < 1 ? 1 : (nbTranches > nbMois ? nbMois : nbTranches));
+      var fin = 0;
+      return [
+        for (var i = 0; i < mois.length; i++)
+          (
+            libelle: 'Tranche ${i + 1}',
+            dateLimite: _finDuMois(premier.year, premier.month + (fin += mois[i]) - 1),
+            part: mois[i] * 100 / nbMois,
+          ),
+      ];
+  }
+}
+
+/// Les échéances d'un montant selon le calendrier de l'école : chaque tranche
+/// reçoit sa part (arrondie au franc), la dernière absorbe l'arrondi.
+List<Echeance> echeancesDuCalendrier({required int total, required List<TrancheCalendrier> calendrier}) {
+  if (calendrier.isEmpty) return const [];
+  final somme = calendrier.fold<double>(0, (s, t) => s + t.part);
+  var deja = 0;
+  return [
+    for (var i = 0; i < calendrier.length; i++)
+      () {
+        final m = i == calendrier.length - 1 ? total - deja : (total * calendrier[i].part / (somme == 0 ? 1 : somme)).floor();
+        deja += m;
+        return Echeance(i + 1, calendrier[i].libelle, m, calendrier[i].dateLimite);
+      }(),
+  ];
+}

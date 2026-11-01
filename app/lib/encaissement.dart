@@ -64,7 +64,7 @@ Future<List<FraisDu>> situationInscription(String inscriptionId, {bool paiementA
   if (ins == null) return [];
   final red = await reductionsInscription(inscriptionId, paiementAnnuel: paiementAnnuel);
   final typeEntree = ins['type_admission'] == 'reinscription' ? 'reinscription' : 'inscription';
-  final frais = await db.getAll('''
+  final frais = fraisRetenus((await db.getAll('''
       SELECT f.*,
         (SELECT coalesce(sum(l.montant_gnf), 0) FROM lignes_encaissement l
          JOIN encaissements e ON e.id = l.encaissement_id AND e.statut = 'valide' AND e.confirmation <> 'rejete'
@@ -77,7 +77,8 @@ Future<List<FraisDu>> situationInscription(String inscriptionId, {bool paiementA
              OR (f.type_frais = 'optionnel' AND EXISTS (SELECT 1 FROM souscriptions s
                  WHERE s.inscription_id = ? AND s.frais_id = f.id AND s.actif = 1)))
       ORDER BY f.created_at''',
-      [inscriptionId, inscriptionId, ins['annee_id'], ins['site_id'], ins['niveau_id'], typeEntree, inscriptionId]);
+      [inscriptionId, inscriptionId, ins['annee_id'], ins['site_id'], ins['niveau_id'], typeEntree, inscriptionId]))
+      .map((f) => Map<String, Object?>.from(f)));
   final amenagees = <String, List<({String libelle, int montant, DateTime dateLimite})>>{};
   for (final e in await db.getAll(
       'SELECT * FROM echeances_eleves WHERE inscription_id = ? ORDER BY frais_id, ordre', [inscriptionId])) {
@@ -387,6 +388,9 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
   String? _annee;
   String? _moi;
 
+  /// Modes encaissés « sous réserve » (réglés par l'école).
+  Set<String> _sousReserve = const {'cheque', 'virement'};
+
   @override
   void initState() {
     super.initState();
@@ -417,6 +421,8 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     _ville = (site?['ville'] ?? ecole?['ville']) as String?;
     _annee = annee?['libelle'] as String?;
     _moi = moi?['nom_complet'] as String?;
+    final reserve = await db.getOptional('SELECT modes_sous_reserve FROM organisations WHERE id = ?', [o]);
+    _sousReserve = '${reserve?['modes_sous_reserve'] ?? 'cheque,virement'}'.split(',').toSet();
     // Le carnet en cours et la feuille suivante, d'après le dernier reçu de ce poste.
     final poste = await cePoste();
     final dernier = poste == null
@@ -620,7 +626,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
               [
                 id, o, site, x['annee_id'], numero, carnet, b.feuille.text.trim().isEmpty ? null : b.feuille.text.trim(),
                 _payeur.text.trim(), b.mode, b.reference.text.trim().isEmpty ? null : b.reference.text.trim(),
-                _date(_jourPaiement), total, b.mode == 'cheque' || b.mode == 'virement' ? 'en_attente' : 'confirme',
+                _date(_jourPaiement), total, _sousReserve.contains(b.mode) ? 'en_attente' : 'confirme',
                 poste['poste_id'], monId, maintenant, maintenant,
               ]);
           for (final l in b.lignes) {

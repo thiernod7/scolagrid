@@ -166,6 +166,22 @@ void main() {
     expect(g.echeances.map((e) => e.montant), [200000, 300000]);
   });
 
+  test('calendrier de l\'école et frais le plus précis', () {
+    final cal = calendrierPropose(periodicite: 'tranches', rentree: DateTime(2026, 10, 1), nbMois: 9);
+    expect(cal.map((t) => t.libelle), ['Tranche 1', 'Tranche 2', 'Tranche 3']);
+    expect(cal.last.dateLimite, DateTime(2027, 6, 30));
+    final e = echeancesDuCalendrier(total: 1000000, calendrier: cal);
+    expect(e.map((x) => x.montant), [333333, 333333, 333334]);
+    expect(calendrierPropose(periodicite: 'mensuelle', rentree: DateTime(2026, 10, 1), nbMois: 9).length, 9);
+    final retenus = fraisRetenus([
+      {'type_frais': 'scolarite', 'niveau_id': null, 'site_id': null, 'libelle': 'tous'},
+      {'type_frais': 'scolarite', 'niveau_id': 'n7', 'site_id': null, 'libelle': '7ème'},
+      {'type_frais': 'inscription', 'niveau_id': null, 'site_id': null, 'libelle': 'ins'},
+      {'type_frais': 'optionnel', 'niveau_id': null, 'site_id': null, 'libelle': 'cantine'},
+    ]);
+    expect(retenus.map((f) => f['libelle']), ['7ème', 'ins', 'cantine']);
+  });
+
   test('versement réparti et plafonné', () {
     final ins = situationFrais(
         id: 'ins', libelle: 'Inscription', type: 'inscription', total: 150000, echeances: const [], arrivee: DateTime(2026, 10, 5), dejaPaye: 50000);

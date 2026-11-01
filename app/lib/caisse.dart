@@ -283,3 +283,21 @@ String enLettres(int n) {
   if (reste > 0) parts.add(_moinsDeMille(reste));
   return parts.join(' ');
 }
+
+/// Parmi les frais qui s'appliquent à un élève, le plus précis l'emporte pour
+/// l'inscription, la réinscription et la scolarité : celui de son niveau (ou de
+/// son site) remplace celui de « tous les niveaux ». Les options s'ajoutent.
+List<Map<String, Object?>> fraisRetenus(Iterable<Map<String, Object?>> frais) {
+  int precision(Map<String, Object?> f) => (f['niveau_id'] != null ? 2 : 0) + (f['site_id'] != null ? 1 : 0);
+  final meilleure = <String, int>{};
+  for (final f in frais) {
+    final t = '${f['type_frais']}';
+    if (t == 'optionnel') continue;
+    final p = precision(f);
+    if (p > (meilleure[t] ?? -1)) meilleure[t] = p;
+  }
+  return [
+    for (final f in frais)
+      if ('${f['type_frais']}' == 'optionnel' || precision(f) == meilleure['${f['type_frais']}']) f,
+  ];
+}

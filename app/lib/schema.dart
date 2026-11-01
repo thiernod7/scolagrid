@@ -25,6 +25,7 @@ const schema = Schema([
     Column.integer('remboursable_optionnel'),
     Column.integer('delai_grace_jours'),
     Column.text('arrivee_par_defaut'),
+    Column.text('modes_sous_reserve'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -62,6 +63,8 @@ const schema = Schema([
     Column.text('debut'),
     Column.text('fin'),
     Column.integer('en_cours'),
+    Column.text('periodicite'),
+    Column.integer('nb_mois'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -105,10 +108,34 @@ const schema = Schema([
     Column.integer('montant_gnf'),
     Column.text('periodicite'),
     Column.text('type_frais'),
+    Column.text('motif_correction'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
   // Échéances d'un frais : tranches ou mois de la scolarité.
+  // Calendrier de paiement de l'année, commun à l'école (part en % de la scolarité).
+  Table('tranches_annee', [
+    Column.text('organisation_id'),
+    Column.text('annee_id'),
+    Column.integer('ordre'),
+    Column.text('libelle'),
+    Column.text('date_limite'),
+    Column.real('part'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
+  // Corrections d'un frais déjà payé.
+  Table('historique_frais', [
+    Column.text('organisation_id'),
+    Column.text('frais_id'),
+    Column.integer('ancien_gnf'),
+    Column.integer('nouveau_gnf'),
+    Column.text('motif'),
+    Column.text('par'),
+    Column.text('quand'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
   // Échéancier aménagé d'un élève (dates changées ou tranche découpée).
   Table('echeances_eleves', [
     Column.text('organisation_id'),

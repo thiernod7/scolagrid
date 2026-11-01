@@ -32,6 +32,8 @@ streams:
       - SELECT * FROM frais WHERE organisation_id IN mes_orgs
       - SELECT * FROM echeances WHERE organisation_id IN mes_orgs
       - SELECT * FROM regles_reduction WHERE organisation_id IN mes_orgs
+      - SELECT * FROM tranches_annee WHERE organisation_id IN mes_orgs
+      - SELECT * FROM historique_frais WHERE organisation_id IN mes_orgs
 
   # Sa propre fiche du personnel, ses fonctions et ses droits particuliers :
   # l'app en déduit ce que la personne peut faire.

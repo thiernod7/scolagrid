@@ -213,13 +213,17 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
     var retard = 0;
     var plusVieux = 0;
     var retraitNegocie = i['arrivee_mode'] == 'negocie' ? (i['arrivee_retrait_gnf'] as int? ?? 0) : 0;
-    for (final f in frais) {
-      if (f['site_id'] != null && f['site_id'] != i['site_id']) continue;
-      if (f['niveau_id'] != null && f['niveau_id'] != i['niveau_id']) continue;
+    final siens = fraisRetenus([
+      for (final f in frais)
+        if ((f['site_id'] == null || f['site_id'] == i['site_id']) &&
+            (f['niveau_id'] == null || f['niveau_id'] == i['niveau_id']) &&
+            (f['type_frais'] == entree ||
+                f['type_frais'] == 'scolarite' ||
+                (f['type_frais'] == 'optionnel' && souscrits.contains('${i['id']}|${f['id']}'))))
+          Map<String, Object?>.from(f),
+    ]);
+    for (final f in siens) {
       final type = f['type_frais'] as String? ?? 'optionnel';
-      if (type != entree && type != 'scolarite' && !(type == 'optionnel' && souscrits.contains('${i['id']}|${f['id']}'))) {
-        continue;
-      }
       final total = f['montant_gnf'] as int;
       final reduction = reductionSurFrais(typeFrais: type, total: total, applicables: applicables, cumul: cumul, plafond: plafond);
       var retrait = 0;
