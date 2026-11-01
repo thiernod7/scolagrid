@@ -37,6 +37,7 @@ part 'personnel.dart';
 part 'photo.dart';
 part 'poste.dart';
 part 'reductions.dart';
+part 'regles.dart';
 part 'remboursements.dart';
 part 'tableau_de_bord.dart';
 
@@ -268,6 +269,8 @@ class _Reglage {
 final _reglages = <_Reglage>[
   _Reglage('ecole', "L'école", 'Logo, contacts, responsable, documents', Icons.apartment_outlined, 'Établissement',
       (e) => IdentiteEcoleScreen(espace: e)),
+  _Reglage('regles', 'Règles générales', 'Documents si arriérés, seuil du tableau de bord', Icons.rule_outlined, 'Établissement',
+      (e) => ReglesGeneralesScreen(espace: e)),
   _Reglage('annee', 'Année scolaire', "L'année en cours et ses dates", Icons.event_outlined, 'Scolarité',
       (e) => AnneesScreen(espace: e)),
   _Reglage('niveaux', 'Niveaux', 'Du préscolaire à la terminale (modèle guinéen)', Icons.layers_outlined, 'Scolarité',
@@ -276,6 +279,8 @@ final _reglages = <_Reglage>[
       (e) => MatieresScreen(espace: e)),
   _Reglage('classes', 'Classes', "Classes de l'année, salles et places", Icons.grid_view_outlined, 'Scolarité',
       (e) => ClassesScreen(espace: e)),
+  _Reglage('pieces', 'Pièces du dossier', 'Ce que les familles fournissent', Icons.folder_open_outlined, 'Scolarité',
+      (e) => PiecesDossierScreen(espace: e)),
   _Reglage('frais', 'Frais scolaires', 'Inscription, scolarité en tranches, options', Icons.payments_outlined, 'Argent',
       (e) => FraisScreen(espace: e)),
   _Reglage('reductions', 'Réductions', 'Fratrie, paiement annuel, bourses', Icons.percent, 'Argent',
@@ -304,7 +309,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   /// Qui voit quelle rubrique : la direction voit tout ; la direction des
   /// études voit la scolarité ; la comptabilité voit l'argent.
   bool _voit(String cle) => switch (cle) {
-        'ecole' => _e.gestionnaire,
+        'ecole' || 'regles' || 'pieces' => _e.gestionnaire,
         'annee' || 'niveaux' || 'matieres' || 'classes' => _e.gestionnaire || _e.gereMatieres,
         'frais' || 'reductions' || 'remboursements' => _e.gestionnaire || _e.voitFinances,
         _ => false,
@@ -314,7 +319,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   bool _modifie(String cle) => switch (cle) {
         'ecole' || 'classes' || 'frais' => _e.gestionnaire,
         'matieres' => _e.gereMatieres,
-        'annee' || 'niveaux' || 'reductions' || 'remboursements' => _e.fondateur,
+        'annee' || 'niveaux' || 'reductions' || 'remboursements' || 'regles' || 'pieces' => _e.fondateur,
         _ => false,
       };
 
@@ -342,6 +347,8 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       'frais': (n('frais') > 0, '${n('frais')} frais'),
       'reductions': (n('reductions') > 0, n('reductions') == 0 ? 'Aucune réduction' : '${n('reductions')} réduction(s)'),
       'remboursements': (true, "Ce que l'école accepte de rembourser"),
+      'regles': (true, 'Documents si arriérés, seuil du tableau de bord'),
+      'pieces': (true, 'Ce que les familles fournissent'),
     };
   }
 

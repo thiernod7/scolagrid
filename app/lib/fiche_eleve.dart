@@ -95,6 +95,47 @@ Future<Uint8List?> _photoOctets(Object? eleveId) async {
   }
 }
 
+/// Arriérés de l'élève et règle de l'école pour ses documents.
+/// Renvoie (permis, motif de levée du blocage).
+Future<(bool, String?)> _blocageDocument(BuildContext context, Map<String, Object?> e) async {
+  final messager = ScaffoldMessenger.of(context);
+  final org = await db.get('SELECT blocage_documents FROM organisations WHERE id = ?', [e['organisation_id']]);
+  final regle = org['blocage_documents'] as String? ?? 'alerte';
+  if (regle == 'non') return (true, null);
+  final ins = await _inscriptionEnCours(e['id'] as String);
+  if (ins == null) return (true, null);
+  final maintenant = DateTime.now();
+  var retard = 0;
+  for (final f in await situationInscription(ins['id'] as String)) {
+    for (final x in f.echeances) {
+      if (x.enRetard(maintenant)) retard += x.reste;
+    }
+  }
+  if (retard <= 0 || !context.mounted) return (context.mounted, null);
+  if (regle == 'alerte') {
+    return (await _confirmer(context, "Cet élève a ${gnf(retard)} d'arriérés. Imprimer quand même ?"), null);
+  }
+  // Bloqué : seule la direction (fondateur, ou directeur de son site) lève le blocage.
+  final direction = await db.getOptional(
+      "SELECT 1 FROM rattachements WHERE user_id = ? AND organisation_id = ? AND actif = 1 "
+      "AND (role = 'fondateur' OR (role = 'directeur' AND (site_id IS NULL OR site_id = ?)))",
+      [monId, e['organisation_id'], ins['site_id']]);
+  if (direction == null) {
+    messager.showSnackBar(SnackBar(
+        content: Text('Document bloqué : ${gnf(retard)} d\'arriérés. Seule la direction peut lever le blocage.')));
+    return (false, null);
+  }
+  if (!context.mounted) return (false, null);
+  final m = TextEditingController();
+  final ok = await _formulaire(context, 'Lever le blocage', (_) => [
+        Text("L'élève a ${gnf(retard)} d'arriérés : l'école bloque ses documents. Vous pouvez lever le blocage pour ce document, "
+            'avec un motif gardé sur l\'impression.', style: const TextStyle(fontSize: 13)),
+        TextField(controller: m, autofocus: true, decoration: _champ('Motif', aide: 'Par exemple : engagement de paiement du père')),
+      ]);
+  if (!ok || m.text.trim().length < 3) return (false, null);
+  return (true, m.text.trim());
+}
+
 /// Attestation d'inscription : seulement pour un élève actif (frais
 /// d'inscription réglés). La première impression est l'original ; ensuite,
 /// duplicata numéroté avec motif. Chaque impression est notée.
@@ -105,6 +146,8 @@ Future<void> _imprimerAttestation(BuildContext context, Map<String, Object?> e, 
         content: Text("Attestation disponible uniquement après règlement des frais d'inscription (élève actif).")));
     return;
   }
+  final (permis, levee) = await _blocageDocument(context, e);
+  if (!permis || !context.mounted) return;
   final deja = (await db.get(
       "SELECT count(*) AS n FROM impressions_documents WHERE inscription_id = ? AND type_document = 'attestation_inscription'",
       [ins['id']]))['n'] as int;
@@ -128,6 +171,7 @@ Future<void> _imprimerAttestation(BuildContext context, Map<String, Object?> e, 
     'type_document': 'attestation_inscription',
     'rang': deja + 1,
     'motif': motif,
+    'motif_levee': levee,
     'par': monId,
     'poste_id': poste?['poste_id'],
   });
@@ -158,6 +202,8 @@ Future<void> _imprimerCertificat(BuildContext context, Map<String, Object?> e) a
     messager.showSnackBar(const SnackBar(content: Text('Aucune année de scolarité enregistrée pour cet élève.')));
     return;
   }
+  final (permis, levee) = await _blocageDocument(context, e);
+  if (!permis || !context.mounted) return;
   final deja = (await db.get(
       "SELECT count(*) AS n FROM impressions_documents WHERE eleve_id = ? AND type_document = 'certificat_scolarite'",
       [e['id']]))['n'] as int;
@@ -181,6 +227,7 @@ Future<void> _imprimerCertificat(BuildContext context, Map<String, Object?> e) a
     'type_document': 'certificat_scolarite',
     'rang': deja + 1,
     'motif': motif,
+    'motif_levee': levee,
     'par': monId,
     'poste_id': poste?['poste_id'],
   });
@@ -481,13 +528,14 @@ class _FicheEleveState extends State<FicheEleve> {
              (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj,
              (SELECT max(h.quand) FROM historique_eleves h WHERE h.eleve_id = e.id AND h.evenement = 'mutation') AS date_mutation,
              i.id AS ins_id, i.statut, i.type_admission, i.date_effective, i.date_actif, i.date_sortie, i.motif,
-             i.created_at AS ins_saisie, i.classe_id, i.annee_id, i.site_id AS ins_site, c.nom AS classe, a.libelle AS annee
+             i.created_at AS ins_saisie, nv.cycle AS cycle, i.classe_id, i.annee_id, i.site_id AS ins_site, c.nom AS classe, a.libelle AS annee
            FROM eleves e
            LEFT JOIN sites s ON s.id = e.site_id
            LEFT JOIN sites so ON so.id = e.site_origine_id
            LEFT JOIN annees_scolaires a ON a.organisation_id = e.organisation_id AND a.en_cours = 1
            LEFT JOIN inscriptions i ON i.eleve_id = e.id AND i.annee_id = a.id
            LEFT JOIN classes c ON c.id = i.classe_id
+           LEFT JOIN niveaux nv ON nv.id = c.niveau_id
            WHERE e.id = ?''',
         parametres: [widget.eleveId],
         builder: (context, l) {
@@ -832,38 +880,54 @@ class _Pieces extends StatelessWidget {
   final bool modifiable;
 
   @override
-  Widget build(BuildContext context) {
-    final fournies = '${eleve['pieces_dossier'] ?? ''}'.split(',').where(piecesDossier.containsKey).toSet();
-    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
-    Future<void> basculer(String piece) {
-      final p = {...fournies};
-      p.contains(piece) ? p.remove(piece) : p.add(piece);
-      final liste = piecesDossier.keys.where(p.contains).join(',');
-      return _modifier('eleves', eleve['id'] as String, {'pieces_dossier': liste.isEmpty ? null : liste});
-    }
+  Widget build(BuildContext context) => Requete(
+        // Se met à jour quand l'école change sa liste.
+        'SELECT count(*) AS n, max(updated_at) AS m FROM pieces_dossier WHERE organisation_id = ?',
+        parametres: [eleve['organisation_id']],
+        builder: (context, _) => FutureBuilder<List<PieceDossier>>(
+          future: piecesDe(eleve['organisation_id'] as String),
+          builder: (context, s) {
+            final liste = (s.data ?? piecesStandard)
+                .where((p) => p.concerne(eleve['type_admission'] as String?, eleve['cycle'] as String?))
+                .toList();
+            final fournies = '${eleve['pieces_dossier'] ?? ''}'.split(',').where((c) => c.isNotEmpty).toSet();
+            final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+            final nb = liste.where((p) => fournies.contains(p.code)).length;
+            final manquantes = liste.where((p) => p.obligatoire && !fournies.contains(p.code)).length;
+            Future<void> basculer(String piece) {
+              final p = {...fournies};
+              p.contains(piece) ? p.remove(piece) : p.add(piece);
+              return _modifier('eleves', eleve['id'] as String, {'pieces_dossier': piecesEnTexte(p, s.data ?? piecesStandard)});
+            }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _rubrique(context, 'Pièces fournies par la famille',
-          droite: Text('${fournies.length} sur ${piecesDossier.length}',
-              style: TextStyle(fontSize: 12, color: fournies.length == piecesDossier.length ? Couleurs.regle : gris))),
-      const SizedBox(height: 8),
-      for (final p in piecesDossier.entries)
-        InkWell(
-          onTap: modifiable ? () => basculer(p.key) : null,
-          borderRadius: BorderRadius.circular(4),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(children: [
-              fournies.contains(p.key)
-                  ? const Icon(Icons.check_circle_outline, size: 16, color: Couleurs.regle)
-                  : Icon(Icons.circle_outlined, size: 16, color: gris.withValues(alpha: .4)),
-              const SizedBox(width: 12),
-              Text(p.value, style: TextStyle(fontSize: 14, color: fournies.contains(p.key) ? null : gris)),
-            ]),
-          ),
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _rubrique(context, 'Pièces fournies par la famille',
+                  droite: Text(manquantes > 0 ? '$manquantes obligatoire(s) manquante(s)' : '$nb sur ${liste.length}',
+                      style: TextStyle(
+                          fontSize: 12, color: manquantes > 0 ? Couleurs.attente : (nb == liste.length ? Couleurs.regle : gris)))),
+              const SizedBox(height: 8),
+              for (final p in liste)
+                InkWell(
+                  onTap: modifiable ? () => basculer(p.code) : null,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(children: [
+                      fournies.contains(p.code)
+                          ? const Icon(Icons.check_circle_outline, size: 16, color: Couleurs.regle)
+                          : Icon(Icons.circle_outlined, size: 16, color: p.obligatoire ? Couleurs.attente : gris.withValues(alpha: .4)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(p.obligatoire && !fournies.contains(p.code) ? '${p.libelle} (obligatoire)' : p.libelle,
+                            style: TextStyle(fontSize: 14, color: fournies.contains(p.code) ? null : gris)),
+                      ),
+                    ]),
+                  ),
+                ),
+            ]);
+          },
         ),
-    ]);
-  }
+      );
 }
 
 // Onglet Contacts --------------------------------------------------------------------

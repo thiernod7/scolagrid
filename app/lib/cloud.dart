@@ -143,6 +143,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
       'remboursable_reinscription', 'remboursable_scolarite', 'remboursable_optionnel', 'signature_documents',
     ],
     'regles_reduction': ['pourcentage', 'actif'],
+    'pieces_dossier': ['obligatoire', 'actif'],
     'reductions_eleves': ['actif'],
   };
 

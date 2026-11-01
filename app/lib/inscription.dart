@@ -5,15 +5,53 @@ part of 'configuration.dart';
 /// (identité, contacts, pièces, classe, frais) et, à droite, le récapitulatif
 /// avec les boutons. Sur téléphone, le récapitulatif passe en bas.
 
-/// Pièces que la famille peut remettre. Toutes facultatives.
-const piecesDossier = {
-  'acte_naissance': 'Extrait de naissance',
-  'photo': "Photo d'identité",
-  'vaccination': 'Carnet de vaccination',
-  'bulletin': 'Bulletin précédent',
-  'certificat_scolarite': 'Certificat de scolarité',
-  'residence': 'Certificat de résidence',
-};
+/// Une pièce que l'école demande, pour certaines admissions et certains cycles.
+class PieceDossier {
+  const PieceDossier(this.code, this.libelle, {this.admissions, this.cycles, this.obligatoire = false});
+
+  final String code;
+  final String libelle;
+
+  /// null : toutes les admissions (nouvelle, réinscription, transfert).
+  final Set<String>? admissions;
+
+  /// null : tous les cycles.
+  final Set<String>? cycles;
+  final bool obligatoire;
+
+  bool concerne(String? admission, String? cycle) =>
+      (admissions == null || admission == null || admissions!.contains(admission)) &&
+      (cycles == null || cycle == null || cycles!.contains(cycle));
+}
+
+/// Liste proposée tant que l'école n'a pas réglé la sienne.
+const piecesStandard = [
+  PieceDossier('acte_naissance', 'Extrait de naissance', admissions: {'nouvelle', 'transfert'}, obligatoire: true),
+  PieceDossier('photo', "Photo d'identité"),
+  PieceDossier('vaccination', 'Carnet de vaccination', cycles: {'maternelle', 'primaire'}),
+  PieceDossier('bulletin', 'Bulletin précédent', admissions: {'transfert', 'reinscription'}),
+  PieceDossier('certificat_scolarite', 'Certificat de scolarité', admissions: {'transfert'}),
+  PieceDossier('residence', 'Certificat de résidence'),
+];
+
+/// Les pièces de l'école (la liste standard si elle n'a rien réglé).
+Future<List<PieceDossier>> piecesDe(String orgId) async {
+  final l = await db.getAll('SELECT * FROM pieces_dossier WHERE organisation_id = ? AND actif = 1 ORDER BY ordre, libelle', [orgId]);
+  if (l.isEmpty) return piecesStandard;
+  Set<String>? ens(Object? v) => v == null || '$v'.isEmpty ? null : '$v'.split(',').toSet();
+  return [
+    for (final p in l)
+      PieceDossier(p['code'] as String, p['libelle'] as String,
+          admissions: ens(p['admissions']), cycles: ens(p['cycles']), obligatoire: p['obligatoire'] == 1),
+  ];
+}
+
+/// Range les pièces cochées : d'abord dans l'ordre de la liste, puis les autres.
+String? piecesEnTexte(Iterable<String> cochees, List<PieceDossier> liste) {
+  final c = cochees.toSet();
+  final r = [...liste.map((p) => p.code).where(c.contains), ...c.where((x) => !liste.any((p) => p.code == x))];
+  return r.isEmpty ? null : r.join(',');
+}
 
 /// Un parent saisi dans le formulaire : nouveau, ou déjà connu (frère ou sœur inscrit).
 class _Parent {
@@ -74,6 +112,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
   String? _classe;
   final _parents = <_Parent>[];
   final _pieces = <String>{};
+  List<PieceDossier> _listePieces = piecesStandard;
   PhotoPrete? _photo;
   bool _envoi = false;
   bool _pret = false;
@@ -124,7 +163,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
     final sites = await _sitesOuJInscris(o);
     final classes = annee == null
         ? <Map<String, Object?>>[]
-        : (await db.getAll('''SELECT c.*, s.code AS code_site, s.nom AS site, n.nom AS niveau, n.ordre AS ordre_niveau,
+        : (await db.getAll('''SELECT c.*, s.code AS code_site, s.nom AS site, n.nom AS niveau, n.ordre AS ordre_niveau, n.cycle AS cycle,
                  (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
                   AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
                FROM classes c JOIN niveaux n ON n.id = c.niveau_id JOIN sites s ON s.id = c.site_id
@@ -152,6 +191,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
         ),
     ];
     final peutEncaisser = await jAiLeDroitQuelquePart(o, 'encaisser');
+    final listePieces = await piecesDe(o);
 
     Map<String, Object?>? existant;
     String? photo;
@@ -186,13 +226,14 @@ class _InscrireScreenState extends State<InscrireScreen> {
       _plafond = (org['reductions_plafond'] as int?) ?? 100;
       _arrivee = org['arrivee_par_defaut'] as String? ?? 'mois';
       _peutEncaisser = peutEncaisser;
+      _listePieces = listePieces;
       _existant = existant;
       _photoExistante = photo;
       _parents.addAll(parents);
       if (existant != null) {
         _type = 'reinscription';
         _choisi = true;
-        _pieces.addAll('${existant['pieces_dossier'] ?? ''}'.split(',').where(piecesDossier.containsKey));
+        _pieces.addAll('${existant['pieces_dossier'] ?? ''}'.split(',').where((c) => c.isNotEmpty));
       }
       _pret = true;
     });
@@ -515,7 +556,14 @@ class _InscrireScreenState extends State<InscrireScreen> {
   bool get _identiteOk =>
       _reinscription || (_nom.text.trim().isNotEmpty && _prenoms.text.trim().isNotEmpty && _sexe != null);
   bool get _contactsOk => _parents.isNotEmpty && _parents.any((p) => p.telephone != null);
-  bool get _piecesOk => _pieces.isNotEmpty;
+  /// Les pièces qui concernent cet élève (admission, cycle de la classe choisie).
+  List<PieceDossier> get _piecesConcernees =>
+      _listePieces.where((p) => p.concerne(_type, _classeChoisie?['cycle'] as String?)).toList();
+
+  bool get _piecesOk {
+    final obligatoires = _piecesConcernees.where((p) => p.obligatoire);
+    return obligatoires.isEmpty ? _pieces.isNotEmpty : obligatoires.every((p) => _pieces.contains(p.code));
+  }
   bool get _classeOk => _classe != null;
   bool get _fraisOk => _classe != null;
 
@@ -598,7 +646,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
     setState(() => _envoi = true);
     final maintenant = _maintenant();
     String? val(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
-    final pieces = piecesDossier.keys.where(_pieces.contains).join(',');
+    final pieces = piecesEnTexte(_pieces, _listePieces) ?? '';
     late String eleveId;
     try {
       await db.writeTransaction((tx) async {
@@ -1085,19 +1133,23 @@ class _InscrireScreenState extends State<InscrireScreen> {
         numero: 3,
         titre: 'Pièces du dossier',
         complet: _piecesOk,
-        sousTitre: '${_pieces.length}/${piecesDossier.length} · facultatives',
+        sousTitre: '${_piecesConcernees.where((p) => _pieces.contains(p.code)).length}/${_piecesConcernees.length}'
+            '${_piecesConcernees.any((p) => p.obligatoire) ? ' · * obligatoire' : ' · facultatives'}',
         enfants: [
           _Grille(colonnes: 3, largeurMin: 180, espacement: 0, enfants: [
-            for (final p in piecesDossier.entries)
+            for (final p in _piecesConcernees)
               CheckboxListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 controlAffinity: ListTileControlAffinity.leading,
-                value: _pieces.contains(p.key),
-                title: Text(p.value),
-                onChanged: (v) => setState(() => v == true ? _pieces.add(p.key) : _pieces.remove(p.key)),
+                value: _pieces.contains(p.code),
+                title: Text(p.obligatoire ? '${p.libelle} *' : p.libelle),
+                onChanged: (v) => setState(() => v == true ? _pieces.add(p.code) : _pieces.remove(p.code)),
               ),
           ]),
+          if (_piecesConcernees.any((p) => p.obligatoire && !_pieces.contains(p.code)))
+            Text("Une pièce obligatoire manquante n'empêche pas l'inscription : elle sera signalée sur la fiche.",
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ],
       );
 
@@ -1283,7 +1335,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
           cle('Site', c == null ? null : '${c['site']}'),
           cle('Tuteur principal', tuteur),
           cle('Resp. financier', payeur),
-          cle('Pièces', '${_pieces.length}/${piecesDossier.length}'),
+          cle('Pièces', '${_piecesConcernees.where((p) => _pieces.contains(p.code)).length}/${_piecesConcernees.length}'),
           if (_freres.isNotEmpty) ...[
             const SizedBox(height: 6),
             Center(child: Etat('Fratrie : ${_freres.length + 1} enfants', ton: Ton.regle, icone: Icons.family_restroom)),

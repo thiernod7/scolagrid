@@ -65,6 +65,12 @@ Future<void> enregistrerPhoto({required String orgId, required String eleveId, r
           'VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?)',
           [orgId, eleveId, photo.type, photo.base64, monId, m, m]);
     }
+    // La pièce « Photo d'identité » se coche toute seule.
+    final e = await t.getOptional('SELECT pieces_dossier FROM eleves WHERE id = ?', [eleveId]);
+    final pieces = '${e?['pieces_dossier'] ?? ''}'.split(',').where((x) => x.isNotEmpty).toList();
+    if (e != null && !pieces.contains('photo')) {
+      await t.execute('UPDATE eleves SET pieces_dossier = ?, updated_at = ? WHERE id = ?', [[...pieces, 'photo'].join(','), m, eleveId]);
+    }
   });
 }
 

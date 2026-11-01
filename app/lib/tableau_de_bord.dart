@@ -47,6 +47,9 @@ class _Mesures {
   final parNiveau = <(String, String?, int)>[];
   int personnel = 0;
 
+  /// Élèves à qui manque une pièce obligatoire : (id, nom, classe, pièces manquantes).
+  final incomplets = <(String, String, String, List<String>)>[];
+
   /// Retiré de la scolarité pour des arrivées en cours d'année.
   int retraitsArrivee = 0;
 }
@@ -111,7 +114,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
   // Les inscriptions de l'année.
   final inscriptions = await db.getAll('''
       SELECT i.id, i.eleve_id, i.site_id, i.type_admission, i.statut, i.date_effective,
-             i.arrivee_mode, i.arrivee_retrait_gnf,
+             i.arrivee_mode, i.arrivee_retrait_gnf, e.pieces_dossier,
              c.niveau_id, c.nom AS classe, n.nom AS niveau, n.cycle, n.ordre, e.sexe, e.nom, e.prenoms
       FROM inscriptions i JOIN classes c ON c.id = i.classe_id JOIN niveaux n ON n.id = c.niveau_id
       JOIN eleves e ON e.id = i.eleve_id
@@ -138,6 +141,21 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
     niveaux[k] = (n?.$1 ?? '${i['niveau']}', i['cycle'] as String?, (n?.$3 ?? 0) + 1);
   }
   m.parNiveau.addAll(niveaux.values);
+
+  // Dossiers incomplets : une pièce obligatoire qui concerne l'élève manque.
+  final pieces = (await piecesDe(o)).where((p) => p.obligatoire).toList();
+  if (pieces.isNotEmpty) {
+    for (final i in actives) {
+      final fournies = '${i['pieces_dossier'] ?? ''}'.split(',').toSet();
+      final manquantes = [
+        for (final p in pieces)
+          if (p.concerne(i['type_admission'] as String?, i['cycle'] as String?) && !fournies.contains(p.code)) p.libelle,
+      ];
+      if (manquantes.isNotEmpty) {
+        m.incomplets.add((i['eleve_id'] as String, '${i['nom']} ${i['prenoms']}', '${i['classe']}', manquantes));
+      }
+    }
+  }
 
   // Ce qui est dû, réglé et en retard : mêmes calculs que la caisse.
   final frais = await db.getAll('SELECT * FROM frais WHERE annee_id = ?', [annee['id']]);
@@ -373,7 +391,8 @@ class _TableauDeBordState extends State<TableauDeBord> {
     final gris = schema.onSurfaceVariant;
     final telephone = MediaQuery.sizeOf(context).width < 640;
     final recouvrement = m.du == 0 ? 0.0 : m.regle * 100 / m.du;
-    final seuil = recouvrement >= 70 ? NiveauSeuil.bon : (recouvrement >= 60 ? NiveauSeuil.vigilance : NiveauSeuil.alerte);
+    final cible = (widget.organisation['seuil_recouvrement'] as int?) ?? 70;
+    final seuil = recouvrement >= cible ? NiveauSeuil.bon : (recouvrement >= cible - 10 ? NiveauSeuil.vigilance : NiveauSeuil.alerte);
     double? variation(int a, int? b) => b == null || b == 0 ? (b == 0 && a == 0 ? 0 : null) : (a - b) * 100 / b;
 
     final enTete = Wrap(
@@ -435,7 +454,7 @@ class _TableauDeBordState extends State<TableauDeBord> {
               _PremierJour(importer: widget.importer, inscrire: widget.inscrire),
               const SizedBox(height: 20),
             ],
-            if (widget.aFaire.isNotEmpty) ...[
+            if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty) ...[
               const TitreSection('À faire'),
               Container(
                 decoration: BoxDecoration(
@@ -447,6 +466,22 @@ class _TableauDeBordState extends State<TableauDeBord> {
                   for (var i = 0; i < widget.aFaire.length; i++) ...[
                     if (i > 0) Divider(height: 1, color: schema.outlineVariant),
                     widget.aFaire[i],
+                  ],
+                  if (m.incomplets.isNotEmpty) ...[
+                    if (widget.aFaire.isNotEmpty) Divider(height: 1, color: schema.outlineVariant),
+                    InkWell(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => _DossiersIncompletsScreen(espace: widget.espace, dossiers: m.incomplets))),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(children: [
+                          Etat('${m.incomplets.length}', ton: Ton.attente),
+                          const SizedBox(width: 12),
+                          const Expanded(child: Text('dossier(s) incomplet(s) : pièce obligatoire manquante', style: TextStyle(fontSize: 14))),
+                          Icon(Icons.chevron_right, size: 16, color: gris),
+                        ]),
+                      ),
+                    ),
                   ],
                 ]),
               ),
@@ -461,7 +496,7 @@ class _TableauDeBordState extends State<TableauDeBord> {
                   aide: "Part de ce qui est dû pour l'année qui a déjà été payé (réductions déduites).",
                   valeur: m.du == 0 ? '—' : pourcent(recouvrement),
                   seuil: m.du == 0 ? null : seuil,
-                  texteSeuil: 'seuil 70 %',
+                  texteSeuil: 'seuil $cible %',
                   barre: m.du == 0 ? null : recouvrement,
                   detail: Padding(
                     padding: const EdgeInsets.only(top: 6),
@@ -694,6 +729,35 @@ class _ArrieresScreen extends StatelessWidget {
           ]),
         ),
       ),
+    );
+  }
+}
+
+/// Les élèves dont il manque une pièce obligatoire.
+class _DossiersIncompletsScreen extends StatelessWidget {
+  const _DossiersIncompletsScreen({required this.espace, required this.dossiers});
+
+  final Espace espace;
+  final List<(String, String, String, List<String>)> dossiers;
+
+  @override
+  Widget build(BuildContext context) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    return _Page(
+      titre: 'Dossiers incomplets',
+      corps: ListView(padding: const EdgeInsets.all(16), children: [
+        Text('${dossiers.length} élève(s) · touchez un élève pour cocher ses pièces sur sa fiche.', style: TextStyle(fontSize: 13, color: gris)),
+        const SizedBox(height: 8),
+        for (final (id, nom, classe, manquantes) in dossiers)
+          Card(
+            child: ListTile(
+              title: Text(nom),
+              subtitle: Text('$classe · manque : ${manquantes.join(', ')}'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: espace, eleveId: id))),
+            ),
+          ),
+      ]),
     );
   }
 }

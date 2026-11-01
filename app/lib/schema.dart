@@ -36,6 +36,8 @@ const schema = Schema([
     Column.text('date_creation'),
     Column.text('mention_recu'),
     Column.integer('signature_documents'),
+    Column.text('blocage_documents'),
+    Column.integer('seuil_recouvrement'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -123,6 +125,19 @@ const schema = Schema([
     Column.text('updated_at'),
   ]),
   // Échéances d'un frais : tranches ou mois de la scolarité.
+  // Pièces du dossier que l'école demande.
+  Table('pieces_dossier', [
+    Column.text('organisation_id'),
+    Column.text('code'),
+    Column.text('libelle'),
+    Column.text('admissions'),
+    Column.text('cycles'),
+    Column.integer('obligatoire'),
+    Column.integer('ordre'),
+    Column.integer('actif'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
   // Logo, signature et cachet de l'école (base64), pour les documents.
   Table('images_ecole', [
     Column.text('organisation_id'),
@@ -434,6 +449,7 @@ const schema = Schema([
     Column.text('type_document'),
     Column.integer('rang'),
     Column.text('motif'),
+    Column.text('motif_levee'),
     Column.text('par'),
     Column.text('poste_id'),
     Column.text('created_at'),
