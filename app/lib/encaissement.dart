@@ -335,6 +335,12 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
   final _lignes = <_LigneEleve>[];
   List<Map<String, Object?>> _freres = [];
   bool _envoi = false;
+  final _cherche = TextEditingController();
+  String? _ecole;
+  String? _site;
+  String? _ville;
+  String? _annee;
+  String? _moi;
 
   @override
   void initState() {
@@ -352,6 +358,20 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
 
   Future<void> _preparer() async {
     await _verifierClotures();
+    final o = widget.espace.orgId;
+    final ecole = await db.getOptional('SELECT coalesce(nom_officiel, nom) AS nom, ville FROM organisations WHERE id = ?', [o]);
+    final sites = await db.getAll('SELECT id, nom, ville FROM sites WHERE organisation_id = ? ORDER BY created_at', [o]);
+    Map<String, Object?>? site = sites.length == 1 ? sites.first : null;
+    for (final x in sites) {
+      if (x['id'] == widget.espace.siteId) site = x;
+    }
+    final annee = await db.getOptional('SELECT libelle FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [o]);
+    final moi = await db.getOptional('SELECT nom_complet FROM personnel WHERE organisation_id = ? AND user_id = ?', [o, monId]);
+    _ecole = ecole?['nom'] as String?;
+    _site = site?['nom'] as String?;
+    _ville = (site?['ville'] ?? ecole?['ville']) as String?;
+    _annee = annee?['libelle'] as String?;
+    _moi = moi?['nom_complet'] as String?;
     // Le carnet en cours et la feuille suivante, d'après le dernier reçu de ce poste.
     final poste = await cePoste();
     final dernier = poste == null
@@ -402,20 +422,18 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                 '''SELECT e.id, e.nom, e.prenoms FROM eleves_contacts ec JOIN eleves e ON e.id = ec.eleve_id
                    WHERE ec.contact_id = ? AND ec.responsable_financier = 1 AND e.id <> ?''',
                 [rf['id'], eleveId]))
-            .map((x) => Map<String, Object?>.from(x))
+            .map((x) => <String, Object?>{...x, 'payeur': rf['id']})
             .toList();
+    final photo = await db.getOptional('SELECT updated_at FROM photos_eleves WHERE eleve_id = ?', [eleveId]);
+    if (!mounted) return;
     setState(() {
-      _lignes.add(_LigneEleve(Map.of(eleve), Map.of(ins), frais, regleAnnuelle: annuelle == null ? null : Map.of(annuelle)));
+      _lignes.add(_LigneEleve({...eleve, 'payeur_id': rf?['id'], 'photo_maj': photo?['updated_at']}, Map.of(ins), frais,
+          regleAnnuelle: annuelle == null ? null : Map.of(annuelle)));
       _freres = [
         ..._freres,
         ...freres.where((f) => !_freres.any((x) => x['id'] == f['id'])),
       ].where((f) => !_lignes.any((l) => l.eleve['id'] == f['id'])).toList();
     });
-  }
-
-  Future<void> _chercherEleve() async {
-    final choix = await showDialog<String>(context: context, builder: (_) => _ChoisirEleve(orgId: widget.espace.orgId));
-    if (choix != null) await _ajouterEleve(choix);
   }
 
   int get _total => _lignes.fold(0, (s, l) => s + l.total);
@@ -508,32 +526,75 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       if (mounted) setState(() => _envoi = false);
     }
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => RecuScreen(espace: widget.espace, encaissementId: id)));
+    final navigation = Navigator.of(context);
+    // Le reçu s'imprime tout de suite ; l'écran du reçu reste ouvert ensuite.
+    unawaited(_imprimerRecu(id));
+    navigation.pushReplacement(MaterialPageRoute(builder: (_) => RecuScreen(espace: widget.espace, encaissementId: id)));
   }
 
   @override
   Widget build(BuildContext context) {
-    final texte = Theme.of(context).textTheme;
-    final bouton = FilledButton.icon(
-      onPressed: _envoi ? null : _valider,
-      icon: const Icon(Icons.receipt_long),
-      label: Text(_envoi ? 'Enregistrement…' : 'Valider et voir le reçu'),
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final largeur = MediaQuery.sizeOf(context).width;
+    final telephone = largeur < 640;
+    final maintenant = DateTime.now();
+    final technique = '${_dateLisible(_date(maintenant))} à ${maintenant.hour.toString().padLeft(2, '0')}:'
+        '${maintenant.minute.toString().padLeft(2, '0')}';
+    final bouton = SizedBox(
+      height: 40,
+      child: FilledButton.icon(
+        onPressed: _envoi ? null : _valider,
+        icon: const Icon(Icons.print_outlined, size: 16),
+        label: Text(_envoi ? 'Enregistrement…' : 'Enregistrer et imprimer'),
+      ),
     );
-    return _Page(
-      titre: 'Encaisser',
-      largeurMax: 1280,
-      corps: LayoutBuilder(builder: (context, c) {
-      // Sur PC, le reçu se remplit en direct à droite pendant la saisie.
-      final large = c.maxWidth >= 900;
-      final liste = ListView(padding: const EdgeInsets.all(16), children: [
-        if (_nonClos.isNotEmpty)
-          Card(
-            color: Couleurs.attenteFond,
-            child: ListTile(
-              leading: const Icon(Icons.lock_clock, color: Couleurs.attente),
-              title: Text("Caisse du ${_dateLisible(_nonClos.first['jour'])} pas encore clôturée"),
-              subtitle: const Text("Clôturez-la avant d'encaisser aujourd'hui : comptez les espèces de ce jour-là."),
-              trailing: FilledButton(
+    BoxDecoration carte() => BoxDecoration(
+          color: schema.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: schema.outlineVariant),
+        );
+    Widget champ(String libelle, Widget enfant) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(libelle, style: TextStyle(fontSize: 14, color: gris)),
+          const SizedBox(height: 6),
+          SizedBox(height: 36, child: enfant),
+        ]);
+    InputDecoration fin({String? indice, bool actif = true}) => InputDecoration(
+          isDense: true,
+          hintText: indice,
+          hintStyle: TextStyle(fontSize: 14, color: gris),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          fillColor: actif ? schema.surface : Couleurs.doux(context),
+        );
+    const styleChamp = TextStyle(fontSize: 14);
+
+    final enTete = Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 12, children: [
+      const Text('Encaisser', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Text([_site, _annee].whereType<String>().join(' · '), style: TextStyle(fontSize: 14, color: gris)),
+      ),
+    ]);
+
+    final alerte = _nonClos.isEmpty
+        ? null
+        : Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Couleurs.attenteFond,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Couleurs.attente.withValues(alpha: .35)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.warning_amber, size: 16, color: Couleurs.attente),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text("La caisse du ${_dateLisible(_nonClos.first['jour'])} n'a pas été clôturée. "
+                    "Comptez les espèces de ce jour-là avant d'encaisser aujourd'hui.",
+                    style: const TextStyle(fontSize: 14)),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
                 onPressed: () async {
                   await cloturerCaisse(context,
                       orgId: widget.espace.orgId, siteId: _nonClos.first['site_id'] as String, jour: '${_nonClos.first['jour']}');
@@ -541,263 +602,632 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                 },
                 child: const Text('Clôturer'),
               ),
+            ]),
+          );
+
+    // Carte 1 : qui paie, quand, qui encaisse.
+    final carteQui = Container(
+      padding: const EdgeInsets.all(16),
+      decoration: carte(),
+      child: LayoutBuilder(builder: (context, c) {
+        final n = c.maxWidth >= 640 ? 4 : (c.maxWidth >= 320 ? 2 : 1);
+        final l = (c.maxWidth - 12 * (n - 1)) / n;
+        return Wrap(spacing: 12, runSpacing: 12, children: [
+          SizedBox(
+            width: l,
+            child: champ(
+                'Payeur',
+                TextField(
+                  controller: _payeur,
+                  onChanged: (_) => setState(() {}),
+                  textCapitalization: TextCapitalization.words,
+                  style: styleChamp,
+                  decoration: fin(indice: 'Nom du payeur'),
+                )),
+          ),
+          SizedBox(
+            width: l,
+            child: champ(
+                'Date effective',
+                TextField(
+                  key: ValueKey(_jourPaiement),
+                  readOnly: true,
+                  controller: TextEditingController(text: _dateLisible(_date(_jourPaiement))),
+                  style: styleChamp,
+                  decoration: fin().copyWith(suffixIcon: Icon(Icons.calendar_today_outlined, size: 16, color: gris)),
+                  onTap: () async {
+                    final d = await _choisirDate(context, _jourPaiement, premier: DateTime.now().subtract(const Duration(days: 60)));
+                    if (d != null) setState(() => _jourPaiement = d);
+                  },
+                )),
+          ),
+          SizedBox(
+            width: l,
+            child: champ(
+                'Date technique',
+                TextField(
+                    enabled: false,
+                    controller: TextEditingController(text: technique),
+                    style: styleChamp.copyWith(color: gris),
+                    decoration: fin(actif: false))),
+          ),
+          SizedBox(
+            width: l,
+            child: champ(
+                'Encaissé par',
+                TextField(
+                    enabled: false,
+                    controller: TextEditingController(text: _moi ?? ''),
+                    style: styleChamp.copyWith(color: gris),
+                    decoration: fin(actif: false))),
+          ),
+        ]);
+      }),
+    );
+
+    // Carte 2 : mode de paiement et carnet papier.
+    final carteMode = Container(
+      padding: const EdgeInsets.all(16),
+      decoration: carte(),
+      child: LayoutBuilder(builder: (context, c) {
+        final n = c.maxWidth >= 640 ? 3 : (c.maxWidth >= 320 ? 2 : 1);
+        final l = (c.maxWidth - 12 * (n - 1)) / n;
+        return Wrap(spacing: 12, runSpacing: 12, children: [
+          SizedBox(
+            width: l,
+            child: champ(
+              'Mode de paiement',
+              MenuCompact<String>(
+                largeur: l,
+                valeur: _mode == 'especes' ? null : _mode,
+                tous: 'Espèces',
+                choix: {for (final m in modesPaiement.entries) if (m.key != 'especes') m.key: m.value},
+                onChanged: (v) => setState(() => _mode = v ?? 'especes'),
+              ),
             ),
           ),
-        TextField(
-            controller: _payeur,
-            onChanged: (_) => setState(() {}),
-            textCapitalization: TextCapitalization.words,
-            decoration: _champ('Reçu de (qui paie)')),
-        const SizedBox(height: 12),
-        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          Text('Mode', style: texte.bodyMedium),
-          for (final m in modesPaiement.entries)
-            ChoiceChip(label: Text(m.value), selected: _mode == m.key, onSelected: (_) => setState(() => _mode = m.key)),
-        ]),
-        if (_mode != 'especes') ...[
-          const SizedBox(height: 10),
-          TextField(controller: _reference, decoration: _champ('Référence', aide: 'N° de transaction (SMS), de chèque ou de virement')),
-        ],
-        const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: TextField(controller: _carnet, decoration: _champ('Carnet', aide: 'Ex. Vert n° 3'))),
-          const SizedBox(width: 8),
-          Expanded(child: TextField(controller: _feuille, onChanged: (_) => setState(() {}), decoration: _champ('N° du reçu papier'))),
-        ]),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () async {
-            final d = await _choisirDate(context, _jourPaiement, premier: DateTime.now().subtract(const Duration(days: 60)));
-            if (d != null) setState(() => _jourPaiement = d);
-          },
-          icon: const Icon(Icons.event),
-          label: Text('Date du paiement : ${_dateLisible(_date(_jourPaiement))}'),
+          if (_mode != 'especes')
+            SizedBox(
+              width: l,
+              child: champ(
+                  _mode == 'cheque' ? 'N° du chèque' : 'Référence de la transaction',
+                  TextField(
+                    controller: _reference,
+                    onChanged: (_) => setState(() {}),
+                    style: styleMono.copyWith(fontSize: 14),
+                    decoration: fin(indice: 'Obligatoire'),
+                  )),
+            ),
+          SizedBox(
+            width: l,
+            child: champ(
+                'Carnet',
+                TextField(
+                    controller: _carnet,
+                    onChanged: (_) => setState(() {}),
+                    style: styleChamp,
+                    decoration: fin(indice: 'Ex. Vert n° 3'))),
+          ),
+          SizedBox(
+            width: l,
+            child: champ(
+                'Feuille du carnet papier',
+                TextField(
+                    controller: _feuille,
+                    onChanged: (_) => setState(() {}),
+                    style: styleMono.copyWith(fontSize: 14),
+                    decoration: fin(indice: '001452'))),
+          ),
+        ]);
+      }),
+    );
+
+    // Carte 3 : les lignes du reçu.
+    final recherche = SizedBox(
+      width: telephone ? double.infinity : 320,
+      height: 36,
+      child: TextField(
+        controller: _cherche,
+        onChanged: (_) => setState(() {}),
+        style: styleChamp,
+        decoration: fin(indice: 'Ajouter un élève — nom, matricule, classe').copyWith(
+          prefixIcon: Icon(Icons.search, size: 16, color: gris),
+          prefixIconConstraints: const BoxConstraints(minWidth: 34),
+          suffixIcon: _cherche.text.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close, size: 16),
+                  onPressed: () => setState(_cherche.clear),
+                ),
         ),
-        const SizedBox(height: 16),
-        Row(children: [
-          Expanded(child: Text('Élèves', style: texte.titleMedium)),
-          TextButton.icon(onPressed: _chercherEleve, icon: const Icon(Icons.person_search), label: const Text('Ajouter un élève')),
-        ]),
-        if (_freres.isNotEmpty)
-          Wrap(spacing: 8, children: [
-            const Text('Même payeur : '),
-            for (final f in _freres)
-              ActionChip(
-                avatar: const Icon(Icons.add, size: 18),
-                label: Text('${f['prenoms']} ${f['nom']}'),
-                onPressed: () => _ajouterEleve(f['id'] as String),
+      ),
+    );
+    final q = '%${_cherche.text.trim().toUpperCase()}%';
+    final resultats = _cherche.text.trim().length < 2
+        ? null
+        : Requete(
+            '''SELECT e.id, e.nom, e.prenoms, e.matricule, c.nom AS classe,
+                 (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj
+               FROM eleves e
+               JOIN inscriptions i ON i.eleve_id = e.id AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
+               JOIN annees_scolaires a ON a.id = i.annee_id AND a.en_cours = 1
+               JOIN classes c ON c.id = i.classe_id
+               WHERE e.organisation_id = ? AND (upper(e.nom || ' ' || e.prenoms) LIKE ? OR upper(e.prenoms || ' ' || e.nom) LIKE ?
+                 OR e.matricule LIKE ? OR upper(c.nom) LIKE ?)
+               ORDER BY e.nom, e.prenoms LIMIT 8''',
+            parametres: [widget.espace.orgId, q, q, q, q],
+            builder: (context, eleves) => Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              decoration: BoxDecoration(
+                color: schema.surface,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: schema.outlineVariant),
+                boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 12, offset: Offset(0, 4))],
               ),
-          ]),
-        for (final l in _lignes)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Expanded(
-                    child: Text('${_nomEleve(l.eleve)} · ${l.inscription['classe']}', style: texte.titleSmall),
-                  ),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() => _lignes.remove(l))),
-                ]),
-                if (l.frais.isEmpty) const Text('Aucun frais configuré pour sa classe.'),
-                if (l.regleAnnuelle != null)
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: l.annuel,
-                    title: Text("Toute l'année d'un coup : ${l.regleAnnuelle!['libelle']}"),
-                    subtitle: const Text('La scolarité entière est payée maintenant, avec la remise.'),
-                    onChanged: (v) async {
-                      final frais = await situationInscription(l.inscription['id'] as String, paiementAnnuel: v);
-                      setState(() {
-                        l.annuel = v;
-                        l.frais = frais;
-                        for (final f in frais.where((f) => f.type == 'scolarite')) {
-                          l.montants[f.id]!.text = v ? '${f.reste}' : '';
-                        }
-                      });
-                    },
-                  ),
-                if (l.frais.isNotEmpty)
-                  Row(children: [
-                    Expanded(
-                      child: TextField(
-                        controller: l.global,
-                        keyboardType: TextInputType.number,
-                        decoration: _champ('Montant versé pour cet élève', suffixe: 'GNF',
-                            aide: 'Réparti : inscription, puis scolarité tranche par tranche'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton.tonal(
-                      onPressed: () => setState(() {
-                        final m = int.tryParse(l.global.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-                        final r = repartir(m, l.frais);
-                        for (final f in l.frais) {
-                          l.montants[f.id]!.text = r[f.id] == null ? '' : '${r[f.id]}';
-                        }
-                      }),
-                      child: const Text('Répartir'),
-                    ),
-                  ]),
-                for (final f in l.frais)
+              child: Column(children: [
+                if (eleves.isEmpty)
                   Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Row(children: [
-                      Expanded(
-                        child: Text('${f.libelle}\nreste ${gnf(f.reste)}',
-                            style: TextStyle(color: f.reste <= 0 ? Couleurs.neutre : null)),
-                      ),
-                      SizedBox(
-                        width: 150,
-                        child: TextField(
-                          controller: l.montants[f.id],
-                          enabled: f.reste > 0,
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) => setState(() {}),
-                          decoration: _champ(f.reste <= 0 ? 'Payé' : 'Montant', suffixe: 'GNF'),
+                    padding: const EdgeInsets.all(16),
+                    child: Text('Aucun élève inscrit cette année ne correspond.', style: TextStyle(fontSize: 14, color: gris)),
+                  ),
+                for (final e in eleves)
+                  InkWell(
+                    onTap: () async {
+                      setState(_cherche.clear);
+                      await _ajouterEleve(e['id'] as String);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Row(children: [
+                        PhotoEleve(eleveId: e['id'] as String, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: 36),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(_nomEleve(e), style: const TextStyle(fontSize: 14)),
+                            Text('${e['classe']} · ${e['matricule']}',
+                                overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                          ]),
                         ),
-                      ),
-                    ]),
+                        if (_lignes.any((l) => l.eleve['id'] == e['id'])) const Etat('déjà sur le reçu'),
+                      ]),
+                    ),
                   ),
               ]),
             ),
-          ),
-        if (!large) ...[
-          const SizedBox(height: 16),
-          Text('Total : ${gnf(_total)}', style: texte.titleLarge),
-          const SizedBox(height: 12),
-          bouton,
-        ],
-      ]);
-      if (!large) return liste;
-      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: liste),
-        SizedBox(
-          width: 380,
-          child: ListView(padding: const EdgeInsets.fromLTRB(0, 16, 16, 16), children: [
-            _ApercuRecu(
-              payeur: _payeur.text.trim(),
-              mode: modesPaiement[_mode] ?? _mode,
-              feuille: _feuille.text.trim(),
-              lignes: [
-                for (final l in _lignes)
-                  for (final f in l.frais)
-                    if (l.montant(f.id) > 0) ('${l.eleve['nom']} ${l.eleve['prenoms']} · ${f.libelle}', l.montant(f.id)),
-              ],
-              total: _total,
+          );
+
+    final aujourdhui = DateTime.now();
+    Widget ligneEleve(_LigneEleve l) {
+      final reste = l.frais.fold(0, (s, f) => s + f.reste);
+      final freres = _freres.where((f) => f['payeur'] == l.eleve['payeur_id']).toList();
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            PhotoEleve(eleveId: l.eleve['id'] as String, nom: _nomEleve(l.eleve), version: l.eleve['photo_maj'] as String?, taille: 56),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_nomEleve(l.eleve), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Wrap(spacing: 10, children: [
+                    Text('${l.inscription['classe']}', style: TextStyle(fontSize: 12, color: gris)),
+                    Text('${l.eleve['matricule']}', style: styleMono.copyWith(fontSize: 12, color: gris)),
+                    Text('solde ${gnf(reste)}', style: TextStyle(fontSize: 12, color: gris)),
+                  ]),
+                ]),
+              ),
             ),
-            const SizedBox(height: 12),
-            bouton,
-            const SizedBox(height: 8),
-            Text('Fonctionne sans internet : le reçu part au serveur dès que possible.',
-                textAlign: TextAlign.center, style: texte.bodySmall),
+            if (!telephone) ...[
+              SizedBox(
+                width: 140,
+                height: 36,
+                child: TextField(
+                  controller: l.global,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.right,
+                  style: styleChamp,
+                  onChanged: (_) => setState(() => _repartir(l)),
+                  decoration: fin(indice: '0'),
+                ),
+              ),
+              TextButton(onPressed: reste <= 0 ? null : () => setState(() => _solder(l)), child: const Text('Solde')),
+            ],
+            IconButton(
+              tooltip: 'Retirer du reçu',
+              icon: Icon(Icons.delete_outline, size: 18, color: gris),
+              onPressed: () => setState(() => _lignes.remove(l)),
+            ),
+          ]),
+          if (telephone)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 40,
+                    child: TextField(
+                      controller: l.global,
+                      keyboardType: TextInputType.number,
+                      textAlign: TextAlign.right,
+                      onChanged: (_) => setState(() => _repartir(l)),
+                      decoration: fin(indice: 'Montant versé').copyWith(suffixText: 'GNF'),
+                    ),
+                  ),
+                ),
+                TextButton(onPressed: reste <= 0 ? null : () => setState(() => _solder(l)), child: const Text('Solde')),
+              ]),
+            ),
+          const SizedBox(height: 8),
+          if (l.frais.isEmpty)
+            Padding(
+              padding: EdgeInsets.only(left: telephone ? 0 : 68),
+              child: Text('Aucun frais configuré pour sa classe.', style: TextStyle(fontSize: 13, color: gris)),
+            ),
+          for (final f in l.frais)
+            Padding(
+              padding: EdgeInsets.only(left: telephone ? 0 : 52, top: 3, bottom: 3),
+              child: Row(children: [
+                SizedBox(
+                  width: telephone ? 120 : 180,
+                  child: Text(f.libelle, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: f.total == 0 ? 1 : ((f.paye + l.montant(f.id)) / f.total).clamp(0, 1).toDouble(),
+                        minHeight: 4,
+                        backgroundColor: Couleurs.doux(context),
+                        color: f.reste <= 0 ? Couleurs.regle : schema.primary,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 130,
+                  child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    Text(f.reste <= 0 ? 'payé' : gnf(f.reste),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: f.reste <= 0
+                              ? Couleurs.regle
+                              : (f.echeances.any((e) => e.enRetard(aujourdhui)) ? Couleurs.retard : gris),
+                        )),
+                    if (f.echeances.any((e) => e.enRetard(aujourdhui))) ...[
+                      const SizedBox(width: 4),
+                      const Tooltip(message: 'Échéance dépassée', child: Icon(Icons.warning_amber, size: 14, color: Couleurs.retard)),
+                    ],
+                  ]),
+                ),
+              ]),
+            ),
+          if (l.regleAnnuelle != null)
+            Padding(
+              padding: EdgeInsets.only(left: telephone ? 0 : 52, top: 6),
+              child: Row(children: [
+                Switch(
+                  value: l.annuel,
+                  onChanged: (v) async {
+                    final frais = await situationInscription(l.inscription['id'] as String, paiementAnnuel: v);
+                    setState(() {
+                      l.annuel = v;
+                      l.frais = frais;
+                      if (v) {
+                        _solder(l, sansOptions: true);
+                      } else {
+                        _repartir(l);
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text("Toute l'année d'un coup : ${l.regleAnnuelle!['libelle']}",
+                      style: const TextStyle(fontSize: 13)),
+                ),
+              ]),
+            ),
+          if (freres.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(left: telephone ? 0 : 52, top: 6),
+              child: InkWell(
+                onTap: () async {
+                  for (final f in freres) {
+                    await _ajouterEleve(f['id'] as String);
+                  }
+                },
+                child: Row(children: [
+                  Icon(Icons.group_outlined, size: 14, color: gris),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                        freres.length == 1
+                            ? 'Ajouter ${freres.first['prenoms']} ${freres.first['nom']}, même payeur'
+                            : 'Ajouter les ${freres.length} autres enfants de ${_payeur.text.trim().isEmpty ? 'ce payeur' : _payeur.text.trim()}',
+                        style: TextStyle(fontSize: 13, color: gris, decoration: TextDecoration.underline)),
+                  ),
+                ]),
+              ),
+            ),
+        ]),
+      );
+    }
+
+    final carteLignes = Container(
+      decoration: carte(),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                const Text('Lignes du reçu', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                const SizedBox(width: 12),
+                Text('${_lignes.length} élève${_lignes.length > 1 ? 's' : ''}', style: TextStyle(fontSize: 14, color: gris)),
+              ]),
+              recherche,
+            ],
+          ),
+        ),
+        ?resultats,
+        Divider(height: 1, color: schema.outlineVariant),
+        if (_lignes.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32),
+            child: Text('Ajouter un élève pour commencer.', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
+          ),
+        for (final l in _lignes) ligneEleve(l),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            const Spacer(),
+            Text('Total du reçu', style: TextStyle(fontSize: 14, color: gris)),
+            const SizedBox(width: 10),
+            Text(gnf(_total), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           ]),
         ),
-      ]);
+      ]),
+    );
+
+    final apercu = _ApercuRecu(
+      ecole: _ecole,
+      lieu: [_site, _ville].whereType<String>().join(' · '),
+      carnet: _carnet.text.trim(),
+      feuille: _feuille.text.trim(),
+      payeur: _payeur.text.trim(),
+      dateEffective: _dateLisible(_date(_jourPaiement)),
+      dateTechnique: technique.replaceFirst(' à ', ' '),
+      mode: modesPaiement[_mode] ?? _mode,
+      reference: _mode == 'especes' ? '' : _reference.text.trim(),
+      lignes: [
+        for (final l in _lignes)
+          if (l.total > 0) ('${l.eleve['nom']} ${l.eleve['prenoms']}', '${l.inscription['classe']}', l.total),
+      ],
+      total: _total,
+      encaissePar: _moi ?? '',
+    );
+
+    final gauche = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (alerte != null) ...[alerte, const SizedBox(height: 12)],
+      carteQui,
+      const SizedBox(height: 12),
+      carteMode,
+      const SizedBox(height: 12),
+      carteLignes,
+    ]);
+
+    return Scaffold(
+      appBar: Navigator.of(context).canPop() ? AppBar(toolbarHeight: 44) : null,
+      body: LayoutBuilder(builder: (context, c) {
+        final large = c.maxWidth >= 1000;
+        return Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1600),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(telephone ? 12 : 16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                enTete,
+                const SizedBox(height: 16),
+                if (large)
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: gauche),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 336,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        apercu,
+                        const SizedBox(height: 12),
+                        bouton,
+                        const SizedBox(height: 8),
+                        Text('Fonctionne sans internet : le reçu part au serveur dès que possible.',
+                            textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: gris)),
+                      ]),
+                    ),
+                  ])
+                else ...[
+                  gauche,
+                  const SizedBox(height: 12),
+                  bouton,
+                ],
+              ]),
+            ),
+          ),
+        );
       }),
     );
+  }
+
+  /// Répartit le montant saisi : inscription, puis scolarité tranche par tranche.
+  void _repartir(_LigneEleve l) {
+    final m = int.tryParse(l.global.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    final r = repartir(m, l.frais);
+    for (final f in l.frais) {
+      l.montants[f.id]!.text = r[f.id] == null ? '' : '${r[f.id]}';
+    }
+  }
+
+  /// Tout ce qui reste dû (sans les options, pour la remise annuelle).
+  void _solder(_LigneEleve l, {bool sansOptions = false}) {
+    final reste = l.frais.where((f) => !sansOptions || f.type != 'optionnel').fold(0, (s, f) => s + f.reste);
+    l.global.text = '$reste';
+    _repartir(l);
   }
 }
 
 /// Le reçu tel qu'il sera imprimé, rempli pendant la saisie.
 class _ApercuRecu extends StatelessWidget {
-  const _ApercuRecu({required this.payeur, required this.mode, required this.feuille, required this.lignes, required this.total});
+  const _ApercuRecu({
+    required this.ecole,
+    required this.lieu,
+    required this.carnet,
+    required this.feuille,
+    required this.payeur,
+    required this.dateEffective,
+    required this.dateTechnique,
+    required this.mode,
+    required this.reference,
+    required this.lignes,
+    required this.total,
+    required this.encaissePar,
+  });
 
-  final String payeur;
-  final String mode;
+  final String? ecole;
+  final String lieu;
+  final String carnet;
   final String feuille;
-  final List<(String, int)> lignes;
+  final String payeur;
+  final String dateEffective;
+  final String dateTechnique;
+  final String mode;
+  final String reference;
+  final List<(String, String, int)> lignes;
   final int total;
+  final String encaissePar;
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final doux = t.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
-    Widget ligne(String a, String b, {TextStyle? style}) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: Text(a, style: style ?? t.bodyMedium)),
-            const SizedBox(width: 12),
-            Text(b, style: style ?? t.bodyMedium),
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final petit = TextStyle(fontSize: 12, color: gris);
+    Widget kv(String a, String b) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 1),
+          child: Row(children: [
+            Expanded(child: Text(a, style: petit)),
+            Text(b, style: const TextStyle(fontSize: 12)),
           ]),
         );
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('REÇU DE PAIEMENT', textAlign: TextAlign.center, style: t.titleSmall?.copyWith(letterSpacing: 0.8)),
-          const SizedBox(height: 4),
-          Text('Numéro attribué à l\'enregistrement', textAlign: TextAlign.center, style: doux),
-          const Divider(height: 24),
-          ligne('Reçu de', payeur.isEmpty ? '…' : payeur),
-          ligne('Mode', mode),
-          ligne('Reçu papier', feuille.isEmpty ? '…' : feuille, style: styleMono),
-          const Divider(height: 24),
-          if (lignes.isEmpty) Text('Les montants saisis apparaissent ici.', style: doux),
-          for (final (libelle, montant) in lignes) ligne(libelle, gnf(montant)),
-          const Divider(height: 24),
-          ligne('TOTAL', gnf(total), style: t.titleMedium),
-        ]),
+    Widget trait() => Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1, color: schema.outlineVariant));
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: schema.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: schema.outlineVariant),
       ),
-    );
-  }
-}
-
-/// Recherche rapide d'un élève inscrit cette année.
-class _ChoisirEleve extends StatefulWidget {
-  const _ChoisirEleve({required this.orgId});
-
-  final String orgId;
-
-  @override
-  State<_ChoisirEleve> createState() => _ChoisirEleveState();
-}
-
-class _ChoisirEleveState extends State<_ChoisirEleve> {
-  final _q = TextEditingController();
-
-  @override
-  Widget build(BuildContext context) {
-    final m = '%${_q.text.trim().toUpperCase()}%';
-    return AlertDialog(
-      title: const Text('Choisir un élève'),
-      content: SizedBox(
-        width: 420,
-        height: 420,
-        child: Column(children: [
-          TextField(
-            controller: _q,
-            autofocus: true,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Nom ou matricule'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text((ecole ?? 'École').toUpperCase(),
+            textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: .3)),
+        if (lieu.isNotEmpty) Text(lieu, textAlign: TextAlign.center, style: petit),
+        const SizedBox(height: 6),
+        Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+            decoration: BoxDecoration(border: Border.all(color: schema.outline), borderRadius: BorderRadius.circular(3)),
+            child: const Text('ORIGINAL', style: TextStyle(fontSize: 12, letterSpacing: .6)),
           ),
-          Expanded(
-            child: Requete(
-              '''SELECT e.id, e.nom, e.prenoms, e.matricule, c.nom AS classe FROM eleves e
-                 JOIN inscriptions i ON i.eleve_id = e.id AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
-                 JOIN annees_scolaires a ON a.id = i.annee_id AND a.en_cours = 1
-                 JOIN classes c ON c.id = i.classe_id
-                 WHERE e.organisation_id = ? AND (upper(e.nom || ' ' || e.prenoms) LIKE ? OR upper(e.prenoms || ' ' || e.nom) LIKE ?
-                   OR e.matricule LIKE ?)
-                 ORDER BY e.nom, e.prenoms LIMIT 50''',
-              parametres: [widget.orgId, m, m, m],
-              builder: (context, eleves) => ListView(children: [
-                for (final e in eleves)
-                  ListTile(
-                    title: Text(_nomEleve(e)),
-                    subtitle: Text('${e['matricule']} · ${e['classe']}'),
-                    onTap: () => Navigator.pop(context, e['id'] as String),
-                  ),
-              ]),
-            ),
+        ),
+        trait(),
+        Text("Numéro attribué à l'enregistrement", style: petit),
+        const SizedBox(height: 2),
+        Text('Carnet ${carnet.isEmpty ? '–' : carnet} — feuille ${feuille.isEmpty ? '…' : feuille}',
+            style: styleMono.copyWith(fontSize: 12, color: gris)),
+        trait(),
+        kv('Payeur', payeur.isEmpty ? '—' : payeur),
+        kv('Date effective', dateEffective),
+        kv('Date technique', dateTechnique),
+        kv('Mode', mode),
+        if (reference.isNotEmpty) kv('Référence', reference),
+        trait(),
+        if (lignes.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text('Aucune ligne', textAlign: TextAlign.center, style: petit.copyWith(fontSize: 13)),
           ),
+        for (final (eleve, classe, montant) in lignes)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Text.rich(TextSpan(children: [
+                  TextSpan(text: eleve, style: const TextStyle(fontSize: 12)),
+                  TextSpan(text: ' ($classe)', style: petit),
+                ])),
+              ),
+              Text(_nombre(montant), style: const TextStyle(fontSize: 12)),
+            ]),
+          ),
+        trait(),
+        Row(children: [
+          const Expanded(child: Text('TOTAL', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+          Text(gnf(total), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         ]),
-      ),
+        const SizedBox(height: 10),
+        Text('Encaissé par ${encaissePar.isEmpty ? '…' : encaissePar}', style: petit),
+        const SizedBox(height: 12),
+        Container(height: 1, color: schema.outlineVariant.withValues(alpha: .6)),
+        const SizedBox(height: 6),
+        Text('Signature', style: petit),
+      ]),
     );
   }
 }
 
 // Reçu --------------------------------------------------------------------------
+
+Future<List<LigneRecu>> _lignesRecu(String encaissementId) async => [
+      for (final l in await db.getAll(
+          '''SELECT l.montant_gnf, f.libelle AS frais, e.nom, e.prenoms, e.matricule, c.nom AS classe
+             FROM lignes_encaissement l JOIN eleves e ON e.id = l.eleve_id JOIN frais f ON f.id = l.frais_id
+             JOIN inscriptions i ON i.id = l.inscription_id JOIN classes c ON c.id = i.classe_id
+             WHERE l.encaissement_id = ? ORDER BY e.nom, e.prenoms''',
+          [encaissementId]))
+        LigneRecu(
+          eleve: '${l['nom']} ${l['prenoms']}',
+          matricule: '${l['matricule']}',
+          classe: '${l['classe']}',
+          frais: '${l['frais']}',
+          montant: l['montant_gnf'] as int,
+        ),
+    ];
+
+/// Imprime un reçu. Chaque impression est comptée : la deuxième porte « DUPLICATA ».
+Future<void> _imprimerRecu(String encaissementId) async {
+  final r = await db.get('SELECT * FROM encaissements WHERE id = ?', [encaissementId]);
+  final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [r['organisation_id']]);
+  final par = await db.getOptional(
+      'SELECT nom_complet FROM personnel WHERE user_id = ? AND organisation_id = ?', [r['encaisse_par'], r['organisation_id']]);
+  final duplicata = (r['impressions'] as int? ?? 0) > 0;
+  final pdf = await recuPdf(
+    ecole: Map.of(ecole),
+    recu: Map.of(r),
+    lignes: await _lignesRecu(encaissementId),
+    encaissePar: '${par?['nom_complet'] ?? ''}',
+    duplicata: duplicata,
+  );
+  await _modifier('encaissements', encaissementId, {'impressions': (r['impressions'] as int? ?? 0) + 1});
+  await Printing.layoutPdf(onLayout: (_) async => pdf, name: '${r['numero']}${duplicata ? '-duplicata' : ''}');
+}
 
 class RecuScreen extends StatelessWidget {
   const RecuScreen({super.key, required this.espace, required this.encaissementId});
@@ -805,38 +1235,9 @@ class RecuScreen extends StatelessWidget {
   final Espace espace;
   final String encaissementId;
 
-  Future<List<LigneRecu>> _lignes() async => [
-        for (final l in await db.getAll(
-            '''SELECT l.montant_gnf, f.libelle AS frais, e.nom, e.prenoms, e.matricule, c.nom AS classe
-               FROM lignes_encaissement l JOIN eleves e ON e.id = l.eleve_id JOIN frais f ON f.id = l.frais_id
-               JOIN inscriptions i ON i.id = l.inscription_id JOIN classes c ON c.id = i.classe_id
-               WHERE l.encaissement_id = ? ORDER BY e.nom, e.prenoms''',
-            [encaissementId]))
-          LigneRecu(
-            eleve: '${l['nom']} ${l['prenoms']}',
-            matricule: '${l['matricule']}',
-            classe: '${l['classe']}',
-            frais: '${l['frais']}',
-            montant: l['montant_gnf'] as int,
-          ),
-      ];
+  Future<List<LigneRecu>> _lignes() => _lignesRecu(encaissementId);
 
-  Future<void> _imprimer(BuildContext context, Map<String, Object?> r) async {
-    final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [r['organisation_id']]);
-    final par = await db.getOptional(
-        'SELECT nom_complet FROM personnel WHERE user_id = ? AND organisation_id = ?', [r['encaisse_par'], r['organisation_id']]);
-    final duplicata = (r['impressions'] as int? ?? 0) > 0;
-    final pdf = await recuPdf(
-      ecole: Map.of(ecole),
-      recu: r,
-      lignes: await _lignes(),
-      encaissePar: '${par?['nom_complet'] ?? ''}',
-      duplicata: duplicata,
-    );
-    // Chaque impression est comptée : la deuxième porte « DUPLICATA ».
-    await _modifier('encaissements', encaissementId, {'impressions': (r['impressions'] as int? ?? 0) + 1});
-    await Printing.layoutPdf(onLayout: (_) async => pdf, name: '${r['numero']}${duplicata ? '-duplicata' : ''}');
-  }
+  Future<void> _imprimer(BuildContext context, Map<String, Object?> r) => _imprimerRecu(encaissementId);
 
   Future<void> _annuler(BuildContext context, Map<String, Object?> r) async {
     final motif = TextEditingController();
@@ -941,7 +1342,6 @@ class CaisseScreen extends StatefulWidget {
 
 class _CaisseScreenState extends State<CaisseScreen> {
   DateTime _jour = DateTime.now();
-  bool _mesRecus = false;
 
   /// Feuilles manquantes dans la suite d'un carnet (reçu perdu ou non saisi).
   static List<String> _trous(List<String> feuilles) {
@@ -955,93 +1355,365 @@ class _CaisseScreenState extends State<CaisseScreen> {
     return trous;
   }
 
+  String? _encaisseur;
+  String? _modeFiltre;
+
   @override
   Widget build(BuildContext context) {
-    final texte = Theme.of(context).textTheme;
-    return _Page(
-      titre: 'Caisse du ${_dateLisible(_date(_jour))}',
-      ajouter: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EncaisserScreen(espace: widget.espace))),
-      libelleAjouter: 'Encaisser',
-      corps: Requete(
-        '''SELECT e.*, p.nom_complet AS encaisseur FROM encaissements e
+    final jour = _date(_jour);
+    return Scaffold(
+      body: Requete(
+        '''SELECT e.*, p.nom_complet AS encaisseur,
+             (SELECT count(DISTINCT l.eleve_id) FROM lignes_encaissement l WHERE l.encaissement_id = e.id) AS nb_eleves,
+             (SELECT el.nom || ' ' || el.prenoms FROM lignes_encaissement l JOIN eleves el ON el.id = l.eleve_id
+              WHERE l.encaissement_id = e.id LIMIT 1) AS eleve
+           FROM encaissements e
            LEFT JOIN personnel p ON p.user_id = e.encaisse_par AND p.organisation_id = e.organisation_id
-           WHERE e.organisation_id = ? AND e.date_effective = ? AND (? = 0 OR e.encaisse_par = ?)
-           ORDER BY e.carnet, e.feuille, e.created_at''',
-        parametres: [widget.espace.orgId, _date(_jour), _mesRecus ? 1 : 0, monId],
-        builder: (context, recus) {
-          final valides = recus.where((r) => r['statut'] == 'valide');
-          final parMode = <String, int>{};
-          for (final r in valides) {
-            parMode[r['mode'] as String] = (parMode[r['mode']] ?? 0) + (r['total_gnf'] as int);
-          }
-          final total = parMode.values.fold(0, (s, v) => s + v);
-          final carnets = <String, List<String>>{};
-          for (final r in recus.where((r) => r['feuille'] != null)) {
-            carnets.putIfAbsent('${r['carnet'] ?? ''}', () => []).add(r['feuille'] as String);
-          }
-          return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 88), children: [
-            Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final d = await _choisirDate(context, _jour, premier: DateTime(2024));
-                  if (d != null) setState(() => _jour = d);
-                },
-                icon: const Icon(Icons.event),
-                label: const Text('Changer de jour'),
+           WHERE e.organisation_id = ? AND e.date_effective = ?
+           ORDER BY e.created_at''',
+        parametres: [widget.espace.orgId, jour],
+        builder: (context, recus) => Requete(
+          '''SELECT r.*, p.nom_complet AS par FROM remboursements r
+             LEFT JOIN personnel p ON p.user_id = r.verse_par AND p.organisation_id = r.organisation_id
+             WHERE r.organisation_id = ? AND r.statut = 'verse' AND r.verse_le = ? ORDER BY r.updated_at''',
+          parametres: [widget.espace.orgId, jour],
+          builder: (context, sorties) => _contenu(context, recus, sorties),
+        ),
+      ),
+    );
+  }
+
+  Widget _contenu(BuildContext context, Lignes tousRecus, Lignes toutesSorties) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final largeur = MediaQuery.sizeOf(context).width;
+    final telephone = largeur < 640;
+    final aujourdhui = _date(DateTime.now()) == _date(_jour);
+
+    final encaisseurs = <String>{
+      for (final r in tousRecus)
+        if (r['encaisseur'] != null) r['encaisseur'] as String,
+    }.toList()
+      ..sort();
+    final recus = tousRecus
+        .where((r) => (_encaisseur == null || r['encaisseur'] == _encaisseur) && (_modeFiltre == null || r['mode'] == _modeFiltre))
+        .toList();
+    final sorties = toutesSorties
+        .where((r) => (_encaisseur == null || r['par'] == _encaisseur) && (_modeFiltre == null || r['mode'] == _modeFiltre))
+        .toList();
+    final valides = recus.where((r) => r['statut'] == 'valide').toList();
+    final parMode = <String, int>{};
+    for (final r in valides) {
+      parMode[r['mode'] as String] = (parMode[r['mode']] ?? 0) + (r['total_gnf'] as int? ?? 0);
+    }
+    final entrees = parMode.values.fold(0, (s, v) => s + v);
+    final totalSorties = sorties.fold(0, (s, r) => s + (r['montant_gnf'] as int? ?? 0));
+    final carnets = <String, List<String>>{};
+    for (final r in recus.where((r) => r['feuille'] != null)) {
+      carnets.putIfAbsent('${r['carnet'] ?? ''}', () => []).add(r['feuille'] as String);
+    }
+
+    // Le livre de caisse : reçus et remboursements, dans l'ordre de la journée.
+    final mouvements = <(String, Map<String, Object?>)>[
+      for (final r in recus) ('recu', r),
+      for (final r in sorties) ('sortie', r),
+    ]..sort((a, b) => '${a.$2['created_at'] ?? a.$2['updated_at']}'.compareTo('${b.$2['created_at'] ?? b.$2['updated_at']}'));
+    String heure(Object? iso) {
+      final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();
+      return d == null ? '—' : '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    }
+
+    final enTete = Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 10,
+      children: [
+        Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 4, children: [
+          const Text('Journal de caisse', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+          Text('${aujourdhui ? "aujourd'hui" : 'journée du ${_dateLisible(_date(_jour))}'} · ${valides.length} reçu${valides.length > 1 ? 's' : ''}',
+              style: TextStyle(fontSize: 14, color: gris)),
+        ]),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          Requete(
+            "SELECT count(*) AS n FROM remboursements WHERE organisation_id = ? AND statut IN ('demande', 'autorise')",
+            parametres: [widget.espace.orgId],
+            builder: (context, x) => OutlinedButton.icon(
+              onPressed: () =>
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => RemboursementsScreen(espace: widget.espace))),
+              icon: const Icon(Icons.currency_exchange, size: 16),
+              label: Text((x.first['n'] as int? ?? 0) > 0 ? 'Remboursements · ${x.first['n']}' : 'Remboursements'),
+            ),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EncaisserScreen(espace: widget.espace))),
+            icon: const Icon(Icons.point_of_sale_outlined, size: 16),
+            label: const Text('Encaisser'),
+          ),
+        ]),
+      ],
+    );
+
+    final filtres = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      Container(
+        height: 36,
+        decoration: BoxDecoration(
+          color: schema.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: schema.outlineVariant),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
+            tooltip: 'Jour précédent',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.chevron_left, size: 18),
+            onPressed: () => setState(() => _jour = _jour.subtract(const Duration(days: 1))),
+          ),
+          InkWell(
+            onTap: () async {
+              final d = await _choisirDate(context, _jour, premier: DateTime(2024));
+              if (d != null) setState(() => _jour = d);
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text('${_dateLisible(_date(_jour))}${aujourdhui ? " — aujourd'hui" : ''}', style: const TextStyle(fontSize: 14)),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Jour suivant',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.chevron_right, size: 18),
+            onPressed: aujourdhui ? null : () => setState(() => _jour = _jour.add(const Duration(days: 1))),
+          ),
+        ]),
+      ),
+      MenuCompact<String>(
+        largeur: 200,
+        valeur: _encaisseur,
+        tous: 'Tous les encaisseurs',
+        choix: {for (final e in encaisseurs) e: e},
+        onChanged: (v) => setState(() => _encaisseur = v),
+      ),
+      MenuCompact<String>(
+        largeur: 180,
+        valeur: _modeFiltre,
+        tous: 'Tous les modes',
+        choix: modesPaiement,
+        onChanged: (v) => setState(() => _modeFiltre = v),
+      ),
+      if (_encaisseur != null || _modeFiltre != null)
+        TextButton.icon(
+          style: TextButton.styleFrom(foregroundColor: gris),
+          onPressed: () => setState(() {
+            _encaisseur = null;
+            _modeFiltre = null;
+          }),
+          icon: const Icon(Icons.close, size: 14),
+          label: const Text('Réinitialiser'),
+        ),
+    ]);
+
+    const entete = TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
+    final colonnesLarges = largeur >= 1024;
+    Widget cellule(double? l, Widget e, {TextAlign? a}) {
+      final c = Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: e);
+      return l == null ? Expanded(child: c) : SizedBox(width: l, child: c);
+    }
+
+    var solde = 0;
+    final lignes = <Widget>[];
+    for (final (sens, m) in mouvements) {
+      final annule = m['statut'] == 'annule';
+      final montant = (sens == 'recu' ? m['total_gnf'] : m['montant_gnf']) as int? ?? 0;
+      if (!annule) solde += sens == 'recu' ? montant : -montant;
+      lignes.add(InkWell(
+        onTap: sens == 'recu'
+            ? () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => RecuScreen(espace: widget.espace, encaissementId: m['id'] as String)))
+            : null,
+        child: Opacity(
+          opacity: annule ? .55 : 1,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
+            child: Row(children: [
+              if (!telephone) cellule(64, Text(heure(m['created_at'] ?? m['updated_at']), style: const TextStyle(fontSize: 14))),
+              cellule(
+                110,
+                sens == 'recu'
+                    ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('${m['feuille'] ?? m['numero'].toString().split('-').last}',
+                            overflow: TextOverflow.ellipsis, style: styleMono.copyWith(fontSize: 14)),
+                        if (m['carnet'] != null) Text('${m['carnet']}', overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                      ])
+                    : Text('Sortie', style: styleMono.copyWith(fontSize: 12, color: gris)),
               ),
-              FilterChip(label: const Text('Mes reçus seulement'), selected: _mesRecus, onSelected: (v) => setState(() => _mesRecus = v)),
-            ]),
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Total encaissé : ${gnf(total)}', style: texte.titleLarge),
-                  for (final m in parMode.entries) Text('${modesPaiement[m.key]} : ${gnf(m.value)}'),
-                  Text('${valides.length} reçu(s) valide(s), ${recus.length - valides.length} annulé(s)'),
-                  for (final c in carnets.entries)
-                    if (_trous(c.value).isNotEmpty)
-                      Text('Carnet ${c.key} : feuille(s) manquante(s) ${_trous(c.value).join(', ')}',
-                          style: TextStyle(color: Couleurs.attente)),
+              cellule(
+                null,
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(sens == 'recu' ? '${m['payeur_nom']}' : 'Remboursement · ${m['beneficiaire'] ?? ''}',
+                      overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                  if (m['apres_cloture'] == 1)
+                    const Text('saisi après la clôture', style: TextStyle(fontSize: 12, color: Couleurs.attente)),
+                  if (m['confirmation'] == 'en_attente')
+                    const Text("sous réserve d'encaissement", style: TextStyle(fontSize: 12, color: Couleurs.attente)),
                 ]),
               ),
-            ),
-            Requete(
-              "SELECT count(*) FILTER (WHERE statut = 'demande') AS d, count(*) FILTER (WHERE statut = 'autorise') AS a "
-              'FROM remboursements WHERE organisation_id = ?',
-              parametres: [widget.espace.orgId],
-              builder: (context, x) => Card(
-                child: ListTile(
-                  leading: const Icon(Icons.currency_exchange),
-                  title: const Text('Remboursements'),
-                  subtitle: Text('${x.first['d']} à autoriser · ${x.first['a']} à verser'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context)
-                      .push(MaterialPageRoute(builder: (_) => RemboursementsScreen(espace: widget.espace))),
+              if (colonnesLarges)
+                cellule(
+                  null,
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(
+                        sens == 'recu'
+                            ? ((m['nb_eleves'] as int? ?? 0) > 1 ? '${m['nb_eleves']} élèves' : '${m['eleve'] ?? ''}')
+                            : '${m['motif'] ?? ''}',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 14, color: gris)),
+                    Text('${modesPaiement[m['mode']] ?? m['mode']}${m['reference'] != null ? ' · ${m['reference']}' : ''}',
+                        overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                  ]),
                 ),
+              if (!telephone)
+                cellule(130, Text('${(sens == 'recu' ? m['encaisseur'] : m['par']) ?? ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+              cellule(
+                telephone ? 110 : 128,
+                Text(sens == 'recu' ? gnf(montant) : '',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w500, decoration: annule ? TextDecoration.lineThrough : null)),
               ),
-            ),
-            _ClotureDuJour(espace: widget.espace, jour: _date(_jour)),
-            for (final r in recus)
-              Card(
-                child: ListTile(
-                  leading: Icon(r['statut'] == 'annule' ? Icons.block : Icons.receipt_long,
-                      color: r['statut'] == 'annule' ? Couleurs.retard : null),
-                  title: Text('${gnf(r['total_gnf'])} · ${r['payeur_nom']}'),
-                  subtitle: Text([
-                    r['numero'],
-                    if (r['feuille'] != null) 'papier ${r['feuille']}',
-                    modesPaiement[r['mode']],
-                    if (r['encaisseur'] != null) r['encaisseur'],
-                    if (r['statut'] == 'annule') 'ANNULÉ',
-                    if (r['apres_cloture'] == 1) 'saisi après la clôture',
-                  ].join(' · ')),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => RecuScreen(espace: widget.espace, encaissementId: r['id'] as String))),
+              if (!telephone)
+                cellule(
+                  128,
+                  Text(sens == 'sortie' ? '− ${_nombre(montant)}' : '', textAlign: TextAlign.right, style: const TextStyle(fontSize: 14)),
                 ),
+              if (!telephone)
+                cellule(
+                  128,
+                  Text(_nombre(solde),
+                      textAlign: TextAlign.right,
+                      style: TextStyle(fontSize: 14, color: solde < 0 ? Couleurs.retard : gris)),
+                ),
+              SizedBox(width: 32, child: annule ? const Icon(Icons.block, size: 16, color: Couleurs.retard) : null),
+            ]),
+          ),
+        ),
+      ));
+    }
+
+    final tableau = Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: schema.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: schema.outlineVariant),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          height: 36,
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
+          child: Row(children: [
+            if (!telephone) cellule(64, const Text('Heure', style: entete)),
+            cellule(110, const Text('Pièce', style: entete)),
+            cellule(null, const Text('Tiers', style: entete)),
+            if (colonnesLarges) cellule(null, const Text('Détail', style: entete)),
+            if (!telephone) cellule(130, const Text('Par', style: entete)),
+            cellule(telephone ? 110 : 128, const Text('Entrée', textAlign: TextAlign.right, style: entete)),
+            if (!telephone) cellule(128, const Text('Sortie', textAlign: TextAlign.right, style: entete)),
+            if (!telephone) cellule(128, const Text('Solde', textAlign: TextAlign.right, style: entete)),
+            const SizedBox(width: 32),
+          ]),
+        ),
+        if (mouvements.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            child: Text('Aucun mouvement ce jour-là.', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
+          ),
+        ...lignes,
+        if (mouvements.isNotEmpty)
+          Container(
+            color: Couleurs.doux(context).withValues(alpha: .5),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(children: [
+              if (!telephone) cellule(64, const SizedBox()),
+              cellule(null, Text('Arrêté au ${_dateLisible(_date(_jour))}', style: entete)),
+              if (colonnesLarges) cellule(null, const SizedBox()),
+              if (!telephone) cellule(110 + 130, const SizedBox()),
+              cellule(telephone ? 110 : 128, Text(gnf(entrees), textAlign: TextAlign.right, style: entete)),
+              if (!telephone) cellule(128, Text(totalSorties == 0 ? '' : '− ${_nombre(totalSorties)}', textAlign: TextAlign.right, style: entete)),
+              if (!telephone) cellule(128, Text(_nombre(entrees - totalSorties), textAlign: TextAlign.right, style: entete)),
+              const SizedBox(width: 32),
+            ]),
+          ),
+      ]),
+    );
+
+    final resume = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: schema.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: schema.outlineVariant),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Total encaissé', style: TextStyle(fontSize: 14, color: gris)),
+          Text(gnf(entrees), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          for (final m in modesPaiement.entries)
+            if (parMode[m.key] != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(children: [
+                  Expanded(child: Text(m.value, style: TextStyle(fontSize: 14, color: gris))),
+                  Text(gnf(parMode[m.key]), style: const TextStyle(fontSize: 14)),
+                ]),
               ),
-          ]);
-        },
+          if (totalSorties > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(children: [
+                Expanded(child: Text('Remboursements versés', style: TextStyle(fontSize: 14, color: gris))),
+                Text('− ${gnf(totalSorties)}', style: const TextStyle(fontSize: 14)),
+              ]),
+            ),
+          const SizedBox(height: 8),
+          Text('${valides.length} reçu(s) valide(s) · ${recus.length - valides.length} annulé(s)',
+              style: TextStyle(fontSize: 12, color: gris)),
+          for (final c in carnets.entries)
+            if (_trous(c.value).isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('Carnet ${c.key} : feuille(s) manquante(s) ${_trous(c.value).join(', ')}',
+                    style: const TextStyle(fontSize: 12, color: Couleurs.attente)),
+              ),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      _ClotureDuJour(espace: widget.espace, jour: _date(_jour)),
+    ]);
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1600),
+        child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
+          enTete,
+          const SizedBox(height: 12),
+          filtres,
+          const SizedBox(height: 12),
+          if (largeur >= 1100)
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: tableau),
+              const SizedBox(width: 12),
+              SizedBox(width: 320, child: resume),
+            ])
+          else ...[
+            resume,
+            const SizedBox(height: 12),
+            tableau,
+          ],
+        ]),
       ),
     );
   }
