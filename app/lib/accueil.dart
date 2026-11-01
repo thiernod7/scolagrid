@@ -37,13 +37,6 @@ const _toutes = [
   _Entree(_Rubrique.parametres, 'Paramètres', Icons.settings_outlined, Icons.settings, 'ÉCOLE'),
 ];
 
-String _dateDuJour() {
-  const jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-  const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-  final d = DateTime.now();
-  return '${jours[d.weekday - 1]} ${d.day} ${mois[d.month - 1]}';
-}
-
 class AccueilScreen extends StatefulWidget {
   const AccueilScreen({super.key});
 
@@ -260,6 +253,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
             synchro: PuceSynchro(statut: _statut, enAttente: _enAttente),
             aller: _aller,
             inscrire: () => _ouvrirDans(_Rubrique.eleves, InscrireScreen(espace: e)),
+            importer: () => _ouvrirDans(_Rubrique.eleves, ImportElevesScreen(espace: e)),
             encaisser: () => _ouvrirDans(_Rubrique.caisse, EncaisserScreen(espace: e)),
             activerPoste: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => ActiverPosteScreen(orgId: org['id'] as String))),
@@ -676,6 +670,7 @@ class _TableauDeBord extends StatelessWidget {
     required this.synchro,
     required this.aller,
     required this.inscrire,
+    required this.importer,
     required this.encaisser,
     required this.activerPoste,
     required this.ajouterSite,
@@ -692,132 +687,119 @@ class _TableauDeBord extends StatelessWidget {
   final Widget synchro;
   final void Function(_Rubrique) aller;
   final VoidCallback inscrire;
+  final VoidCallback importer;
   final VoidCallback encaisser;
   final VoidCallback activerPoste;
   final VoidCallback ajouterSite;
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
     final schema = Theme.of(context).colorScheme;
-    final prenom = (nom ?? '').trim().split(' ').first;
     final o = espace.orgId;
-    final aujourdhui = DateTime.now().toIso8601String().substring(0, 10);
-    return Scaffold(
-      body: Requete(
-        '''SELECT
-             (SELECT coalesce(sum(total_gnf), 0) FROM encaissements WHERE organisation_id = ? AND statut = 'valide' AND date_effective = ?) AS encaisse,
-             (SELECT count(*) FROM encaissements WHERE organisation_id = ? AND statut = 'valide' AND date_effective = ?) AS recus,
-             (SELECT count(*) FROM inscriptions i JOIN annees_scolaires a ON a.id = i.annee_id AND a.en_cours = 1
-                WHERE i.organisation_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS inscrits,
-             (SELECT count(*) FROM inscriptions i JOIN annees_scolaires a ON a.id = i.annee_id AND a.en_cours = 1
-                WHERE i.organisation_id = ? AND i.statut = 'en_attente') AS attente,
-             (SELECT count(*) FROM eleves e WHERE e.organisation_id = ? AND (e.date_naissance IS NULL OR e.sexe IS NULL)) AS incompletes,
-             (SELECT code FROM organisations WHERE id = ?) AS sigle,
-             (SELECT count(*) FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1) AS annee,
-             (SELECT count(*) FROM remboursements WHERE organisation_id = ? AND statut IN ('demande', 'autorise')) AS remb''',
-        parametres: [o, aujourdhui, o, aujourdhui, o, o, o, o, o, o],
-        builder: (context, l) {
-          final r = l.first;
-          final attente = r['attente'] as int? ?? 0;
-          final incompletes = r['incompletes'] as int? ?? 0;
-          final aFaire = <Widget>[
-            if (organisation['statut'] == 'en_attente')
-              _AFaire(const Etat('Espace', ton: Ton.info),
-                  "En attente d'activation par Scolagrid : vous pouvez déjà tout configurer.", null),
-            if (cePoste == null)
-              _AFaire(const Etat('Poste', ton: Ton.attente), 'Activer ce poste : sa lettre et son code PIN', activerPoste),
-            if (espace.fondateur && r['sigle'] == null)
-              _AFaire(const Etat('Réglage', ton: Ton.attente), "Choisir le sigle de l'école (matricules et reçus)",
-                  () => aller(_Rubrique.parametres)),
-            if ((r['annee'] as int? ?? 0) == 0 && espace.gestionnaire)
-              _AFaire(const Etat('Réglage', ton: Ton.attente), "Créer l'année scolaire en cours",
-                  () => aller(_Rubrique.parametres)),
-            if (attente > 0)
-              _AFaire(Etat('$attente', ton: Ton.attente), "inscription(s) en attente des frais d'inscription",
-                  () => aller(_Rubrique.eleves)),
-            if (peutEncaisser && (r['remb'] as int? ?? 0) > 0)
-              _AFaire(Etat('${r['remb']}', ton: Ton.attente), 'remboursement(s) à autoriser ou à verser (Caisse)',
-                  () => aller(_Rubrique.caisse)),
-            if (incompletes > 0)
-              _AFaire(Etat('$incompletes', ton: Ton.info), 'fiche(s) élève à compléter (date de naissance, sexe)',
-                  () => aller(_Rubrique.eleves)),
-          ];
-          return ListView(padding: const EdgeInsets.fromLTRB(24, 24, 24, 40), children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Wrap(spacing: 16, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.end, children: [
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(prenom.isEmpty ? 'Bonjour' : 'Bonjour $prenom', style: t.headlineSmall),
-                      const SizedBox(height: 4),
-                      Text('${_dateDuJour()} · $fonction', style: t.bodyMedium?.copyWith(color: schema.onSurfaceVariant)),
-                      const SizedBox(height: 8),
+    return Requete(
+      '''SELECT
+           (SELECT count(*) FROM inscriptions i JOIN annees_scolaires a ON a.id = i.annee_id AND a.en_cours = 1
+              WHERE i.organisation_id = ? AND i.statut = 'en_attente') AS attente,
+           (SELECT count(*) FROM eleves e WHERE e.organisation_id = ? AND (e.date_naissance IS NULL OR e.sexe IS NULL)) AS incompletes,
+           (SELECT code FROM organisations WHERE id = ?) AS sigle,
+           (SELECT count(*) FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1) AS annee,
+           (SELECT count(*) FROM remboursements WHERE organisation_id = ? AND statut IN ('demande', 'autorise')) AS remb''',
+      parametres: [o, o, o, o, o],
+      builder: (context, l) {
+        final r = l.first;
+        final attente = r['attente'] as int? ?? 0;
+        final incompletes = r['incompletes'] as int? ?? 0;
+        final aFaire = <Widget>[
+          if (organisation['statut'] == 'en_attente')
+            const _AFaire(Etat('Espace', ton: Ton.info), "En attente d'activation par Scolagrid : vous pouvez déjà tout configurer.", null),
+          if (cePoste == null)
+            _AFaire(const Etat('Poste', ton: Ton.attente), 'Activer ce poste : sa lettre et son code PIN', activerPoste),
+          if (espace.fondateur && r['sigle'] == null)
+            _AFaire(const Etat('Réglage', ton: Ton.attente), "Choisir le sigle de l'école (matricules et reçus)",
+                () => aller(_Rubrique.parametres)),
+          if ((r['annee'] as int? ?? 0) == 0 && espace.gestionnaire)
+            _AFaire(const Etat('Réglage', ton: Ton.attente), "Créer l'année scolaire en cours", () => aller(_Rubrique.parametres)),
+          if (attente > 0)
+            _AFaire(Etat('$attente', ton: Ton.attente), "inscription(s) en attente des frais d'inscription",
+                () => aller(_Rubrique.eleves)),
+          if (peutEncaisser && (r['remb'] as int? ?? 0) > 0)
+            _AFaire(Etat('${r['remb']}', ton: Ton.attente), 'remboursement(s) à autoriser ou à verser', () => aller(_Rubrique.caisse)),
+          if (incompletes > 0)
+            _AFaire(Etat('$incompletes', ton: Ton.info), 'fiche(s) élève à compléter (date de naissance, sexe)',
+                () => aller(_Rubrique.eleves)),
+        ];
+        final bordure = BoxDecoration(
+          color: schema.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: schema.outlineVariant),
+        );
+        return TableauDeBord(
+          espace: espace,
+          organisation: organisation,
+          voitFinances: peutEncaisser || espace.gestionnaire,
+          peutInscrire: peutInscrire,
+          peutEncaisser: peutEncaisser,
+          aFaire: aFaire,
+          inscrire: inscrire,
+          importer: importer,
+          encaisser: encaisser,
+          pied: [
+            Wrap(spacing: 12, runSpacing: 12, children: [
+              Container(
+                width: 360,
+                padding: const EdgeInsets.all(16),
+                decoration: bordure,
+                child: Row(children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: schema.primary, borderRadius: BorderRadius.circular(6)),
+                    child: Text('${cePoste?['code'] ?? '–'}',
+                        style: TextStyle(color: schema.onPrimary, fontWeight: FontWeight.w600, fontSize: 14)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(cePoste == null ? 'Poste non activé' : 'Poste ${cePoste!['code']} · ${cePoste!['nom']}',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                      Text('${nom ?? ''} · $fonction', style: TextStyle(fontSize: 12, color: schema.onSurfaceVariant)),
+                      const SizedBox(height: 6),
                       synchro,
                     ]),
-                    Wrap(spacing: 10, runSpacing: 10, children: [
-                      if (peutEncaisser)
-                        OutlinedButton.icon(onPressed: encaisser, icon: const Icon(Icons.point_of_sale), label: const Text('Encaisser')),
-                      if (peutInscrire)
-                        FilledButton.icon(
-                            onPressed: inscrire, icon: const Icon(Icons.person_add_alt_1), label: const Text('Inscrire un élève')),
-                    ]),
-                  ]),
-                  const SizedBox(height: 20),
-                  LayoutBuilder(builder: (context, c) {
-                    final colonnes = c.maxWidth >= 900 ? 3 : (c.maxWidth >= 560 ? 2 : 1);
-                    final cartes = <Widget>[
-                      if (peutEncaisser)
-                        ChiffreCle(
-                            libelle: "Encaissé aujourd'hui", valeur: gnf(r['encaisse']), detail: '${r['recus']} reçu(s) valide(s)'),
-                      ChiffreCle(
-                        libelle: 'Élèves inscrits cette année',
-                        valeur: '${r['inscrits']}',
-                        etat: attente > 0
-                            ? Etat('$attente en attente de paiement', ton: Ton.attente)
-                            : const Etat('Tous à jour des frais d\'inscription', ton: Ton.regle),
-                      ),
-                      ChiffreCle(
-                        libelle: 'Ce poste',
-                        valeur: cePoste == null ? 'Non activé' : 'Poste ${cePoste!['code']}',
-                        detail: cePoste == null ? 'Activez-le pour inscrire et encaisser' : '${cePoste!['nom']}',
-                      ),
-                    ];
-                    return Wrap(spacing: 14, runSpacing: 4, children: [
-                      for (final x in cartes) SizedBox(width: (c.maxWidth - 14 * (colonnes - 1)) / colonnes, child: x),
-                    ]);
-                  }),
-                  if (aFaire.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    Text('À faire', style: t.titleMedium),
-                    const SizedBox(height: 6),
-                    Card(child: Column(children: aFaire)),
-                  ],
-                  if (espace.fondateur) ...[
-                    const SizedBox(height: 20),
-                    Row(children: [
-                      Expanded(child: Text('Sites (${sites.length})', style: t.titleMedium)),
-                      TextButton.icon(onPressed: ajouterSite, icon: const Icon(Icons.add), label: const Text('Ajouter un site')),
-                    ]),
-                    Card(
-                      child: Column(children: [
-                        for (final s in sites)
-                          ListTile(
-                            leading: const Icon(Icons.location_city_outlined),
-                            title: Text(s['nom'] as String? ?? ''),
-                            subtitle: Text([s['ville'], if (s['code'] != null) 'code ${s['code']}'].whereType<String>().join(' · ')),
-                          ),
-                      ]),
-                    ),
-                  ],
-                  if (kIsWeb) ...[const SizedBox(height: 12), const _InstallerPostes()],
+                  ),
+                  if (cePoste == null) TextButton(onPressed: activerPoste, child: const Text('Activer')),
                 ]),
               ),
-            ),
-          ]);
-        },
-      ),
+              if (espace.fondateur)
+                Container(
+                  width: 360,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                  decoration: bordure,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Row(children: [
+                      Expanded(child: Text('Sites (${sites.length})', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+                      TextButton.icon(onPressed: ajouterSite, icon: const Icon(Icons.add, size: 16), label: const Text('Ajouter')),
+                    ]),
+                    for (final s in sites)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(children: [
+                          Icon(Icons.location_on_outlined, size: 16, color: schema.onSurfaceVariant),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text('${s['nom'] ?? ''}', style: const TextStyle(fontSize: 14))),
+                          Text([s['ville'], if (s['code'] != null) s['code']].whereType<String>().join(' · '),
+                              style: TextStyle(fontSize: 12, color: schema.onSurfaceVariant)),
+                          const SizedBox(width: 8),
+                        ]),
+                      ),
+                  ]),
+                ),
+              if (kIsWeb) const SizedBox(width: 480, child: _InstallerPostes()),
+            ]),
+          ],
+        );
+      },
     );
   }
 }
@@ -830,11 +812,17 @@ class _AFaire extends StatelessWidget {
   final VoidCallback? action;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-        leading: etat,
-        title: Text(texte),
-        trailing: action == null ? null : const Icon(Icons.chevron_right),
+  Widget build(BuildContext context) => InkWell(
         onTap: action,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(children: [
+            etat,
+            const SizedBox(width: 12),
+            Expanded(child: Text(texte, style: const TextStyle(fontSize: 14))),
+            if (action != null) Icon(Icons.chevron_right, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ]),
+        ),
       );
 }
 

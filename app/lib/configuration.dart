@@ -19,6 +19,7 @@ import 'caisse.dart';
 import 'cloud.dart';
 import 'echeancier.dart';
 import 'fonctions.dart';
+import 'graphiques.dart';
 import 'import_eleves.dart';
 import 'matricule.dart';
 import 'modele_guineen.dart';
@@ -37,6 +38,7 @@ part 'photo.dart';
 part 'poste.dart';
 part 'reductions.dart';
 part 'remboursements.dart';
+part 'tableau_de_bord.dart';
 
 /// Étape 2 de l'onboarding : configurer l'établissement.
 /// Tout s'écrit dans la base locale, donc fonctionne hors ligne ;
