@@ -130,7 +130,7 @@ class SituationFinanciere extends StatelessWidget {
             final retards = [for (final f in frais) ...f.echeances.where((e) => e.enRetard(aujourdhui))];
             return Card(
               child: ExpansionTile(
-                leading: Icon(Icons.account_balance_wallet_outlined, color: retards.isNotEmpty ? Colors.orange : null),
+                leading: Icon(Icons.account_balance_wallet_outlined, color: retards.isNotEmpty ? Couleurs.attente : null),
                 title: Text(total == 0 ? 'Aucun frais configuré pour cette classe' : 'Reste à payer : ${gnf(total - paye)}'),
                 subtitle: Text('Payé ${gnf(paye)} sur ${gnf(total)}'
                     '${retards.isNotEmpty ? ' · ${retards.length} échéance(s) en retard' : ''}'),
@@ -149,7 +149,7 @@ class SituationFinanciere extends StatelessWidget {
                           child: Row(children: [
                             Expanded(child: Text('${e.libelle} · avant le ${_dateLisible(_date(e.dateLimite))}')),
                             Text(e.soldee ? 'Payée' : (e.enRetard(aujourdhui) ? 'En retard : ${gnf(e.reste)}' : gnf(e.reste)),
-                                style: TextStyle(color: e.enRetard(aujourdhui) ? Colors.orange.shade800 : null)),
+                                style: TextStyle(color: e.enRetard(aujourdhui) ? Couleurs.attente : null)),
                           ]),
                         ),
                   ],
@@ -645,7 +645,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                     child: Row(children: [
                       Expanded(
                         child: Text('${f.libelle}\nreste ${gnf(f.reste)}',
-                            style: TextStyle(color: f.reste <= 0 ? Colors.grey : null)),
+                            style: TextStyle(color: f.reste <= 0 ? Couleurs.neutre : null)),
                       ),
                       SizedBox(
                         width: 150,
@@ -1002,7 +1002,7 @@ class _CaisseScreenState extends State<CaisseScreen> {
                   for (final c in carnets.entries)
                     if (_trous(c.value).isNotEmpty)
                       Text('Carnet ${c.key} : feuille(s) manquante(s) ${_trous(c.value).join(', ')}',
-                          style: TextStyle(color: Colors.orange.shade800)),
+                          style: TextStyle(color: Couleurs.attente)),
                 ]),
               ),
             ),
@@ -1026,7 +1026,7 @@ class _CaisseScreenState extends State<CaisseScreen> {
               Card(
                 child: ListTile(
                   leading: Icon(r['statut'] == 'annule' ? Icons.block : Icons.receipt_long,
-                      color: r['statut'] == 'annule' ? Colors.red : null),
+                      color: r['statut'] == 'annule' ? Couleurs.retard : null),
                   title: Text('${gnf(r['total_gnf'])} · ${r['payeur_nom']}'),
                   subtitle: Text([
                     r['numero'],

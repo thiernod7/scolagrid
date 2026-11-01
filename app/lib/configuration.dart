@@ -489,7 +489,7 @@ class AnneesScreen extends StatelessWidget {
               Card(
                 child: ListTile(
                   leading: Icon(a['en_cours'] == 1 ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: a['en_cours'] == 1 ? Colors.teal : null),
+                      color: a['en_cours'] == 1 ? Couleurs.regle : null),
                   title: Text('${a['libelle']}'),
                   subtitle: Text('Du ${_dateLisible(a['debut'])} au ${_dateLisible(a['fin'])}'
                       '${a['en_cours'] == 1 ? ' · en cours' : ''}'),

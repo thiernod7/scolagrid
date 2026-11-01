@@ -60,7 +60,7 @@ Future<void> _clore(BuildContext context, Map<String, Object?> ins) async {
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: statut == m.key ? Theme.of(context).colorScheme.primary : Couleurs.bordure),
+                border: Border.all(color: statut == m.key ? Theme.of(context).colorScheme.primary : Theme.of(context).dividerColor),
                 color: statut == m.key ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: .4) : null,
               ),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -615,14 +615,13 @@ class _Onglets extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final schema = Theme.of(context).colorScheme;
-    final sombre = Theme.of(context).brightness == Brightness.dark;
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         height: 36,
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-            color: sombre ? schema.surfaceContainerHighest : Couleurs.neutreFond, borderRadius: BorderRadius.circular(8)),
+            color: Couleurs.doux(context), borderRadius: BorderRadius.circular(8)),
         child: TabBar(
           isScrollable: true,
           tabAlignment: TabAlignment.start,
@@ -1078,7 +1077,7 @@ class _Solde extends StatelessWidget {
                               height: 32,
                               child: Stack(fit: StackFit.expand, children: [
                                 ColoredBox(
-                                    color: postes[i].e.enRetard(aujourdhui) ? Couleurs.retardFond : Couleurs.neutreFond),
+                                    color: postes[i].e.enRetard(aujourdhui) ? Couleurs.retardFond : Couleurs.doux(context)),
                                 FractionallySizedBox(
                                   alignment: Alignment.centerLeft,
                                   widthFactor:

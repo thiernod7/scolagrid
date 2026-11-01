@@ -1,30 +1,38 @@
-/// Charte de Scolagrid : couleurs, textes et petits éléments communs.
-/// Une couleur à nous (indigo) pour les actions ; des états toujours écrits
-/// en toutes lettres, pas seulement en couleur (lisibles en noir et blanc).
+/// Charte de Scolagrid : noir et gris, fine, comme la maquette de départ.
+/// Les états sont toujours écrits en toutes lettres, pas seulement en couleur
+/// (lisibles en noir et blanc). Mode clair, mode sombre, ou celui de l'appareil.
 library;
 
 import 'package:flutter/material.dart';
 
 abstract final class Couleurs {
-  static const indigo = Color(0xFF4F46B8);
-  static const indigoFonce = Color(0xFF2E2680);
-  static const indigoClair = Color(0xFFEEECFA);
-  static const encre = Color(0xFF17171F);
-  static const encreDouce = Color(0xFF5B5D6E);
-  static const fond = Color(0xFFF6F6F9);
-  static const bordure = Color(0xFFE4E4EC);
+  // Neutres (mode clair).
+  static const primaire = Color(0xFF171717);
+  static const encre = Color(0xFF0A0A0A);
+  static const encreDouce = Color(0xFF737373);
+  static const fond = Color(0xFFFCFCFC);
+  static const bordure = Color(0xFFE5E5E5);
 
-  static const regle = Color(0xFF14653F);
-  static const regleFond = Color(0xFFE5F4EC);
-  static const attente = Color(0xFF8A4F00);
-  static const attenteFond = Color(0xFFFDF1DC);
-  static const retard = Color(0xFF9B1C12);
-  static const retardFond = Color(0xFFFDECEA);
-  static const info = Color(0xFF1C4F8F);
-  static const infoFond = Color(0xFFEAF1FB);
-  static const neutre = Color(0xFF3D3F4C);
-  static const neutreFond = Color(0xFFF1F1F5);
+  // États : un ton lisible sur fond clair comme sur fond sombre, et un fond
+  // transparent qui prend la teinte de ce qu'il y a dessous.
+  static const regle = Color(0xFF1A8C50);
+  static const regleFond = Color(0x241A8C50);
+  static const attente = Color(0xFFB7791F);
+  static const attenteFond = Color(0x26B7791F);
+  static const retard = Color(0xFFD23F31);
+  static const retardFond = Color(0x1FD23F31);
+  static const info = Color(0xFF2F72C4);
+  static const infoFond = Color(0x1F2F72C4);
+  static const neutre = Color(0xFF737373);
+  static const neutreFond = Color(0xFFF5F5F5);
+
+  /// Gris doux des pastilles, onglets, lignes choisies : selon le mode.
+  static Color doux(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? const Color(0xFF262626) : neutreFond;
 }
+
+/// Mode d'affichage choisi (clair, sombre, ou celui de l'appareil).
+final modeTheme = ValueNotifier<ThemeMode>(ThemeMode.system);
 
 const policeTexte = 'Inter';
 const policeChiffres = 'JetBrainsMono';
@@ -35,30 +43,58 @@ const styleMono = TextStyle(fontFamily: policeChiffres, fontSize: 13, fontWeight
 
 ThemeData themeScolagrid(Brightness luminosite) {
   final sombre = luminosite == Brightness.dark;
+  final base0 = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF737373), brightness: luminosite, dynamicSchemeVariant: DynamicSchemeVariant.monochrome);
   final schema = sombre
-      ? ColorScheme.fromSeed(seedColor: Couleurs.indigo, brightness: Brightness.dark)
-      : ColorScheme.fromSeed(seedColor: Couleurs.indigo).copyWith(
-          primary: Couleurs.indigo,
-          onPrimary: Colors.white,
-          primaryContainer: Couleurs.indigoClair,
-          onPrimaryContainer: Couleurs.indigoFonce,
-          secondaryContainer: Couleurs.indigoClair,
-          onSecondaryContainer: Couleurs.indigoFonce,
+      ? base0.copyWith(
+          primary: const Color(0xFFE5E5E5),
+          onPrimary: const Color(0xFF171717),
+          primaryContainer: const Color(0xFF262626),
+          onPrimaryContainer: const Color(0xFFFAFAFA),
+          secondary: const Color(0xFF262626),
+          onSecondary: const Color(0xFFFAFAFA),
+          secondaryContainer: const Color(0xFF262626),
+          onSecondaryContainer: const Color(0xFFFAFAFA),
+          surface: const Color(0xFF121212),
+          onSurface: const Color(0xFFFAFAFA),
+          onSurfaceVariant: const Color(0xFFA1A1A1),
+          surfaceContainerLowest: const Color(0xFF0A0A0A),
+          surfaceContainerLow: const Color(0xFF121212),
+          surfaceContainer: const Color(0xFF171717),
+          surfaceContainerHigh: const Color(0xFF1F1F1F),
+          surfaceContainerHighest: const Color(0xFF262626),
+          outline: const Color(0xFF404040),
+          outlineVariant: const Color(0x1FFFFFFF),
+          error: const Color(0xFFF2877C),
+          onError: const Color(0xFF171717),
+        )
+      : base0.copyWith(
+          primary: Couleurs.primaire,
+          onPrimary: const Color(0xFFFAFAFA),
+          primaryContainer: Couleurs.neutreFond,
+          onPrimaryContainer: Couleurs.primaire,
+          secondary: Couleurs.neutreFond,
+          onSecondary: Couleurs.primaire,
+          secondaryContainer: Couleurs.neutreFond,
+          onSecondaryContainer: Couleurs.primaire,
           surface: Colors.white,
           onSurface: Couleurs.encre,
           onSurfaceVariant: Couleurs.encreDouce,
           surfaceContainerLowest: Colors.white,
           surfaceContainerLow: Couleurs.fond,
-          surfaceContainer: Couleurs.fond,
-          outline: const Color(0xFFDCDCE6),
+          surfaceContainer: Couleurs.neutreFond,
+          surfaceContainerHigh: Couleurs.neutreFond,
+          surfaceContainerHighest: Couleurs.neutreFond,
+          outline: const Color(0xFFD4D4D4),
           outlineVariant: Couleurs.bordure,
           error: Couleurs.retard,
+          onError: Colors.white,
         );
-  final bordure = sombre ? schema.outlineVariant : Couleurs.bordure;
+  final bordure = schema.outlineVariant;
   final arrondi = BorderRadius.circular(6);
   final base = ThemeData(colorScheme: schema, fontFamily: policeTexte, useMaterial3: true);
   return base.copyWith(
-    scaffoldBackgroundColor: sombre ? schema.surface : Couleurs.fond,
+    scaffoldBackgroundColor: sombre ? const Color(0xFF0A0A0A) : Couleurs.fond,
     textTheme: base.textTheme.copyWith(
       headlineSmall: base.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
       titleLarge: base.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
@@ -76,7 +112,7 @@ ThemeData themeScolagrid(Brightness luminosite) {
       shape: Border(bottom: BorderSide(color: bordure)),
     ),
     cardTheme: CardThemeData(
-      color: sombre ? schema.surfaceContainer : Colors.white,
+      color: schema.surface,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: const EdgeInsets.symmetric(vertical: 5),
@@ -108,7 +144,7 @@ ThemeData themeScolagrid(Brightness luminosite) {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: sombre ? schema.surfaceContainerHighest : Colors.white,
+      fillColor: sombre ? schema.surface : Colors.white,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: bordure)),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: bordure)),
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: schema.primary, width: 1.5)),
@@ -153,7 +189,11 @@ class Etat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (texteC, fondC) = couleurs(ton);
+    var (texteC, fondC) = couleurs(ton);
+    if (ton == Ton.neutre) {
+      fondC = Couleurs.doux(context);
+      texteC = Theme.of(context).colorScheme.onSurfaceVariant;
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(color: fondC, borderRadius: BorderRadius.circular(4)),
@@ -178,12 +218,11 @@ class Initiales extends StatelessWidget {
     final mots = nom.trim().split(RegExp(r'\s+')).where((m) => m.isNotEmpty).toList();
     final lettres = mots.isEmpty ? '?' : mots.take(2).map((m) => m[0].toUpperCase()).join();
     final schema = Theme.of(context).colorScheme;
-    final sombre = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: taille,
       height: taille,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: sombre ? schema.surfaceContainerHighest : Couleurs.neutreFond, shape: BoxShape.circle),
+      decoration: BoxDecoration(color: Couleurs.doux(context), shape: BoxShape.circle),
       child: Text(lettres,
           style: TextStyle(color: schema.onSurfaceVariant, fontWeight: FontWeight.w500, fontSize: taille * 0.36)),
     );
@@ -220,6 +259,24 @@ class ChiffreCle extends StatelessWidget {
           if (etat != null) ...[const SizedBox(height: 8), etat!],
         ]),
       ),
+    );
+  }
+}
+
+/// Bascule clair / sombre (la lune ou le soleil, dans l'en-tête).
+class BoutonTheme extends StatelessWidget {
+  const BoutonTheme({super.key});
+
+  static void basculer(BuildContext context) =>
+      modeTheme.value = Theme.of(context).brightness == Brightness.dark ? ThemeMode.light : ThemeMode.dark;
+
+  @override
+  Widget build(BuildContext context) {
+    final sombre = Theme.of(context).brightness == Brightness.dark;
+    return IconButton(
+      tooltip: sombre ? 'Mode clair' : 'Mode sombre',
+      onPressed: () => basculer(context),
+      icon: Icon(sombre ? Icons.light_mode_outlined : Icons.dark_mode_outlined, size: 18),
     );
   }
 }

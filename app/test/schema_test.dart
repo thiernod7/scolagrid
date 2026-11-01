@@ -228,7 +228,7 @@ void main() {
 
   test('charte : thèmes clair et sombre', () {
     final clair = themeScolagrid(Brightness.light);
-    expect(clair.colorScheme.primary, Couleurs.indigo);
+    expect(clair.colorScheme.primary, Couleurs.primaire);
     expect(themeScolagrid(Brightness.dark).brightness, Brightness.dark);
   });
 

@@ -351,7 +351,10 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: IconButton(tooltip: 'Se déconnecter', onPressed: _seDeconnecter, icon: const Icon(Icons.logout)),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const BoutonTheme(),
+                      IconButton(tooltip: 'Se déconnecter', onPressed: _seDeconnecter, icon: const Icon(Icons.logout)),
+                    ]),
                   ),
                 ),
               ),
@@ -389,6 +392,16 @@ class _AccueilScreenState extends State<AccueilScreen> {
                         _aller(x.rubrique);
                       },
                     ),
+                  ListTile(
+                    leading: Icon(Theme.of(context).brightness == Brightness.dark
+                        ? Icons.light_mode_outlined
+                        : Icons.dark_mode_outlined),
+                    title: Text(Theme.of(context).brightness == Brightness.dark ? 'Mode clair' : 'Mode sombre'),
+                    onTap: () {
+                      BoutonTheme.basculer(context);
+                      Navigator.pop(context);
+                    },
+                  ),
                   ListTile(
                     leading: const Icon(Icons.logout),
                     title: const Text('Se déconnecter'),
@@ -444,8 +457,10 @@ class _Logo extends StatelessWidget {
         width: taille,
         height: taille,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: Couleurs.indigo, borderRadius: BorderRadius.circular(taille * 0.3)),
-        child: Text('S', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: taille * 0.45)),
+        decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(taille * 0.25)),
+        child: Text('S',
+            style: TextStyle(
+                color: Theme.of(context).colorScheme.onPrimary, fontWeight: FontWeight.w700, fontSize: taille * 0.45)),
       );
 }
 
@@ -601,26 +616,30 @@ class _EnTete extends StatelessWidget {
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 520),
           child: SizedBox(
-            height: 44,
+            height: 36,
             child: TextField(
               controller: recherche,
               textInputAction: TextInputAction.search,
               onSubmitted: rechercher,
+              style: const TextStyle(fontSize: 14),
               decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Rechercher un élève, un matricule, un parent…',
+                prefixIcon: Icon(Icons.search, size: 18, color: schema.onSurfaceVariant),
+                hintText: 'Élève, matricule, parent…',
+                hintStyle: TextStyle(fontSize: 14, color: schema.onSurfaceVariant),
                 contentPadding: EdgeInsets.zero,
-                fillColor: schema.surfaceContainerLow,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                fillColor: schema.surface,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
                 enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: schema.outlineVariant)),
+                    borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: schema.outlineVariant)),
               ),
             ),
           ),
         ),
         const Spacer(),
         synchro,
-        const SizedBox(width: 18),
+        const SizedBox(width: 8),
+        const BoutonTheme(),
+        const SizedBox(width: 10),
         PopupMenuButton<String>(
           tooltip: 'Mon compte',
           onSelected: (v) {

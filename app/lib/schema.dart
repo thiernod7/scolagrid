@@ -416,4 +416,8 @@ const schema = Schema([
     Column.text('device'),
     Column.text('created_at'),
   ]),
+  // Réglages propres à ce poste (mode clair ou sombre…), jamais synchronisés.
+  Table.localOnly('preferences', [
+    Column.text('valeur'),
+  ]),
 ]);

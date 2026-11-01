@@ -210,10 +210,10 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
           const SizedBox(height: 16),
           Text('$_fichier : ${l.length} lignes lues', style: texte.titleMedium),
           const SizedBox(height: 8),
-          groupe('Valides', EtatLigne.valide, Colors.teal),
-          groupe('Incomplètes (acceptées, à compléter ensuite)', EtatLigne.incomplete, Colors.amber),
-          groupe('Doublons probables', EtatLigne.doublon, Colors.orange),
-          groupe('Rejetées (à corriger dans le fichier)', EtatLigne.rejetee, Colors.red),
+          groupe('Valides', EtatLigne.valide, Couleurs.regle),
+          groupe('Incomplètes (acceptées, à compléter ensuite)', EtatLigne.incomplete, Couleurs.attente),
+          groupe('Doublons probables', EtatLigne.doublon, Couleurs.attente),
+          groupe('Rejetées (à corriger dans le fichier)', EtatLigne.rejetee, Couleurs.retard),
           if (n(EtatLigne.doublon) > 0)
             CheckboxListTile(
               value: _avecDoublons,

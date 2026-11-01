@@ -263,7 +263,7 @@ class FicheScreen extends StatelessWidget {
                 Card(
                   child: fiche['user_id'] != null
                       ? const ListTile(
-                          leading: Icon(Icons.verified_user_outlined, color: Colors.teal),
+                          leading: Icon(Icons.verified_user_outlined, color: Couleurs.regle),
                           title: Text("Utilise l'app"),
                           subtitle: Text('Son compte est relié à cette fiche.'),
                         )

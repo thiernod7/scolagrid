@@ -361,7 +361,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
         if (enAttente > 0)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(color: Couleurs.neutreFond, borderRadius: BorderRadius.circular(4)),
+            decoration: BoxDecoration(color: Couleurs.doux(context), borderRadius: BorderRadius.circular(4)),
             child: Text('$enAttente en attente', style: TextStyle(fontSize: 12, color: gris)),
           ),
       ]),
@@ -711,10 +711,10 @@ class _TableauEleves extends StatelessWidget {
       final nouveau = DateTime.tryParse('${e['created_at']}')?.isAfter(DateTime.now().subtract(const Duration(hours: 24))) ?? false;
       final petit = TextStyle(fontSize: 12, color: gris);
       return Material(
-        color: choisi ? (Theme.of(context).brightness == Brightness.dark ? schema.surfaceContainerHighest : Couleurs.neutreFond) : Colors.transparent,
+        color: choisi ? Couleurs.doux(context) : Colors.transparent,
         child: InkWell(
           onTap: () => onOuvrir(id),
-          hoverColor: Couleurs.neutreFond.withValues(alpha: .5),
+          hoverColor: Couleurs.doux(context).withValues(alpha: .5),
           child: Container(
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -877,7 +877,7 @@ class _AvatarListe extends StatelessWidget {
                 width: taille * .4,
                 height: taille * .4,
                 decoration: BoxDecoration(
-                  color: Couleurs.neutreFond,
+                  color: Couleurs.doux(context),
                   shape: BoxShape.circle,
                   border: Border.all(color: Theme.of(context).colorScheme.surface, width: 1.5),
                 ),

@@ -521,7 +521,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
                 for (final (e, a) in semblables.take(6))
                   ListTile(
                     leading: Icon(Icons.warning_amber,
-                        color: a == Alerte.forte ? Colors.red : (a == Alerte.moyenne ? Colors.orange : Colors.amber)),
+                        color: a == Alerte.forte ? Couleurs.retard : (a == Alerte.moyenne ? Couleurs.attente : Couleurs.attente)),
                     title: Text(_nomEleve(e)),
                     subtitle: Text('${e['matricule']} · né(e) le ${_dateLisible(e['date_naissance'])}'),
                     onTap: () => Navigator.pop(context, e['id'] as String),
