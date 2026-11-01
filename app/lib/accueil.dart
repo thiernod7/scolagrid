@@ -49,6 +49,14 @@ class _AccueilScreenState extends State<AccueilScreen> {
   Map<String, Object?>? _organisation;
   Map<String, Object?>? _rattachement;
   List<Map<String, Object?>> _sites = [];
+
+  /// Nom du site de la personne connectée (le premier site si elle les a tous).
+  String? _nomDuSite(String? id) {
+    for (final s in _sites) {
+      if (s['id'] == id) return s['nom'] as String?;
+    }
+    return _sites.isEmpty ? null : _sites.first['nom'] as String?;
+  }
   String? _nom;
   SyncStatus _statut = db.currentStatus;
   int _enAttente = 0;
@@ -81,7 +89,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
       }))
       ..add(db.watch('SELECT s.* FROM sites s JOIN rattachements r ON r.organisation_id = s.organisation_id '
           'WHERE r.user_id = ? AND r.actif = 1 GROUP BY s.id ORDER BY s.created_at', parameters: [moi]).listen((r) {
-        setState(() => _sites = r.toList());
+        setState(() => _sites = [for (final x in r) Map<String, Object?>.from(x)]);
       }))
       ..add(db.watch('SELECT nom_complet FROM personnes WHERE id = ?', parameters: [moi]).listen((r) {
         setState(() => _nom = r.isEmpty ? null : r.first['nom_complet'] as String?);
@@ -320,7 +328,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
               rubrique: _rubrique,
               aller: _aller,
               cePoste: _cePoste,
-              siteNom: _sites.isEmpty ? null : _sites.firstWhere((s) => s['id'] == e.siteId, orElse: () => _sites.first)['nom'] as String?,
+              siteNom: _nomDuSite(e.siteId),
             ),
             Expanded(
               child: Column(children: [
