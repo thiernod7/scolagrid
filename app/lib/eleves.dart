@@ -82,6 +82,27 @@ Future<DateTime?> _choisirDate(BuildContext context, DateTime? initiale, {DateTi
     );
 
 // Liste des élèves -------------------------------------------------------------
+//
+// Comme dans la maquette : en-tête (titre, nombre, boutons), filtres, puis un
+// tableau dont les colonnes se retirent quand la place manque. Un clic sur une
+// ligne ouvre la fiche : à côté du tableau au-delà de 1280 px (on feuillette
+// sans rien refermer), en tiroir qui glisse depuis la droite en dessous, en
+// plein écran sur téléphone.
+
+/// Âge en années révolues.
+int? _age(Object? naissance) {
+  final d = DateTime.tryParse('${naissance ?? ''}');
+  if (d == null) return null;
+  final a = DateTime.now();
+  var n = a.year - d.year;
+  if (a.month < d.month || (a.month == d.month && a.day < d.day)) n--;
+  return n;
+}
+
+/// Statut d'un élève sur la liste : celui de son inscription de l'année, ou
+/// « Pas inscrit » (neutre : un élève pas encore revenu n'est pas une faute).
+Widget _badgeStatut(Object? statut) =>
+    statut == null ? const Etat('Pas inscrit') : etatInscription('$statut');
 
 class ElevesScreen extends StatefulWidget {
   const ElevesScreen({super.key, required this.espace, this.rechercheInitiale});
@@ -97,7 +118,14 @@ class ElevesScreen extends StatefulWidget {
 
 class _ElevesScreenState extends State<ElevesScreen> {
   late final _recherche = TextEditingController(text: widget.rechercheInitiale ?? '');
+  String? _cycle;
   String? _classe;
+  String? _statut;
+  String _tri = 'nom';
+  int _ordre = 1;
+  int _page = 0;
+  int _parPage = 50;
+  String? _ouvert;
   bool _peutInscrire = false;
 
   @override
@@ -106,6 +134,55 @@ class _ElevesScreenState extends State<ElevesScreen> {
     _sitesOuJInscris(widget.espace.orgId).then((s) {
       if (mounted) setState(() => _peutInscrire = s.isNotEmpty);
     });
+  }
+
+  void _trier(String colonne) => setState(() {
+        if (_tri == colonne) {
+          _ordre = -_ordre;
+        } else {
+          _tri = colonne;
+          _ordre = 1;
+        }
+      });
+
+  void _ouvrir(String eleveId) {
+    final largeur = MediaQuery.sizeOf(context).width;
+    if (largeur >= 1280) {
+      setState(() => _ouvert = eleveId);
+    } else if (largeur < 640) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: eleveId)));
+    } else {
+      // Tiroir qui glisse depuis la droite, par-dessus la liste.
+      setState(() => _ouvert = eleveId);
+      showGeneralDialog(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Fermer',
+        barrierColor: Colors.black26,
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (context, _, _) => Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Theme.of(context).colorScheme.surface,
+            elevation: 8,
+            child: SizedBox(
+              width: largeur < 600 ? largeur : 576,
+              height: double.infinity,
+              child: SafeArea(
+                child: FicheEleve(espace: widget.espace, eleveId: eleveId, onFermer: () => Navigator.of(context).pop()),
+              ),
+            ),
+          ),
+        ),
+        transitionBuilder: (context, animation, _, enfant) => SlideTransition(
+          position: Tween(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+          child: enfant,
+        ),
+      ).then((_) {
+        if (mounted) setState(() => _ouvert = null);
+      });
+    }
   }
 
   Future<void> _imprimerListe() async {
@@ -123,700 +200,692 @@ class _ElevesScreenState extends State<ElevesScreen> {
     await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Liste ${c['nom']}');
   }
 
+  /// La liste qu'on a sous les yeux (filtres compris), en fichier Excel.
+  Future<void> _exporter(Lignes eleves, String nom) async {
+    final messager = ScaffoldMessenger.of(context);
+    final classeur = xl.Excel.createExcel();
+    final feuille = classeur['Élèves'];
+    classeur.setDefaultSheet('Élèves');
+    xl.TextCellValue t(Object? v) => xl.TextCellValue(v == null ? '' : '$v');
+    feuille.appendRow([
+      for (final c in const [
+        'Matricule', "Matricule d'État", 'Nom', 'Prénoms', 'Sexe', 'Date de naissance', 'Classe', 'Statut', 'Tuteur',
+        'Téléphone', 'Quartier',
+      ])
+        t(c),
+    ]);
+    for (final e in eleves) {
+      feuille.appendRow([
+        t(e['matricule']), t(e['matricule_etat']), t(e['nom']), t(e['prenoms']), t(e['sexe']),
+        t(e['date_naissance'] == null ? null : _dateLisible(e['date_naissance'])), t(e['classe']),
+        t(e['statut'] == null ? 'Pas inscrit' : statutsInscription[e['statut']]), t(e['tuteur']), t(e['tuteur_tel']),
+        t(e['quartier']),
+      ]);
+    }
+    for (final f in classeur.tables.keys.toList()) {
+      if (f != 'Élèves') classeur.delete(f);
+    }
+    final octets = classeur.encode();
+    if (octets == null) return;
+    try {
+      await FilePicker.saveFile(
+        dialogTitle: 'Exporter la liste',
+        fileName: '$nom.xlsx',
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        bytes: Uint8List.fromList(octets),
+      );
+      messager.showSnackBar(SnackBar(content: Text('${eleves.length} élève(s) exporté(s).')));
+    } catch (_) {
+      messager.showSnackBar(const SnackBar(content: Text("Impossible d'enregistrer le fichier sur cet appareil.")));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final o = widget.espace.orgId;
-    final texte = _recherche.text.trim();
-    final motif = '%${texte.toUpperCase()}%';
-    return _Page(
-      titre: 'Élèves',
-      ajouter: _peutInscrire
-          ? () => Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => InscrireScreen(espace: widget.espace)))
-          : null,
-      libelleAjouter: 'Inscrire un élève',
-      corps: Column(children: [
+    return Scaffold(
+      body: Requete(
+        '''SELECT a.libelle AS annee, c.id, c.nom, c.capacite, c.site_id, s.nom AS site, n.cycle, n.ordre,
+             (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
+              AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
+           FROM annees_scolaires a
+           LEFT JOIN classes c ON c.annee_id = a.id
+           LEFT JOIN niveaux n ON n.id = c.niveau_id
+           LEFT JOIN sites s ON s.id = c.site_id
+           WHERE a.organisation_id = ? AND a.en_cours = 1
+           ORDER BY n.ordre, c.nom''',
+        parametres: [o],
+        builder: (context, lignesClasses) => Requete(
+          '''SELECT e.id, e.nom, e.prenoms, e.matricule, e.matricule_etat, e.sexe, e.date_naissance, e.quartier,
+               e.allergies, e.sante, e.created_at, e.site_id, s.nom AS site,
+               i.statut, i.classe_id, c.nom AS classe, n.cycle,
+               (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj,
+               (SELECT ct.nom_complet FROM eleves_contacts ec JOIN contacts ct ON ct.id = ec.contact_id
+                WHERE ec.eleve_id = e.id AND ec.tuteur_principal = 1) AS tuteur,
+               (SELECT ct.telephone FROM eleves_contacts ec JOIN contacts ct ON ct.id = ec.contact_id
+                WHERE ec.eleve_id = e.id AND ec.tuteur_principal = 1) AS tuteur_tel,
+               (SELECT group_concat(ct.nom_complet || ' ' || replace(coalesce(ct.telephone, ''), ' ', ''), ' ')
+                FROM eleves_contacts ec JOIN contacts ct ON ct.id = ec.contact_id WHERE ec.eleve_id = e.id) AS familles
+             FROM eleves e
+             LEFT JOIN sites s ON s.id = e.site_id
+             LEFT JOIN annees_scolaires a ON a.organisation_id = e.organisation_id AND a.en_cours = 1
+             LEFT JOIN inscriptions i ON i.eleve_id = e.id AND i.annee_id = a.id
+             LEFT JOIN classes c ON c.id = i.classe_id
+             LEFT JOIN niveaux n ON n.id = c.niveau_id
+             WHERE e.organisation_id = ?''',
+          parametres: [o],
+          builder: (context, tous) => _contenu(context, lignesClasses, tous),
+        ),
+      ),
+    );
+  }
+
+  Widget _contenu(BuildContext context, Lignes lignesClasses, Lignes tous) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final largeur = MediaQuery.sizeOf(context).width;
+    final scinde = largeur >= 1280;
+    final telephone = largeur < 640;
+    final panneau = scinde && _ouvert != null;
+
+    final annee = lignesClasses.isEmpty ? null : lignesClasses.first['annee'] as String?;
+    final classes = lignesClasses.where((c) => c['id'] != null).toList();
+    final cycles = <String>[];
+    for (final c in classes) {
+      final cy = c['cycle'] as String?;
+      if (cy != null && !cycles.contains(cy)) cycles.add(cy);
+    }
+    final plusieursSites = classes.map((c) => c['site_id']).toSet().length > 1;
+    Map<String, Object?>? classe;
+    for (final c in classes) {
+      if (c['id'] == _classe) classe = c;
+    }
+
+    // Filtres, puis tri, puis page.
+    final base = tous.where((e) => classe != null ? e['classe_id'] == _classe : (_cycle == null || e['cycle'] == _cycle)).toList();
+    final q = nomSimplifie(_recherche.text);
+    final chiffres = _recherche.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final eleves = base.where((e) {
+      if (_statut != null && (e['statut'] ?? 'non_inscrit') != _statut) return false;
+      if (q.isEmpty) return true;
+      final texte = nomSimplifie([
+        e['nom'], e['prenoms'], e['nom'], e['matricule'], e['matricule_etat'], e['classe'], e['familles'],
+      ].whereType<String>().join(' '));
+      if (texte.contains(q) || nomSimplifie('${e['prenoms']} ${e['nom']}').contains(q)) return true;
+      return chiffres.length >= 4 && '${e['familles'] ?? ''}'.contains(chiffres);
+    }).toList()
+      ..sort((a, b) {
+        int v;
+        switch (_tri) {
+          case 'classe':
+            v = '${a['classe'] ?? '￿'}'.compareTo('${b['classe'] ?? '￿'}');
+          case 'naissance':
+            v = '${a['date_naissance'] ?? '9999'}'.compareTo('${b['date_naissance'] ?? '9999'}');
+          default:
+            v = nomSimplifie(_nomEleve(a)).compareTo(nomSimplifie(_nomEleve(b)));
+        }
+        return v * _ordre;
+      });
+    final enAttente = base.where((e) => e['statut'] == 'en_attente').length;
+    final filtres = _recherche.text.isNotEmpty || _statut != null || _cycle != null || _classe != null;
+    final pages = eleves.isEmpty ? 1 : (eleves.length / _parPage).ceil();
+    final page = _page.clamp(0, pages - 1);
+    final affiches = eleves.skip(page * _parPage).take(_parPage).toList();
+
+    void filtrer(VoidCallback f) => setState(() {
+          f();
+          _page = 0;
+        });
+
+    // En-tête ----------------------------------------------------------------
+    final titre = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 12, children: [
+        Text(classe != null ? '${classe['nom']}' : 'Élèves',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: TextField(
-            controller: _recherche,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Nom, matricule, matricule d\'État, parent ou téléphone',
-              border: const OutlineInputBorder(),
-              suffixIcon: texte.isEmpty
-                  ? null
-                  : IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(_recherche.clear)),
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text(
+              '${eleves.length}${eleves.length != base.length ? ' sur ${base.length}' : ''}${annee == null ? '' : ' · $annee'}',
+              style: TextStyle(fontSize: 14, color: gris)),
+        ),
+      ]),
+      const SizedBox(height: 2),
+      Wrap(spacing: 12, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        if (classe != null) ...[
+          if (classe['cycle'] != null) Text('${classe['cycle']}', style: TextStyle(fontSize: 14, color: gris)),
+          Text('${classe['site']}', style: TextStyle(fontSize: 14, color: gris)),
+          Text('${classe['effectif']}${classe['capacite'] == null ? '' : ' / ${classe['capacite']} places'}',
+              style: TextStyle(fontSize: 14, color: gris)),
+        ],
+        if (enAttente > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(color: Couleurs.neutreFond, borderRadius: BorderRadius.circular(4)),
+            child: Text('$enAttente en attente', style: TextStyle(fontSize: 12, color: gris)),
+          ),
+      ]),
+    ]);
+    final boutons = Wrap(spacing: 8, runSpacing: 8, children: [
+      if (classe != null)
+        OutlinedButton.icon(
+            onPressed: _imprimerListe, icon: const Icon(Icons.print_outlined, size: 16), label: const Text('Imprimer la liste')),
+      if (!telephone)
+        OutlinedButton.icon(
+          onPressed: eleves.isEmpty ? null : () => _exporter(eleves, 'eleves-${classe?['nom'] ?? 'liste'}'.replaceAll(' ', '-')),
+          icon: const Icon(Icons.download_outlined, size: 16),
+          label: const Text('Exporter'),
+        ),
+      if (_peutInscrire && !telephone)
+        OutlinedButton.icon(
+          onPressed: () =>
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImportElevesScreen(espace: widget.espace))),
+          icon: const Icon(Icons.upload_file_outlined, size: 16),
+          label: const Text('Importer'),
+        ),
+      if (_peutInscrire)
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => InscrireScreen(espace: widget.espace))),
+          icon: const Icon(Icons.person_add_alt, size: 16),
+          label: const Text('Nouvelle inscription'),
+        ),
+    ]);
+
+    // Filtres ------------------------------------------------------------------
+    Widget menu<T>(double largeurMenu, T? valeur, String tous, Map<T, String> choix, ValueChanged<T?> change) => SizedBox(
+          width: largeurMenu,
+          height: 36,
+          child: DropdownButtonHideUnderline(
+            child: Container(
+              padding: const EdgeInsets.only(left: 12, right: 8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Theme.of(context).dividerColor),
+                borderRadius: BorderRadius.circular(6),
+                color: schema.surface,
+              ),
+              child: DropdownButton<T?>(
+                value: valeur,
+                isExpanded: true,
+                isDense: true,
+                icon: Icon(Icons.keyboard_arrow_down, size: 18, color: gris),
+                style: TextStyle(fontFamily: policeTexte, fontSize: 14, color: schema.onSurface),
+                items: [
+                  DropdownMenuItem<T?>(value: null, child: Text(tous, overflow: TextOverflow.ellipsis)),
+                  for (final c in choix.entries)
+                    DropdownMenuItem<T?>(value: c.key, child: Text(c.value, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: change,
+              ),
             ),
           ),
+        );
+    final barreFiltres = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      SizedBox(
+        width: telephone ? double.infinity : (panneau ? 260 : 340),
+        height: 36,
+        child: TextField(
+          controller: _recherche,
+          onChanged: (_) => filtrer(() {}),
+          style: const TextStyle(fontSize: 14),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            prefixIcon: Icon(Icons.search, size: 18, color: gris),
+            prefixIconConstraints: const BoxConstraints(minWidth: 36),
+            hintText: "Nom, matricule système ou d'État, tuteur…",
+            hintStyle: TextStyle(fontSize: 14, color: gris),
+          ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Wrap(spacing: 8, children: [
-            if (_peutInscrire)
-              TextButton.icon(
-                onPressed: () => Navigator.of(context)
-                    .push(MaterialPageRoute(builder: (_) => ImportElevesScreen(espace: widget.espace))),
-                icon: const Icon(Icons.upload_file),
-                label: const Text('Importer depuis Excel'),
+      ),
+      if (cycles.isNotEmpty)
+        menu<String>(160, _cycle, 'Tous les cycles', {for (final c in cycles) c: c}, (v) => filtrer(() {
+              _cycle = v;
+              if (classe != null && v != null && classe['cycle'] != v) _classe = null;
+            })),
+      menu<String>(176, _classe, 'Toutes les classes', {
+        for (final c in classes)
+          if (_cycle == null || c['cycle'] == _cycle)
+            c['id'] as String: '${c['nom']}${plusieursSites ? ' · ${c['site']}' : ''}  ${c['effectif']}',
+      }, (v) => filtrer(() {
+        _classe = v;
+        for (final c in classes) {
+          if (c['id'] == v) _cycle = c['cycle'] as String?;
+        }
+      })),
+      menu<String>(160, _statut, 'Tous les statuts', {
+        for (final s in statutsInscription.entries) s.key: s.value == 'En attente de paiement' ? 'En attente' : s.value,
+        'non_inscrit': 'Pas inscrit',
+      }, (v) => filtrer(() => _statut = v)),
+      if (filtres)
+        TextButton.icon(
+          style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
+          onPressed: () => filtrer(() {
+            _recherche.clear();
+            _statut = null;
+            _cycle = null;
+            _classe = null;
+          }),
+          icon: const Icon(Icons.close, size: 14),
+          label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
+        ),
+    ]);
+
+    // Pied : position et pages -----------------------------------------------------
+    final pied = Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        Text(
+            eleves.isEmpty
+                ? 'Aucun résultat'
+                : '${page * _parPage + 1}–${page * _parPage + affiches.length} sur ${eleves.length}',
+            style: TextStyle(fontSize: 14, color: gris)),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          if (!telephone) ...[
+            menu<int>(136, _parPage == 50 ? null : _parPage, '50 par page', {25: '25 par page', 100: '100 par page'},
+                (v) => filtrer(() => _parPage = v ?? 50)),
+            const SizedBox(width: 8),
+          ],
+          _BoutonPage(icone: Icons.chevron_left, onPressed: page == 0 ? null : () => setState(() => _page = page - 1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text('${page + 1} / $pages', style: TextStyle(fontSize: 14, color: gris)),
+          ),
+          _BoutonPage(icone: Icons.chevron_right, onPressed: page >= pages - 1 ? null : () => setState(() => _page = page + 1)),
+        ]),
+      ],
+    );
+
+    final tableau = _TableauEleves(
+      espace: widget.espace,
+      eleves: affiches,
+      vide: tous.isEmpty
+          ? (_peutInscrire ? 'Aucun élève pour le moment. Inscrivez le premier, ou importez une liste Excel.' : 'Aucun élève pour le moment.')
+          : 'Aucun élève ne correspond.',
+      ouvert: _ouvert,
+      onOuvrir: _ouvrir,
+      tri: _tri,
+      onTrier: _trier,
+      colonnes: (
+        matricule: largeur >= 768,
+        classe: classe == null,
+        site: classe == null && plusieursSites && !panneau && largeur >= 1280,
+        naissance: !panneau && largeur >= 1024,
+        tuteur: !panneau && largeur >= 1280,
+        quartier: !panneau && largeur >= 1536,
+      ),
+      telephone: telephone,
+    );
+
+    final liste = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (telephone) ...[
+        titre,
+        const SizedBox(height: 8),
+        boutons,
+      ] else
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: titre),
+          const SizedBox(width: 8),
+          Flexible(child: Align(alignment: Alignment.topRight, child: boutons)),
+        ]),
+      const SizedBox(height: 12),
+      barreFiltres,
+      const SizedBox(height: 12),
+      Expanded(child: tableau),
+      const SizedBox(height: 12),
+      pied,
+    ]);
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1600),
+        child: Padding(
+          padding: EdgeInsets.all(telephone ? 12 : 16),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: liste),
+            if (panneau) ...[
+              const SizedBox(width: 16),
+              _PanneauLateral(
+                key: const ValueKey('panneau'),
+                child: FicheEleve(
+                  key: ValueKey(_ouvert),
+                  espace: widget.espace,
+                  eleveId: _ouvert!,
+                  onFermer: () => setState(() => _ouvert = null),
+                ),
               ),
-            if (_classe != null)
-              TextButton.icon(onPressed: _imprimerListe, icon: const Icon(Icons.print), label: const Text('Imprimer la liste')),
+            ],
           ]),
         ),
-        // Classes de l'année en cours, avec effectif et capacité.
-        SizedBox(
-          height: 52,
-          child: Requete(
-            '''SELECT c.id, c.nom, c.capacite,
-                 (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
-                  AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
-               FROM classes c JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1
-               JOIN niveaux n ON n.id = c.niveau_id
-               WHERE c.organisation_id = ? ORDER BY n.ordre, c.nom''',
-            parametres: [o],
-            builder: (context, classes) => ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                      label: const Text('Toutes'),
-                      selected: _classe == null,
-                      onSelected: (_) => setState(() => _classe = null)),
-                ),
-                for (final c in classes)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: Text('${c['nom']} · ${c['effectif']}${c['capacite'] == null ? '' : '/${c['capacite']}'}'),
-                      selected: _classe == c['id'],
-                      onSelected: (_) => setState(() => _classe = c['id'] as String),
+      ),
+    );
+  }
+}
+
+class _BoutonPage extends StatelessWidget {
+  const _BoutonPage({required this.icone, required this.onPressed});
+
+  final IconData icone;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 32,
+        height: 32,
+        child: OutlinedButton(
+          style: OutlinedButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(32, 32)),
+          onPressed: onPressed,
+          child: Icon(icone, size: 16),
+        ),
+      );
+}
+
+/// La fiche posée à côté du tableau : elle arrive en glissant de la droite.
+class _PanneauLateral extends StatelessWidget {
+  const _PanneauLateral({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        builder: (context, t, enfant) => Opacity(
+          opacity: t,
+          child: Transform.translate(offset: Offset(24 * (1 - t), 0), child: enfant),
+        ),
+        child: Container(
+          width: 432,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Theme.of(context).dividerColor),
+          ),
+          child: Material(type: MaterialType.transparency, child: child),
+        ),
+      );
+}
+
+/// Colonnes qu'on peut se permettre selon la place.
+typedef _Colonnes = ({bool matricule, bool classe, bool site, bool naissance, bool tuteur, bool quartier});
+
+class _TableauEleves extends StatelessWidget {
+  const _TableauEleves({
+    required this.espace,
+    required this.eleves,
+    required this.vide,
+    required this.ouvert,
+    required this.onOuvrir,
+    required this.tri,
+    required this.onTrier,
+    required this.colonnes,
+    required this.telephone,
+  });
+
+  final Espace espace;
+  final Lignes eleves;
+  final String vide;
+  final String? ouvert;
+  final ValueChanged<String> onOuvrir;
+  final String tri;
+  final ValueChanged<String> onTrier;
+  final _Colonnes colonnes;
+  final bool telephone;
+
+  Future<void> _action(BuildContext context, String action, Map<String, Object?> e) async {
+    final id = e['id'] as String;
+    switch (action) {
+      case 'ouvrir':
+        onOuvrir(id);
+      case 'encaisser':
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => EncaisserScreen(espace: espace, eleveId: id)));
+      case 'reinscrire':
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => InscrireScreen(espace: espace, eleveId: id)));
+      default:
+        final complet = await db.get('SELECT * FROM eleves WHERE id = ?', [id]);
+        final ins = await _inscriptionEnCours(id);
+        if (!context.mounted) return;
+        switch (action) {
+          case 'modifier':
+            await _modifierIdentiteEleve(context, Map.of(complet));
+          case 'attestation':
+            if (ins != null) await _imprimerAttestation(context, Map.of(complet), ins);
+          case 'classe':
+            if (ins != null) await _changerClasseEleve(context, ins);
+          case 'clore':
+            if (ins != null) await _clore(context, ins);
+        }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final bordure = Theme.of(context).dividerColor;
+    const entete = TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
+    final c = colonnes;
+
+    Widget triable(String libelle, String cle) => InkWell(
+          onTap: () => onTrier(cle),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(libelle, style: entete),
+            const SizedBox(width: 4),
+            Icon(tri == cle ? Icons.swap_vert : Icons.unfold_more, size: 13, color: gris.withValues(alpha: tri == cle ? 1 : .6)),
+          ]),
+        );
+    Widget cellule(double? largeur, Widget enfant, {int flex = 1}) {
+      final contenu = Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: enfant);
+      return largeur == null ? Expanded(flex: flex, child: contenu) : SizedBox(width: largeur, child: contenu);
+    }
+
+    final enTete = Container(
+      height: 36,
+      decoration: BoxDecoration(color: schema.surface, border: Border(bottom: BorderSide(color: bordure))),
+      child: Row(children: [
+        SizedBox(width: telephone ? 56 : 72),
+        cellule(null, Align(alignment: Alignment.centerLeft, child: triable('Élève', 'nom')), flex: 3),
+        if (!telephone) ...[
+          if (c.matricule) cellule(224, const Text('Matricule', style: entete)),
+          cellule(64, const Text('Sexe', style: entete)),
+          if (c.classe) cellule(128, Align(alignment: Alignment.centerLeft, child: triable('Classe', 'classe'))),
+          if (c.site) cellule(112, const Text('Site', style: entete)),
+          if (c.naissance) cellule(144, Align(alignment: Alignment.centerLeft, child: triable('Né(e) le', 'naissance'))),
+          if (c.tuteur) cellule(null, const Text('Tuteur principal', style: entete), flex: 2),
+          if (c.quartier) cellule(128, const Text('Quartier', style: entete)),
+        ],
+        cellule(telephone ? 104 : 144, const Text('Statut', style: entete)),
+        const SizedBox(width: 48),
+      ]),
+    );
+
+    Widget ligne(Map<String, Object?> e) {
+      final id = e['id'] as String;
+      final choisi = id == ouvert;
+      final age = _age(e['date_naissance']);
+      final nouveau = DateTime.tryParse('${e['created_at']}')?.isAfter(DateTime.now().subtract(const Duration(hours: 24))) ?? false;
+      final petit = TextStyle(fontSize: 12, color: gris);
+      return Material(
+        color: choisi ? (Theme.of(context).brightness == Brightness.dark ? schema.surfaceContainerHighest : Couleurs.neutreFond) : Colors.transparent,
+        child: InkWell(
+          onTap: () => onOuvrir(id),
+          hoverColor: Couleurs.neutreFond.withValues(alpha: .5),
+          child: Container(
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: _AvatarListe(eleve: e, taille: telephone ? 40 : 56),
+              ),
+              cellule(
+                null,
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Flexible(
+                      child: Text(_nomEleve(e),
+                          overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     ),
+                    if (AlerteSante.concerne(e)) ...[const SizedBox(width: 8), AlerteSante(eleve: e)],
+                    if (nouveau) ...[
+                      const SizedBox(width: 8),
+                      const Etat('nouveau', ton: Ton.regle),
+                    ],
+                  ]),
+                  if (!c.matricule || telephone)
+                    Text(telephone ? '${e['matricule']} · ${e['classe'] ?? '—'}' : '${e['matricule']}',
+                        overflow: TextOverflow.ellipsis, style: styleMono.copyWith(fontSize: 12, color: gris)),
+                ]),
+                flex: 3,
+              ),
+              if (!telephone) ...[
+                if (c.matricule)
+                  cellule(
+                    224,
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${e['matricule']}', overflow: TextOverflow.ellipsis, style: styleMono.copyWith(fontSize: 12)),
+                      Text(e['matricule_etat'] as String? ?? 'État : en attente',
+                          overflow: TextOverflow.ellipsis, style: styleMono.copyWith(fontSize: 12, color: gris)),
+                    ]),
                   ),
+                cellule(64, Text('${e['sexe'] ?? '—'}', style: const TextStyle(fontSize: 14))),
+                if (c.classe) cellule(128, Text('${e['classe'] ?? '—'}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+                if (c.site) cellule(112, Text('${e['site'] ?? ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+                if (c.naissance)
+                  cellule(
+                    144,
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(e['date_naissance'] == null ? '—' : _dateLisible(e['date_naissance']), style: const TextStyle(fontSize: 14)),
+                      if (age != null) Text('$age ans', style: petit),
+                    ]),
+                  ),
+                if (c.tuteur)
+                  cellule(
+                    null,
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${e['tuteur'] ?? ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                      if (e['tuteur_tel'] != null) Text('${e['tuteur_tel']}', overflow: TextOverflow.ellipsis, style: petit),
+                    ]),
+                    flex: 2,
+                  ),
+                if (c.quartier)
+                  cellule(128, Text('${e['quartier'] ?? ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
               ],
-            ),
+              cellule(telephone ? 104 : 144, Align(alignment: Alignment.centerLeft, child: _badgeStatut(e['statut']))),
+              SizedBox(
+                width: 48,
+                child: PopupMenuButton<String>(
+                  tooltip: 'Actions',
+                  icon: const Icon(Icons.more_horiz, size: 18),
+                  onSelected: (a) => _action(context, a, e),
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'ouvrir', child: _ItemMenu(Icons.description_outlined, 'Ouvrir la fiche')),
+                    const PopupMenuItem(value: 'modifier', child: _ItemMenu(Icons.edit_outlined, 'Modifier')),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(value: 'encaisser', child: _ItemMenu(Icons.account_balance_wallet_outlined, 'Encaisser')),
+                    if (e['statut'] == 'actif')
+                      const PopupMenuItem(value: 'attestation', child: _ItemMenu(Icons.description_outlined, "Attestation d'inscription")),
+                    const PopupMenuDivider(),
+                    if (e['statut'] == null)
+                      const PopupMenuItem(value: 'reinscrire', child: _ItemMenu(Icons.how_to_reg_outlined, 'Réinscrire'))
+                    else if (e['statut'] == 'actif' || e['statut'] == 'en_attente') ...[
+                      const PopupMenuItem(value: 'classe', child: _ItemMenu(Icons.swap_horiz, 'Changer de classe')),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                          value: 'clore', child: _ItemMenu(Icons.block, "Clore l'inscription", couleur: Couleurs.retard)),
+                    ],
+                  ],
+                ),
+              ),
+            ]),
           ),
         ),
+      );
+    }
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: schema.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: bordure),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        enTete,
         Expanded(
-          child: Requete(
-            '''SELECT e.*, i.statut, c.nom AS classe,
-                 (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj
-               FROM eleves e
-               LEFT JOIN inscriptions i ON i.eleve_id = e.id
-                 AND i.annee_id = (SELECT id FROM annees_scolaires WHERE organisation_id = e.organisation_id AND en_cours = 1)
-               LEFT JOIN classes c ON c.id = i.classe_id
-               WHERE e.organisation_id = ?
-                 AND (? IS NULL OR i.classe_id = ?)
-                 AND (? = '' OR upper(e.nom || ' ' || e.prenoms) LIKE ? OR upper(e.prenoms || ' ' || e.nom) LIKE ?
-                      OR e.matricule LIKE ? OR upper(coalesce(e.matricule_etat, '')) LIKE ?
-                      OR EXISTS (SELECT 1 FROM eleves_contacts ec JOIN contacts ct ON ct.id = ec.contact_id
-                                 WHERE ec.eleve_id = e.id AND (upper(ct.nom_complet) LIKE ?
-                                   OR replace(coalesce(ct.telephone, ''), ' ', '') LIKE ?)))
-               ORDER BY e.nom, e.prenoms
-               LIMIT 300''',
-            parametres: [o, _classe, _classe, texte, motif, motif, motif, motif, motif, '%${texte.replaceAll(' ', '')}%'],
-            builder: (context, eleves) {
-              if (eleves.isEmpty) {
-                return _vide(texte.isEmpty && _classe == null
-                    ? 'Aucun élève pour le moment.'
-                    : 'Aucun élève trouvé. Vérifiez l\'orthographe, ou cherchez par matricule ou téléphone du parent.');
-              }
-              return ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 88), children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text('${eleves.length}${eleves.length == 300 ? '+' : ''} élève(s)'),
-                ),
-                for (final e in eleves)
-                  Card(
-                    child: ListTile(
-                      leading: PhotoEleve(eleveId: e['id'] as String, nom: _nomEleve(e), version: e['photo_maj'] as String?),
-                      title: Row(children: [
-                        Flexible(child: Text(_nomEleve(e), overflow: TextOverflow.ellipsis)),
-                        if (e['allergies'] != null || e['sante'] != null)
-                          const Padding(
-                            padding: EdgeInsets.only(left: 6),
-                            child: Tooltip(
-                                message: 'Information de santé',
-                                child: Icon(Icons.medical_information, size: 18, color: Couleurs.retard)),
-                          ),
-                      ]),
-                      subtitle: Text.rich(TextSpan(children: [
-                        TextSpan(text: '${e['matricule']}', style: styleMono.copyWith(fontSize: 12)),
-                        TextSpan(text: '  ·  ${e['classe'] ?? 'Pas inscrit cette année'}'),
-                      ])),
-                      trailing: e['statut'] == null ? null : etatInscription(e['statut'] as String),
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: e['id'] as String))),
-                    ),
+          child: eleves.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(vide, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
                   ),
-              ]);
-            },
-          ),
+                )
+              : ListView.builder(
+                  itemCount: eleves.length,
+                  itemBuilder: (context, i) => ligne(eleves[i]),
+                ),
         ),
       ]),
     );
   }
 }
 
-// Fiche élève -----------------------------------------------------------------
+class _ItemMenu extends StatelessWidget {
+  const _ItemMenu(this.icone, this.libelle, {this.couleur});
 
-class FicheEleveScreen extends StatefulWidget {
-  const FicheEleveScreen({super.key, required this.espace, required this.eleveId});
-
-  final Espace espace;
-  final String eleveId;
+  final IconData icone;
+  final String libelle;
+  final Color? couleur;
 
   @override
-  State<FicheEleveScreen> createState() => _FicheEleveScreenState();
+  Widget build(BuildContext context) => Row(children: [
+        Icon(icone, size: 16, color: couleur),
+        const SizedBox(width: 10),
+        Text(libelle, style: TextStyle(fontSize: 14, color: couleur)),
+      ]);
 }
 
-class _FicheEleveScreenState extends State<FicheEleveScreen> {
-  bool _peutModifier = false;
-  bool _voitCaisse = false;
+/// Vignette de la liste : la photo, ou les initiales avec un petit appareil
+/// photo qui signale que la photo d'identité manque.
+class _AvatarListe extends StatelessWidget {
+  const _AvatarListe({required this.eleve, required this.taille});
 
-  @override
-  void initState() {
-    super.initState();
-    db.getOptional('SELECT organisation_id, site_id FROM eleves WHERE id = ?', [widget.eleveId]).then((e) async {
-      if (e == null) return;
-      final ok = await jAiLeDroit(e['organisation_id'] as String, e['site_id'] as String?, 'gerer_inscriptions');
-      final caisse = await jAiLeDroit(e['organisation_id'] as String, e['site_id'] as String?, 'encaisser');
-      if (mounted) {
-        setState(() {
-          _peutModifier = ok;
-          _voitCaisse = caisse || ok;
-        });
-      }
-    });
-  }
-
-  Future<void> _changerClasse(Map<String, Object?> ins) async {
-    final classes = {
-      for (final c in await db.getAll(
-          '''SELECT c.id, c.nom, c.capacite, (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
-               AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
-             FROM classes c JOIN niveaux n ON n.id = c.niveau_id
-             WHERE c.annee_id = ? AND c.site_id = ? AND c.id <> ? ORDER BY n.ordre, c.nom''',
-          [ins['annee_id'], ins['site_id'], ins['classe_id']]))
-        c['id'] as String: '${c['nom']} · ${c['effectif']}${c['capacite'] == null ? '' : '/${c['capacite']}'}',
-    };
-    if (!mounted) return;
-    if (classes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucune autre classe sur ce site.')));
-      return;
-    }
-    var choix = classes.keys.first;
-    final ok = await _formulaire(context, 'Changer de classe', (maj) => [
-          const Text('Le matricule, les paiements et les notes suivent l\'élève. Le changement est historisé.'),
-          _liste('Nouvelle classe', choix, classes, (v) => maj(() => choix = v)),
-        ]);
-    if (ok) await _modifier('inscriptions', ins['id'] as String, {'classe_id': choix});
-  }
-
-  Future<void> _sortie(Map<String, Object?> ins) async {
-    var statut = 'annule';
-    final motif = TextEditingController();
-    final ok = await _formulaire(context, "Fin de l'inscription", (maj) => [
-          _liste('Motif', statut, const {
-            'annule': 'Annulation (place libérée)',
-            'transfert_sortant': 'Départ vers une autre école',
-            'exclu': 'Exclusion',
-            'suspendu': 'Suspension temporaire',
-          }, (v) => maj(() => statut = v)),
-          TextField(controller: motif, decoration: _champ('Explication', aide: 'Obligatoire')),
-          const Text('Rien n\'est effacé : la fiche, les paiements et l\'historique restent.'),
-        ]);
-    if (!ok || motif.text.trim().length < 3) return;
-    await _modifier('inscriptions', ins['id'] as String, {'statut': statut, 'motif': motif.text.trim()});
-  }
-
-  /// Attestation d'inscription : seulement pour un élève actif (frais
-  /// d'inscription réglés). La première impression est l'original ; ensuite,
-  /// duplicata numéroté avec motif. Chaque impression est notée.
-  Future<void> _attestation(Map<String, Object?> e, Map<String, Object?> ins) async {
-    final messager = ScaffoldMessenger.of(context);
-    if (ins['statut'] != 'actif') {
-      messager.showSnackBar(const SnackBar(
-          content: Text("Attestation disponible uniquement après règlement des frais d'inscription (élève actif).")));
-      return;
-    }
-    final deja = (await db.get(
-        "SELECT count(*) AS n FROM impressions_documents WHERE inscription_id = ? AND type_document = 'attestation_inscription'",
-        [ins['id']]))['n'] as int;
-    String? motif;
-    if (deja > 0) {
-      final m = TextEditingController();
-      if (!mounted) return;
-      final ok = await _formulaire(context, 'Duplicata n° $deja', (_) => [
-            Text("L'attestation a déjà été imprimée. Cette nouvelle impression portera la mention DUPLICATA."),
-            TextField(controller: m, autofocus: true, decoration: _champ('Motif', aide: 'Ex. original perdu')),
-          ]);
-      if (!ok || m.text.trim().length < 3) return;
-      motif = m.text.trim();
-    }
-    final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [e['organisation_id']]);
-    final poste = await cePoste();
-    await _inserer('impressions_documents', {
-      'organisation_id': e['organisation_id'],
-      'eleve_id': e['id'],
-      'inscription_id': ins['id'],
-      'type_document': 'attestation_inscription',
-      'rang': deja + 1,
-      'motif': motif,
-      'par': monId,
-      'poste_id': poste?['poste_id'],
-    });
-    // La photo d'identité, si l'élève en a une sur ce poste.
-    final p = await db.getOptional('SELECT image FROM photos_eleves WHERE eleve_id = ?', [e['id']]);
-    Uint8List? photo;
-    try {
-      photo = p == null ? null : base64Decode(p['image'] as String);
-    } catch (_) {
-      photo = null;
-    }
-    final pdf = await attestationPdf(
-      photo: photo,
-      ecole: Map.of(ecole),
-      eleve: e,
-      classe: '${ins['classe']}',
-      annee: '${ins['annee']}',
-      date: DateTime.now(),
-      rang: deja + 1,
-    );
-    await Printing.layoutPdf(
-        onLayout: (_) async => pdf, name: 'Attestation ${e['matricule']}${deja > 0 ? ' duplicata $deja' : ''}');
-  }
-
-  /// Certificat de scolarité : toutes les années passées dans l'école (même
-  /// après le départ de l'élève). Original, puis duplicatas avec motif.
-  Future<void> _certificat(Map<String, Object?> e) async {
-    final messager = ScaffoldMessenger.of(context);
-    final annees = await db.getAll(
-        '''SELECT a.libelle, c.nom AS classe, i.statut, i.date_sortie FROM inscriptions i
-           JOIN annees_scolaires a ON a.id = i.annee_id JOIN classes c ON c.id = i.classe_id
-           WHERE i.eleve_id = ? AND i.statut <> 'annule' ORDER BY a.debut''',
-        [e['id']]);
-    if (annees.isEmpty) {
-      messager.showSnackBar(const SnackBar(content: Text("Aucune année de scolarité enregistrée pour cet élève.")));
-      return;
-    }
-    final deja = (await db.get(
-        "SELECT count(*) AS n FROM impressions_documents WHERE eleve_id = ? AND type_document = 'certificat_scolarite'",
-        [e['id']]))['n'] as int;
-    String? motif;
-    if (deja > 0) {
-      final m = TextEditingController();
-      if (!mounted) return;
-      final ok = await _formulaire(context, 'Duplicata n° $deja', (_) => [
-            const Text('Le certificat a déjà été imprimé. Cette nouvelle impression portera la mention DUPLICATA.'),
-            TextField(controller: m, autofocus: true, decoration: _champ('Motif', aide: 'Ex. dossier de transfert, bourse')),
-          ]);
-      if (!ok || m.text.trim().length < 3) return;
-      motif = m.text.trim();
-    }
-    final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [e['organisation_id']]);
-    final poste = await cePoste();
-    await _inserer('impressions_documents', {
-      'organisation_id': e['organisation_id'],
-      'eleve_id': e['id'],
-      'inscription_id': null,
-      'type_document': 'certificat_scolarite',
-      'rang': deja + 1,
-      'motif': motif,
-      'par': monId,
-      'poste_id': poste?['poste_id'],
-    });
-    final derniere = annees.last;
-    final p = await db.getOptional('SELECT image FROM photos_eleves WHERE eleve_id = ?', [e['id']]);
-    Uint8List? photo;
-    try {
-      photo = p == null ? null : base64Decode(p['image'] as String);
-    } catch (_) {
-      photo = null;
-    }
-    final pdf = await certificatPdf(
-      photo: photo,
-      ecole: Map.of(ecole),
-      eleve: e,
-      parcours: [for (final a in annees) (annee: '${a['libelle']}', classe: '${a['classe']}')],
-      sortie: const {'transfert_sortant', 'exclu', 'diplome'}.contains(derniere['statut']) ? derniere['date_sortie'] as String? : null,
-      date: DateTime.now(),
-      rang: deja + 1,
-    );
-    await Printing.layoutPdf(
-        onLayout: (_) async => pdf, name: 'Certificat ${e['matricule']}${deja > 0 ? ' duplicata $deja' : ''}');
-  }
-
-  Future<void> _reprendre(Map<String, Object?> ins) async {
-    if (await _confirmer(context, 'Reprendre cet élève (suspension levée) ?')) {
-      await _modifier('inscriptions', ins['id'] as String, {'statut': ins['date_actif'] == null ? 'en_attente' : 'actif'});
-    }
-  }
-
-  Future<void> _modifierIdentite(Map<String, Object?> e) async {
-    TextEditingController c(String col) => TextEditingController(text: e[col] as String? ?? '');
-    final champs = {
-      'nom': c('nom'),
-      'prenoms': c('prenoms'),
-      'lieu_naissance': c('lieu_naissance'),
-      'nationalite': c('nationalite'),
-      'quartier': c('quartier'),
-      'matricule_etat': c('matricule_etat'),
-      'allergies': c('allergies'),
-      'sante': c('sante'),
-    };
-    const libelles = {
-      'nom': 'Nom',
-      'prenoms': 'Prénoms',
-      'lieu_naissance': 'Lieu de naissance',
-      'nationalite': 'Nationalité',
-      'quartier': 'Quartier',
-      'matricule_etat': "Matricule d'État",
-      'allergies': 'Allergies',
-      'sante': 'Traitement ou condition',
-    };
-    var naissance = DateTime.tryParse('${e['date_naissance']}');
-    var sexe = e['sexe'] as String?;
-    final ok = await _formulaire(context, "Modifier l'identité", (maj) => [
-          Text('Matricule ${e['matricule']} : il ne change jamais.'),
-          for (final k in champs.keys) TextField(controller: champs[k], decoration: _champ(libelles[k]!)),
-          _liste<String?>('Sexe', sexe, const {null: 'Non renseigné', 'M': 'Garçon', 'F': 'Fille'}, (v) => maj(() => sexe = v)),
-          OutlinedButton.icon(
-            onPressed: () async {
-              final d = await _choisirDate(context, naissance);
-              if (d != null) maj(() => naissance = d);
-            },
-            icon: const Icon(Icons.cake_outlined),
-            label: Text(naissance == null ? 'Date de naissance' : 'Né(e) le ${_dateLisible(_date(naissance!))}'),
-          ),
-        ]);
-    if (!ok || champs['nom']!.text.trim().isEmpty || champs['prenoms']!.text.trim().isEmpty) return;
-    await _modifier('eleves', widget.eleveId, {
-      for (final k in champs.keys)
-        k: champs[k]!.text.trim().isEmpty ? null : (k == 'nom' ? champs[k]!.text.trim().toUpperCase() : champs[k]!.text.trim()),
-      'sexe': sexe,
-      'date_naissance': naissance == null ? null : _date(naissance!),
-    });
-  }
-
-  Future<void> _ajouterParent(Map<String, Object?> e) async {
-    final tel = TextEditingController();
-    final nom = TextEditingController();
-    var lien = 'mere';
-    Map<String, Object?>? connu;
-    final ok = await _formulaire(context, 'Ajouter un parent', (maj) => [
-          TextField(
-            controller: tel,
-            keyboardType: TextInputType.phone,
-            decoration: _champ('Téléphone'),
-            onChanged: (v) async {
-              final n = numeroInternational(v);
-              final c = n.length < 12
-                  ? null
-                  : await db.getOptional("SELECT * FROM contacts WHERE organisation_id = ? AND replace(telephone, ' ', '') = ?",
-                      [e['organisation_id'], n]);
-              maj(() {
-                connu = c;
-                if (c != null) nom.text = '${c['nom_complet']}';
-              });
-            },
-          ),
-          TextField(controller: nom, enabled: connu == null, decoration: _champ('Nom complet')),
-          _liste("Lien avec l'élève", lien, liensFamille, (v) => maj(() => lien = v)),
-        ]);
-    if (!ok || nom.text.trim().length < 2) return;
-    final maintenant = _maintenant();
-    await db.writeTransaction((tx) async {
-      var contactId = connu?['id'] as String?;
-      if (contactId == null) {
-        contactId = (await tx.get('SELECT uuid() AS id'))['id'] as String;
-        await tx.execute(
-            'INSERT INTO contacts (id, organisation_id, nom_complet, telephone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-            [contactId, e['organisation_id'], nom.text.trim(),
-              tel.text.trim().isEmpty ? null : numeroInternational(tel.text), maintenant, maintenant]);
-      }
-      final deja = await tx.getOptional('SELECT 1 FROM eleves_contacts WHERE eleve_id = ? AND contact_id = ?', [widget.eleveId, contactId]);
-      if (deja != null) return;
-      final sansTuteur = await tx.getOptional('SELECT 1 FROM eleves_contacts WHERE eleve_id = ? AND tuteur_principal = 1', [widget.eleveId]) == null;
-      final sansPayeur = await tx.getOptional('SELECT 1 FROM eleves_contacts WHERE eleve_id = ? AND responsable_financier = 1', [widget.eleveId]) == null;
-      await tx.execute(
-          'INSERT INTO eleves_contacts (id, organisation_id, eleve_id, contact_id, lien, tuteur_principal, responsable_financier, '
-          'created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?)',
-          [e['organisation_id'], widget.eleveId, contactId, lien, sansTuteur ? 1 : 0, sansPayeur ? 1 : 0, maintenant, maintenant]);
-    });
-  }
-
-  /// Un seul tuteur principal et un seul payeur : on retire d'abord l'ancien.
-  Future<void> _designer(String lienId, String colonne) => db.writeTransaction((tx) async {
-        final m = _maintenant();
-        await tx.execute('UPDATE eleves_contacts SET $colonne = 0, updated_at = ? WHERE eleve_id = ? AND $colonne = 1',
-            [m, widget.eleveId]);
-        await tx.execute('UPDATE eleves_contacts SET $colonne = 1, updated_at = ? WHERE id = ?', [m, lienId]);
-      });
+  final Map<String, Object?> eleve;
+  final double taille;
 
   @override
   Widget build(BuildContext context) {
-    final texte = Theme.of(context).textTheme;
-    return Requete(
-        '''SELECT e.*, s.nom AS site, (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj
-           FROM eleves e LEFT JOIN sites s ON s.id = e.site_id WHERE e.id = ?''',
-        parametres: [widget.eleveId], builder: (context, l) {
-      if (l.isEmpty) return const Scaffold(body: Center(child: Text('Élève introuvable sur ce poste.')));
-      final e = l.first;
-      return _Page(
-        titre: _nomEleve(e),
-        corps: ListView(padding: const EdgeInsets.all(16), children: [
-          Row(children: [
-            PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: 96),
-            const SizedBox(width: 16),
-            if (_peutModifier)
-              Expanded(
-                child: Wrap(spacing: 8, runSpacing: 8, children: [
-                  if (cameraDisponible)
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final p = await choisirPhoto(context, camera: true);
-                        if (p != null) await enregistrerPhoto(orgId: e['organisation_id'] as String, eleveId: widget.eleveId, photo: p);
-                      },
-                      icon: const Icon(Icons.photo_camera_outlined),
-                      label: Text(e['photo_maj'] == null ? 'Prendre la photo' : 'Nouvelle photo'),
-                    ),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      final p = await choisirPhoto(context, camera: false);
-                      if (p != null) await enregistrerPhoto(orgId: e['organisation_id'] as String, eleveId: widget.eleveId, photo: p);
-                    },
-                    icon: const Icon(Icons.image_outlined),
-                    label: Text(cameraDisponible ? 'Galerie' : 'Choisir une photo'),
-                  ),
-                  if (e['photo_maj'] != null)
-                    TextButton(
-                      onPressed: () async {
-                        if (await _confirmer(context, 'Retirer la photo de cet élève ?')) {
-                          await db.execute('DELETE FROM photos_eleves WHERE eleve_id = ?', [widget.eleveId]);
-                        }
-                      },
-                      child: const Text('Retirer'),
-                    ),
-                ]),
-              ),
-          ]),
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.badge_outlined),
-              title: Text('${e['matricule']}', style: texte.titleMedium),
-              subtitle: Text([
-                if (e['matricule_etat'] != null) "Matricule d'État : ${e['matricule_etat']}",
-                [
-                  e['sexe'] == 'M' ? 'Garçon' : (e['sexe'] == 'F' ? 'Fille' : null),
-                  if (e['date_naissance'] != null) 'né(e) le ${_dateLisible(e['date_naissance'])}',
-                  if (e['lieu_naissance'] != null) 'à ${e['lieu_naissance']}',
-                ].whereType<String>().join(' '),
-                [e['nationalite'], e['quartier'], e['site']].whereType<String>().join(' · '),
-                'Première inscription le ${_dateLisible(e['date_premiere_inscription'])}',
-              ].where((t) => t.isNotEmpty).join('\n')),
-              isThreeLine: true,
-              trailing: _peutModifier
-                  ? IconButton(tooltip: "Modifier l'identité", icon: const Icon(Icons.edit_outlined), onPressed: () => _modifierIdentite(e))
-                  : null,
-            ),
-          ),
-          if (e['allergies'] != null || e['sante'] != null)
-            Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: ListTile(
-                leading: const Icon(Icons.medical_information),
-                title: const Text('Santé'),
-                subtitle: Text([
-                  if (e['allergies'] != null) 'Allergies : ${e['allergies']}',
-                  if (e['sante'] != null) '${e['sante']}',
-                ].join('\n')),
+    final sansPhoto = eleve['photo_maj'] == null;
+    return SizedBox(
+      width: taille,
+      height: taille,
+      child: Stack(clipBehavior: Clip.none, children: [
+        PhotoEleve(
+            eleveId: eleve['id'] as String, nom: _nomEleve(eleve), version: eleve['photo_maj'] as String?, taille: taille),
+        if (sansPhoto)
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Tooltip(
+              message: 'Photo non fournie',
+              child: Container(
+                width: taille * .4,
+                height: taille * .4,
+                decoration: BoxDecoration(
+                  color: Couleurs.neutreFond,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Theme.of(context).colorScheme.surface, width: 1.5),
+                ),
+                child: Icon(Icons.photo_camera_outlined, size: taille * .22, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
-          const SizedBox(height: 8),
-          // Inscription de l'année en cours.
-          Requete(
-            '''SELECT i.*, c.nom AS classe, a.libelle AS annee FROM annees_scolaires a
-               LEFT JOIN inscriptions i ON i.annee_id = a.id AND i.eleve_id = ?
-               LEFT JOIN classes c ON c.id = i.classe_id
-               WHERE a.organisation_id = ? AND a.en_cours = 1''',
-            parametres: [widget.eleveId, e['organisation_id']],
-            builder: (context, r) {
-              if (r.isEmpty) return const SizedBox.shrink();
-              final ins = r.first;
-              if (ins['id'] == null) {
-                return Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.school_outlined),
-                    title: Text('Pas inscrit en ${ins['annee']}'),
-                    trailing: _peutModifier
-                        ? FilledButton(
-                            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => InscrireScreen(espace: widget.espace, eleveId: widget.eleveId))),
-                            child: const Text('Réinscrire'))
-                        : null,
-                  ),
-                );
-              }
-              final sorti = const {'annule', 'exclu', 'transfert_sortant', 'diplome'}.contains(ins['statut']);
-              return Card(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  ListTile(
-                    leading: Icon(Icons.school_outlined,
-                        color: ins['statut'] == 'actif' ? Colors.teal : (sorti ? Colors.grey : Colors.orange)),
-                    title: Text('${ins['classe']} · ${ins['annee']}'),
-                    subtitle: Text([
-                      statutsInscription[ins['statut']],
-                      typesAdmission[ins['type_admission']],
-                      'arrivé le ${_dateLisible(ins['date_effective'])}',
-                      if (ins['motif'] != null) 'Motif : ${ins['motif']}',
-                    ].join('\n')),
-                    isThreeLine: true,
-                  ),
-                  if (_voitCaisse && !sorti)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: SituationFinanciere(
-                          espace: widget.espace, inscriptionId: ins['id'] as String, eleveId: widget.eleveId),
-                    ),
-                  if (_peutModifier)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                      child: Wrap(spacing: 8, children: [
-                        if (!sorti && ins['statut'] != 'suspendu')
-                          OutlinedButton.icon(
-                              onPressed: () => _changerClasse(ins),
-                              icon: const Icon(Icons.swap_horiz),
-                              label: const Text('Changer de classe')),
-                        if (!sorti && ins['statut'] != 'suspendu')
-                          OutlinedButton.icon(
-                              onPressed: () => _sortie(ins),
-                              icon: const Icon(Icons.logout),
-                              label: const Text("Fin d'inscription")),
-                        if (ins['statut'] == 'suspendu')
-                          OutlinedButton.icon(
-                              onPressed: () => _reprendre(ins), icon: const Icon(Icons.undo), label: const Text('Reprendre')),
-                        OutlinedButton.icon(
-                            onPressed: () => _attestation(e, ins),
-                            icon: const Icon(Icons.verified_outlined),
-                            label: const Text("Attestation d'inscription")),
-                      ]),
-                    ),
-                ]),
-              );
-            },
           ),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: Text('Parents et tuteurs', style: texte.titleMedium)),
-            if (_peutModifier)
-              TextButton.icon(
-                  onPressed: () => _ajouterParent(e), icon: const Icon(Icons.person_add_alt), label: const Text('Ajouter')),
-          ]),
-          Requete(
-            '''SELECT ec.*, ct.nom_complet, ct.telephone,
-                 (SELECT count(*) FROM eleves_contacts x WHERE x.contact_id = ct.id AND x.responsable_financier = 1) AS a_charge
-               FROM eleves_contacts ec JOIN contacts ct ON ct.id = ec.contact_id
-               WHERE ec.eleve_id = ? ORDER BY ec.tuteur_principal DESC, ec.responsable_financier DESC''',
-            parametres: [widget.eleveId],
-            builder: (context, parents) => Column(children: [
-              if (parents.isEmpty) const Text('Contacts non visibles sur ce poste, ou aucun parent enregistré.'),
-              for (final p in parents)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.family_restroom),
-                    title: Text('${p['nom_complet']} · ${liensFamille[p['lien']] ?? ''}'),
-                    subtitle: Text([
-                      p['telephone'] ?? 'sans téléphone',
-                      if (p['tuteur_principal'] == 1) 'Tuteur principal',
-                      if (p['responsable_financier'] == 1)
-                        'Paie les frais${(p['a_charge'] as int? ?? 0) > 1 ? ' de ${p['a_charge']} enfants' : ''}',
-                    ].join(' · ')),
-                    trailing: _peutModifier
-                        ? PopupMenuButton<String>(
-                            onSelected: (v) => v == 'retirer'
-                                ? _supprimer('eleves_contacts', p['id'] as String)
-                                : _designer(p['id'] as String, v),
-                            itemBuilder: (_) => [
-                              if (p['tuteur_principal'] != 1)
-                                const PopupMenuItem(value: 'tuteur_principal', child: Text('Faire tuteur principal')),
-                              if (p['responsable_financier'] != 1)
-                                const PopupMenuItem(value: 'responsable_financier', child: Text('Désigner comme payeur')),
-                              if (p['tuteur_principal'] != 1 && p['responsable_financier'] != 1)
-                                const PopupMenuItem(value: 'retirer', child: Text('Retirer de la fiche')),
-                            ],
-                          )
-                        : null,
-                  ),
-                ),
-            ]),
-          ),
-          const SizedBox(height: 8),
-          _PiecesDossier(eleve: e, modifiable: _peutModifier),
-          const SizedBox(height: 8),
-          Requete(
-            '''SELECT d.*, p.nom_complet AS auteur FROM impressions_documents d
-               LEFT JOIN personnel p ON p.user_id = d.par AND p.organisation_id = d.organisation_id
-               WHERE d.eleve_id = ? ORDER BY d.created_at DESC''',
-            parametres: [widget.eleveId],
-            builder: (context, docs) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Row(children: [
-                      Expanded(child: Text('Documents', style: texte.titleMedium)),
-                      if (_peutModifier)
-                        TextButton.icon(
-                            onPressed: () => _certificat(e),
-                            icon: const Icon(Icons.history_edu_outlined),
-                            label: const Text('Certificat de scolarité')),
-                    ]),
-                    if (docs.isEmpty) const Text('Aucun document imprimé.'),
-                    for (final d in docs)
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.description_outlined),
-                        title: Text('${const {
-                              'attestation_inscription': "Attestation d'inscription",
-                              'certificat_scolarite': 'Certificat de scolarité',
-                              'decharge_remboursement': 'Décharge de remboursement',
-                            }[d['type_document']] ?? d['type_document']} · '
-                            '${d['rang'] == 1 ? 'original' : 'duplicata n° ${(d['rang'] as int) - 1}'}'),
-                        subtitle: Text('${_dateLisible(d['created_at'])}${d['auteur'] != null ? ' · ${d['auteur']}' : ''}'
-                            '${d['motif'] != null ? ' · ${d['motif']}' : ''}'),
-                      ),
-                    const SizedBox(height: 8),
-                  ]),
-          ),
-          Text('Historique', style: texte.titleMedium),
-          Requete(
-            '''SELECT h.*, cd.nom AS de_classe, cv.nom AS vers_classe, p.nom_complet AS auteur
-               FROM historique_eleves h
-               LEFT JOIN classes cd ON cd.id = h.de_classe_id
-               LEFT JOIN classes cv ON cv.id = h.vers_classe_id
-               LEFT JOIN personnel p ON p.user_id = h.par AND p.organisation_id = h.organisation_id
-               WHERE h.eleve_id = ? ORDER BY h.quand DESC''',
-            parametres: [widget.eleveId],
-            builder: (context, h) => Column(children: [
-              if (h.isEmpty) const Text("L'historique apparaît après la synchronisation."),
-              for (final x in h)
-                ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.history),
-                  title: Text(switch (x['evenement']) {
-                    'inscription' => 'Inscription en ${x['vers_classe'] ?? ''}',
-                    'mutation' => 'Changement de classe : ${x['de_classe'] ?? '?'} → ${x['vers_classe'] ?? '?'}',
-                    _ => '${statutsInscription[x['ancien_statut']] ?? x['ancien_statut']} → '
-                        '${statutsInscription[x['nouveau_statut']] ?? x['nouveau_statut']}',
-                  }),
-                  subtitle: Text('${_dateLisible(x['quand'])}${x['auteur'] != null ? ' · ${x['auteur']}' : ''}'
-                      '${x['motif'] != null ? ' · ${x['motif']}' : ''}'),
-                ),
-            ]),
-          ),
-        ]),
-      );
-    });
+      ]),
+    );
   }
 }

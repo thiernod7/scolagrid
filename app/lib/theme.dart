@@ -55,7 +55,7 @@ ThemeData themeScolagrid(Brightness luminosite) {
           error: Couleurs.retard,
         );
   final bordure = sombre ? schema.outlineVariant : Couleurs.bordure;
-  final arrondi = BorderRadius.circular(12);
+  final arrondi = BorderRadius.circular(6);
   final base = ThemeData(colorScheme: schema, fontFamily: policeTexte, useMaterial3: true);
   return base.copyWith(
     scaffoldBackgroundColor: sombre ? schema.surface : Couleurs.fond,
@@ -72,7 +72,7 @@ ThemeData themeScolagrid(Brightness luminosite) {
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: false,
-      titleTextStyle: TextStyle(fontFamily: policeTexte, fontSize: 19, fontWeight: FontWeight.w700, color: schema.onSurface),
+      titleTextStyle: TextStyle(fontFamily: policeTexte, fontSize: 18, fontWeight: FontWeight.w600, color: schema.onSurface),
       shape: Border(bottom: BorderSide(color: bordure)),
     ),
     cardTheme: CardThemeData(
@@ -80,24 +80,24 @@ ThemeData themeScolagrid(Brightness luminosite) {
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: const EdgeInsets.symmetric(vertical: 5),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: bordure)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: bordure)),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(44, 46),
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        minimumSize: const Size(36, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         shape: RoundedRectangleBorder(borderRadius: arrondi),
-        textStyle: const TextStyle(fontFamily: policeTexte, fontWeight: FontWeight.w600, fontSize: 15),
+        textStyle: const TextStyle(fontFamily: policeTexte, fontWeight: FontWeight.w500, fontSize: 14),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(44, 46),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        minimumSize: const Size(36, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         shape: RoundedRectangleBorder(borderRadius: arrondi),
-        side: BorderSide(color: schema.outline),
+        side: BorderSide(color: bordure),
         foregroundColor: schema.onSurface,
-        textStyle: const TextStyle(fontFamily: policeTexte, fontWeight: FontWeight.w600, fontSize: 14),
+        textStyle: const TextStyle(fontFamily: policeTexte, fontWeight: FontWeight.w500, fontSize: 14),
       ),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
@@ -109,9 +109,9 @@ ThemeData themeScolagrid(Brightness luminosite) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: sombre ? schema.surfaceContainerHighest : Colors.white,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: schema.outline)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: schema.outline)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: schema.primary, width: 2)),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: bordure)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: bordure)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: schema.primary, width: 1.5)),
     ),
     chipTheme: base.chipTheme.copyWith(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
@@ -155,17 +155,18 @@ class Etat extends StatelessWidget {
   Widget build(BuildContext context) {
     final (texteC, fondC) = couleurs(ton);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: fondC, borderRadius: BorderRadius.circular(999)),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: fondC, borderRadius: BorderRadius.circular(4)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icone != null) ...[Icon(icone, size: 14, color: texteC), const SizedBox(width: 5)],
-        Text(texte, style: TextStyle(color: texteC, fontSize: 12, fontWeight: FontWeight.w600)),
+        if (icone != null) ...[Icon(icone, size: 13, color: texteC), const SizedBox(width: 4)],
+        Text(texte, style: TextStyle(color: texteC, fontSize: 12, fontWeight: FontWeight.w500, height: 1.35)),
       ]),
     );
   }
 }
 
-/// Initiales d'un nom dans une pastille ronde, couleur stable selon le nom.
+/// Initiales d'un nom dans une pastille ronde grise (la photo, quand elle
+/// existe, prend sa place).
 class Initiales extends StatelessWidget {
   const Initiales(this.nom, {super.key, this.taille = 40});
 
@@ -176,17 +177,15 @@ class Initiales extends StatelessWidget {
   Widget build(BuildContext context) {
     final mots = nom.trim().split(RegExp(r'\s+')).where((m) => m.isNotEmpty).toList();
     final lettres = mots.isEmpty ? '?' : mots.take(2).map((m) => m[0].toUpperCase()).join();
-    const tons = [Ton.info, Ton.neutre, Ton.attente, Ton.regle];
-    final (texteC, fondC) = Etat.couleurs(tons[nom.codeUnits.fold(0, (s, c) => s + c) % tons.length]);
-    final indigo = nom.length.isEven;
+    final schema = Theme.of(context).colorScheme;
+    final sombre = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: taille,
       height: taille,
       alignment: Alignment.center,
-      decoration: BoxDecoration(color: indigo ? Couleurs.indigoClair : fondC, shape: BoxShape.circle),
+      decoration: BoxDecoration(color: sombre ? schema.surfaceContainerHighest : Couleurs.neutreFond, shape: BoxShape.circle),
       child: Text(lettres,
-          style: TextStyle(
-              color: indigo ? Couleurs.indigoFonce : texteC, fontWeight: FontWeight.w700, fontSize: taille * 0.33)),
+          style: TextStyle(color: schema.onSurfaceVariant, fontWeight: FontWeight.w500, fontSize: taille * 0.36)),
     );
   }
 }
