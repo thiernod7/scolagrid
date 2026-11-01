@@ -190,7 +190,7 @@ class _Reductions extends StatelessWidget {
     if (!context.mounted) return;
     if (regles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Aucune réduction personnalisée. Le fondateur les crée dans Configurer l'établissement → Réductions.")));
+          content: Text("Aucune réduction personnalisée. Le fondateur les crée dans Paramètres → Réductions.")));
       return;
     }
     final choix = {for (final r in regles) r['id'] as String: r['attribuee'] == 1};
@@ -451,7 +451,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
            WHERE o.id = ? AND s.id = ? AND a.organisation_id = o.id AND a.en_cours = 1''',
         [o, site]);
     if (infos['sigle'] == null || infos['code_site'] == null) {
-      return erreur("Choisissez d'abord le sigle de l'école et le code du site (Configurer l'établissement).");
+      return erreur("Choisissez d'abord le sigle de l'école et le code du site (Paramètres).");
     }
     final carnet = _carnet.text.trim().isEmpty ? null : _carnet.text.trim();
     final feuille = _feuille.text.trim().isEmpty ? null : _feuille.text.trim();

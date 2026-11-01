@@ -503,7 +503,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
     final org = await db.get('SELECT code FROM organisations WHERE id = ?', [o]);
     final poste = await cePoste();
     if (org['code'] == null || classe['code_site'] == null) {
-      return erreur("Choisissez d'abord le sigle de l'école et le code du site (Configurer l'établissement).");
+      return erreur("Choisissez d'abord le sigle de l'école et le code du site (Paramètres).");
     }
     if (poste == null) return erreur("Activez d'abord ce poste (accueil) : sa lettre entre dans le matricule.");
 
@@ -1035,7 +1035,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
       sousTitre: 'Année ${_annee!['libelle']}',
       enfants: [
         if (_classes.isEmpty)
-          const Text("Aucune classe où vous pouvez inscrire. Créez les classes de l'année (Configurer l'établissement).")
+          const Text("Aucune classe où vous pouvez inscrire. Créez les classes de l'année (Paramètres).")
         else ...[
           SizedBox(
             width: 320,
@@ -1088,7 +1088,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
         if (_classe == null)
           const Text('Choisissez la classe pour voir les frais de l\'année.')
         else if (lignes.isEmpty)
-          const Text('Aucun frais configuré pour cette classe (Configurer l\'établissement › Frais).')
+          const Text('Aucun frais configuré pour cette classe (Paramètres › Frais).')
         else ...[
           for (final l in lignes) ligne(l.libelle, gnf(l.brut)),
           if (reduction > 0)

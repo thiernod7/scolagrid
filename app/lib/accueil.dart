@@ -16,7 +16,7 @@ import 'theme.dart';
 /// bas sur téléphone. Le menu ne montre que ce que la personne peut faire.
 /// Chaque rubrique garde sa propre pile d'écrans : le menu reste visible.
 
-enum _Rubrique { accueil, eleves, caisse, personnel, postes, etablissement }
+enum _Rubrique { accueil, eleves, caisse, personnel, postes, parametres }
 
 class _Entree {
   const _Entree(this.rubrique, this.libelle, this.icone, this.iconeActive, this.groupe);
@@ -34,7 +34,7 @@ const _toutes = [
   _Entree(_Rubrique.caisse, 'Caisse', Icons.point_of_sale_outlined, Icons.point_of_sale, 'ARGENT'),
   _Entree(_Rubrique.personnel, 'Personnel', Icons.groups_outlined, Icons.groups, 'ÉCOLE'),
   _Entree(_Rubrique.postes, 'Postes', Icons.devices_other_outlined, Icons.devices_other, 'ÉCOLE'),
-  _Entree(_Rubrique.etablissement, 'Établissement', Icons.tune_outlined, Icons.tune, 'ÉCOLE'),
+  _Entree(_Rubrique.parametres, 'Paramètres', Icons.settings_outlined, Icons.settings, 'ÉCOLE'),
 ];
 
 String _dateDuJour() {
@@ -169,7 +169,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
         for (final x in _toutes)
           if (switch (x.rubrique) {
             _Rubrique.caisse => _peutEncaisser,
-            _Rubrique.personnel || _Rubrique.postes || _Rubrique.etablissement => e.gestionnaire,
+            _Rubrique.personnel || _Rubrique.postes || _Rubrique.parametres => e.gestionnaire,
             _ => true,
           })
             x,
@@ -269,7 +269,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
         _Rubrique.caisse => CaisseScreen(espace: e),
         _Rubrique.personnel => PersonnelScreen(espace: e),
         _Rubrique.postes => PostesScreen(espace: e),
-        _Rubrique.etablissement => ConfigurationScreen(espace: e),
+        _Rubrique.parametres => ConfigurationScreen(espace: e),
       };
 
   @override
@@ -710,10 +710,10 @@ class _TableauDeBord extends StatelessWidget {
               _AFaire(const Etat('Poste', ton: Ton.attente), 'Activer ce poste : sa lettre et son code PIN', activerPoste),
             if (espace.fondateur && r['sigle'] == null)
               _AFaire(const Etat('Réglage', ton: Ton.attente), "Choisir le sigle de l'école (matricules et reçus)",
-                  () => aller(_Rubrique.etablissement)),
+                  () => aller(_Rubrique.parametres)),
             if ((r['annee'] as int? ?? 0) == 0 && espace.gestionnaire)
               _AFaire(const Etat('Réglage', ton: Ton.attente), "Créer l'année scolaire en cours",
-                  () => aller(_Rubrique.etablissement)),
+                  () => aller(_Rubrique.parametres)),
             if (attente > 0)
               _AFaire(Etat('$attente', ton: Ton.attente), "inscription(s) en attente des frais d'inscription",
                   () => aller(_Rubrique.eleves)),

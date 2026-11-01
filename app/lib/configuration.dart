@@ -209,69 +209,219 @@ Widget _liste<T>(String label, T valeur, Map<T, String> choix, ValueChanged<T> c
       onChanged: (v) => change(v as T),
     );
 
-// Liste de contrôle -----------------------------------------------------------
+// Paramètres ------------------------------------------------------------------
 
-class ConfigurationScreen extends StatelessWidget {
+/// Une rubrique des paramètres, rangée dans un groupe du volet de gauche.
+class _Reglage {
+  const _Reglage(this.cle, this.titre, this.aide, this.icone, this.groupe, this.ecran);
+
+  final String cle;
+  final String titre;
+  final String aide;
+  final IconData icone;
+  final String groupe;
+  final Widget Function(Espace espace) ecran;
+}
+
+final _reglages = <_Reglage>[
+  _Reglage('ecole', "L'école", 'Sigle, codes des sites, responsable légal', Icons.apartment_outlined, 'Établissement',
+      (e) => IdentiteEcoleScreen(espace: e)),
+  _Reglage('annee', 'Année scolaire', "L'année en cours et ses dates", Icons.event_outlined, 'Scolarité',
+      (e) => AnneesScreen(espace: e)),
+  _Reglage('niveaux', 'Niveaux', 'Du préscolaire à la terminale (modèle guinéen)', Icons.layers_outlined, 'Scolarité',
+      (e) => NiveauxScreen(espace: e)),
+  _Reglage('matieres', 'Matières', 'Matières et coefficients par niveau', Icons.menu_book_outlined, 'Scolarité',
+      (e) => MatieresScreen(espace: e)),
+  _Reglage('classes', 'Classes', "Classes de l'année, salles et places", Icons.grid_view_outlined, 'Scolarité',
+      (e) => ClassesScreen(espace: e)),
+  _Reglage('frais', 'Frais scolaires', 'Inscription, scolarité en tranches, options', Icons.payments_outlined, 'Argent',
+      (e) => FraisScreen(espace: e)),
+  _Reglage('reductions', 'Réductions', 'Fratrie, paiement annuel, bourses', Icons.percent, 'Argent',
+      (e) => ReductionsScreen(espace: e)),
+  _Reglage('remboursements', 'Remboursements', "Ce que l'école accepte de rembourser", Icons.undo, 'Argent',
+      (e) => PolitiqueRemboursementScreen(espace: e)),
+];
+
+/// Les paramètres de l'école. Sur grand écran, un volet à gauche (groupes et
+/// rubriques) et la rubrique ouverte à droite ; sur téléphone, la liste des
+/// rubriques, chacune s'ouvrant en plein écran.
+class ConfigurationScreen extends StatefulWidget {
   const ConfigurationScreen({super.key, required this.espace});
 
   final Espace espace;
 
   @override
-  Widget build(BuildContext context) {
-    final o = espace.orgId;
-    return _Page(
-      titre: "Configurer l'établissement",
-      corps: Requete(
-        '''SELECT
-             (SELECT libelle FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1) AS annee,
-             (SELECT count(*) FROM niveaux WHERE organisation_id = ?) AS niveaux,
-             (SELECT count(*) FROM matieres WHERE organisation_id = ?) AS matieres,
-             (SELECT count(*) FROM classes WHERE organisation_id = ?) AS classes,
-             (SELECT count(*) FROM frais WHERE organisation_id = ?) AS frais,
-             (SELECT code FROM organisations WHERE id = ?) AS sigle,
-             (SELECT count(*) FROM sites WHERE organisation_id = ? AND code IS NULL) AS sites_sans_code,
-             (SELECT responsable_nom FROM organisations WHERE id = ?) AS responsable''',
-        parametres: [o, o, o, o, o, o, o, o],
-        builder: (context, l) {
-          final r = l.first;
-          Widget etape(int n, String titre, String detail, bool fait, Widget ecran) => Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: fait ? Colors.teal : null,
-                    foregroundColor: fait ? Colors.white : null,
-                    child: fait ? const Icon(Icons.check) : Text('$n'),
-                  ),
-                  title: Text(titre),
-                  subtitle: Text(detail),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ecran)),
-                ),
-              );
-          final niveaux = r['niveaux'] as int? ?? 0;
-          return ListView(padding: const EdgeInsets.all(16), children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 12),
-              child: Text('Étape 2 sur 6. Tout fonctionne hors ligne : la synchronisation suivra.'),
-            ),
-            etape(0, "Identité de l'école", r['sigle'] == null ? 'Sigle, code du site, responsable légal'
-                : 'Sigle ${r['sigle']}${(r['sites_sans_code'] as int? ?? 0) > 0 ? ' · code du site à choisir' : ''}',
-                r['sigle'] != null && r['sites_sans_code'] == 0 && r['responsable'] != null,
-                IdentiteEcoleScreen(espace: espace)),
-            etape(1, 'Année scolaire', r['annee'] == null ? 'À créer' : '${r['annee']} en cours', r['annee'] != null,
-                AnneesScreen(espace: espace)),
-            etape(2, 'Niveaux', niveaux == 0 ? 'Partir du modèle guinéen' : '$niveaux niveaux', niveaux > 0,
-                NiveauxScreen(espace: espace)),
-            etape(3, 'Matières et coefficients', '${r['matieres']} matières', (r['matieres'] as int? ?? 0) > 0,
-                MatieresScreen(espace: espace)),
-            etape(4, 'Classes et salles', '${r['classes']} classes', (r['classes'] as int? ?? 0) > 0,
-                ClassesScreen(espace: espace)),
-            etape(5, 'Frais scolaires', '${r['frais']} frais · inscription, scolarité en tranches', (r['frais'] as int? ?? 0) > 0,
-                FraisScreen(espace: espace)),
-            etape(6, 'Réductions', 'Fratrie, paiement annuel, bourses', false, ReductionsScreen(espace: espace)),
-            etape(7, 'Remboursements', 'Ce que l\'école accepte de rembourser', false, PolitiqueRemboursementScreen(espace: espace)),
-          ]);
-        },
+  State<ConfigurationScreen> createState() => _ConfigurationScreenState();
+}
+
+class _ConfigurationScreenState extends State<ConfigurationScreen> {
+  String _actif = _reglages.first.cle;
+
+  /// Où en est chaque rubrique : faite ou non, et un résumé.
+  Map<String, (bool, String)> _etat(Map<String, Object?> r) {
+    int n(String c) => r[c] as int? ?? 0;
+    return {
+      'ecole': (
+        r['sigle'] != null && n('sites_sans_code') == 0 && r['responsable'] != null,
+        r['sigle'] == null
+            ? 'Sigle, code du site, responsable légal'
+            : 'Sigle ${r['sigle']}${n('sites_sans_code') > 0 ? ' · code du site à choisir' : ''}'
       ),
+      'annee': (r['annee'] != null, r['annee'] == null ? 'À créer' : '${r['annee']} en cours'),
+      'niveaux': (n('niveaux') > 0, n('niveaux') == 0 ? 'Partir du modèle guinéen' : '${n('niveaux')} niveaux'),
+      'matieres': (n('matieres') > 0, '${n('matieres')} matières'),
+      'classes': (n('classes') > 0, '${n('classes')} classes'),
+      'frais': (n('frais') > 0, '${n('frais')} frais'),
+      'reductions': (n('reductions') > 0, n('reductions') == 0 ? 'Aucune réduction' : '${n('reductions')} réduction(s)'),
+      'remboursements': (true, "Ce que l'école accepte de rembourser"),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final o = widget.espace.orgId;
+    return Requete(
+      '''SELECT
+           (SELECT libelle FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1) AS annee,
+           (SELECT count(*) FROM niveaux WHERE organisation_id = ?) AS niveaux,
+           (SELECT count(*) FROM matieres WHERE organisation_id = ?) AS matieres,
+           (SELECT count(*) FROM classes WHERE organisation_id = ?) AS classes,
+           (SELECT count(*) FROM frais WHERE organisation_id = ?) AS frais,
+           (SELECT count(*) FROM regles_reduction WHERE organisation_id = ? AND actif = 1) AS reductions,
+           (SELECT code FROM organisations WHERE id = ?) AS sigle,
+           (SELECT nom FROM organisations WHERE id = ?) AS ecole,
+           (SELECT count(*) FROM sites WHERE organisation_id = ? AND code IS NULL) AS sites_sans_code,
+           (SELECT responsable_nom FROM organisations WHERE id = ?) AS responsable''',
+      parametres: [o, o, o, o, o, o, o, o, o, o],
+      builder: (context, l) {
+        final r = l.first;
+        final etat = _etat(r);
+        return LayoutBuilder(
+          builder: (context, c) => c.maxWidth >= 860 ? _deuxVolets(context, r, etat) : _liste(context, etat),
+        );
+      },
+    );
+  }
+
+  /// Rubriques par groupe, dans l'ordre.
+  Map<String, List<_Reglage>> get _groupes {
+    final g = <String, List<_Reglage>>{};
+    for (final r in _reglages) {
+      g.putIfAbsent(r.groupe, () => []).add(r);
+    }
+    return g;
+  }
+
+  Widget _deuxVolets(BuildContext context, Map<String, Object?> r, Map<String, (bool, String)> etat) {
+    final schema = Theme.of(context).colorScheme;
+    final texte = Theme.of(context).textTheme;
+    final actif = _reglages.firstWhere((x) => x.cle == _actif);
+    Widget rubrique(_Reglage x) {
+      final choisie = x.cle == _actif;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Material(
+          color: choisie ? schema.secondaryContainer : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => setState(() => _actif = x.cle),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(children: [
+                Icon(x.icone, size: 18, color: choisie ? schema.onSecondaryContainer : schema.onSurfaceVariant),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(x.titre,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontWeight: choisie ? FontWeight.w600 : FontWeight.w400,
+                          color: choisie ? schema.onSecondaryContainer : schema.onSurfaceVariant)),
+                ),
+                if (etat[x.cle]?.$1 == false)
+                  Tooltip(
+                    message: 'À compléter',
+                    child: Container(
+                        width: 8, height: 8, decoration: const BoxDecoration(color: Couleurs.attente, shape: BoxShape.circle)),
+                  ),
+              ]),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      body: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          width: 250,
+          margin: const EdgeInsets.fromLTRB(12, 12, 0, 12),
+          decoration: BoxDecoration(
+            color: schema.surface,
+            border: Border.all(color: schema.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Paramètres', style: texte.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                Text([r['ecole'], r['annee']].whereType<String>().join(' · '),
+                    style: texte.bodySmall, overflow: TextOverflow.ellipsis),
+              ]),
+            ),
+            Divider(height: 1, color: schema.outlineVariant),
+            Expanded(
+              child: ListView(padding: const EdgeInsets.all(8), children: [
+                for (final g in _groupes.entries) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                    child: Text(g.key.toUpperCase(),
+                        style: texte.labelSmall?.copyWith(letterSpacing: .8, color: schema.onSurfaceVariant)),
+                  ),
+                  for (final x in g.value) rubrique(x),
+                ],
+              ]),
+            ),
+          ]),
+        ),
+        // La rubrique ouverte, avec sa propre pile d'écrans.
+        Expanded(
+          child: Navigator(
+            key: ValueKey(_actif),
+            onGenerateRoute: (_) => MaterialPageRoute(builder: (_) => actif.ecran(widget.espace)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _liste(BuildContext context, Map<String, (bool, String)> etat) {
+    final texte = Theme.of(context).textTheme;
+    return _Page(
+      titre: 'Paramètres',
+      corps: ListView(padding: const EdgeInsets.all(16), children: [
+        const Text('Tout fonctionne hors ligne : la synchronisation suivra.'),
+        for (final g in _groupes.entries) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
+            child: Text(g.key.toUpperCase(), style: texte.labelSmall?.copyWith(letterSpacing: .8)),
+          ),
+          for (final x in g.value)
+            Card(
+              child: ListTile(
+                leading: Icon(x.icone),
+                title: Text(x.titre),
+                subtitle: Text(etat[x.cle]?.$2 ?? x.aide),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (etat[x.cle]?.$1 == false) const Etat('À faire', ton: Ton.attente),
+                  const Icon(Icons.chevron_right),
+                ]),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => x.ecran(widget.espace))),
+              ),
+            ),
+        ],
+      ]),
     );
   }
 }
