@@ -243,7 +243,7 @@ class _CreerEspaceScreenState extends State<CreerEspaceScreen> {
   final _form = GlobalKey<FormState>();
   final _nom = TextEditingController();
   final _groupe = TextEditingController();
-  final _ville = TextEditingController(text: 'Conakry');
+  final _ville = TextEditingController();
   final _site = TextEditingController(text: 'Site principal');
   bool _envoi = false;
   String? _erreur;
@@ -297,7 +297,7 @@ class _CreerEspaceScreenState extends State<CreerEspaceScreen> {
           child: Column(children: [
             _champ(_nom, 'Votre nom complet'),
             _champ(_groupe, 'Nom du groupe scolaire', aide: 'Par exemple : Groupe scolaire Les Palmiers'),
-            _champ(_ville, 'Ville'),
+            _champ(_ville, 'Ville', aide: 'Conakry, Kindia, Labé, Kankan…'),
             _champ(_site, 'Nom du premier site', aide: "Vous ajouterez les autres sites ensuite"),
           ]),
         ),

@@ -226,53 +226,158 @@ class _Calendrier extends StatelessWidget {
       return n < 1 ? 1 : (n > 12 ? 12 : n);
     }
 
+    String texte(double p) => p.toStringAsFixed(1).replaceAll('.0', '').replaceAll('.', ',');
+    double? nombre(TextEditingController c) => double.tryParse(c.text.replaceAll(',', '.').replaceAll('%', '').trim());
+
     List<TrancheCalendrier> propose() => calendrierPropose(
           periodicite: periodicite,
           rentree: rentree,
           nbMois: lire(nbMois, 9),
           nbTranches: lire(nbTranches, 3),
         );
-    var lignes = actuelles.isEmpty
-        ? propose()
-        : [
-            for (final t in actuelles)
-              (libelle: '${t['libelle']}', dateLimite: DateTime.parse('${t['date_limite']}'), part: (t['part'] as num).toDouble()),
-          ];
-    final ok = await _formulaire(context, 'Calendrier de paiement', (maj) => [
-          _liste('Périodicité de la scolarité', periodicite, _periodicites, (v) => maj(() {
-                periodicite = v;
-                lignes = propose();
-              })),
-          TextField(
-            controller: nbMois,
-            keyboardType: TextInputType.number,
-            onChanged: (_) => maj(() => lignes = propose()),
-            decoration: _champ('Nombre de mois de scolarité', aide: 'À partir du mois de la rentrée (${_moisNom(rentree)})'),
-          ),
-          if (periodicite == 'tranches')
-            TextField(
-              controller: nbTranches,
-              keyboardType: TextInputType.number,
-              onChanged: (_) => maj(() => lignes = propose()),
-              decoration: _champ('Nombre de tranches'),
-            ),
-          for (var k = 0; k < lignes.length; k++)
-            Row(children: [
-              Expanded(child: Text(lignes[k].libelle, style: const TextStyle(fontSize: 14))),
-              Text(_part(lignes[k].part), style: styleMono.copyWith(fontSize: 13)),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () async {
-                  final d = await _choisirDate(context, lignes[k].dateLimite, premier: DateTime(2024), dernier: DateTime(2035));
-                  if (d != null) maj(() => lignes[k] = (libelle: lignes[k].libelle, dateLimite: d, part: lignes[k].part));
-                },
-                child: Text('avant le ${_dateLisible(_date(lignes[k].dateLimite))}'),
-              ),
-            ]),
-          const Text('Les parts suivent le nombre de mois de chaque tranche. Les échéances de tous les niveaux seront refaites.',
-              style: TextStyle(fontSize: 12)),
+
+    // Tranches : réparties en pourcentage (40 %, 30 %…) ou en mois (4, 3, 2…).
+    var parMois = actuelles.isNotEmpty && actuelles.every((t) => t['mois'] != null);
+    final noms = <TextEditingController>[];
+    final valeurs = <TextEditingController>[];
+    var dates = <DateTime>[];
+
+    void remplir() {
+      final p = propose();
+      final mois = moisParTranche(lire(nbMois, 9), p.length);
+      noms
+        ..clear()
+        ..addAll([for (final t in p) TextEditingController(text: t.libelle)]);
+      valeurs
+        ..clear()
+        ..addAll([
+          for (var i = 0; i < p.length; i++)
+            TextEditingController(text: periodicite == 'tranches' && parMois ? '${mois[i]}' : texte(p[i].part)),
         ]);
-    if (!ok || lignes.isEmpty) return;
+      dates = [for (final t in p) t.dateLimite];
+    }
+
+    if (actuelles.isEmpty) {
+      remplir();
+    } else {
+      noms.addAll([for (final t in actuelles) TextEditingController(text: '${t['libelle']}')]);
+      valeurs.addAll([
+        for (final t in actuelles) TextEditingController(text: parMois ? '${t['mois']}' : texte((t['part'] as num).toDouble())),
+      ]);
+      dates = [for (final t in actuelles) DateTime.parse('${t['date_limite']}')];
+    }
+
+    /// Le calendrier tel que saisi, ou ce qui ne va pas.
+    ({List<TrancheCalendrier> lignes, List<int>? mois, String? erreur}) calcul() {
+      String nom(int i) => noms[i].text.trim().isEmpty ? 'Tranche ${i + 1}' : noms[i].text.trim();
+      if (periodicite == 'tranches' && parMois) {
+        final mois = [for (final v in valeurs) int.tryParse(v.text.trim()) ?? 0];
+        if (mois.any((m) => m < 1)) return (lignes: const [], mois: null, erreur: 'Chaque tranche compte au moins un mois.');
+        final total = mois.fold<int>(0, (s, m) => s + m);
+        if (total != lire(nbMois, 9)) {
+          return (lignes: const [], mois: null, erreur: 'Les tranches font $total mois au lieu de ${lire(nbMois, 9)}.');
+        }
+        return (lignes: tranchesParMois(rentree: rentree, mois: mois, noms: [for (var i = 0; i < noms.length; i++) nom(i)]), mois: mois, erreur: null);
+      }
+      final parts = [for (final v in valeurs) nombre(v) ?? 0.0];
+      if (periodicite == 'tranches') {
+        if (parts.any((p) => p <= 0)) return (lignes: const [], mois: null, erreur: 'Chaque tranche a une part au-dessus de 0 %.');
+        final somme = parts.fold<double>(0, (s, p) => s + p);
+        if ((somme - 100).abs() > .05) return (lignes: const [], mois: null, erreur: 'Les parts font ${texte(somme)} % au lieu de 100 %.');
+      }
+      return (
+        lignes: [for (var i = 0; i < noms.length; i++) (libelle: nom(i), dateLimite: dates[i], part: parts[i])],
+        mois: null,
+        erreur: null,
+      );
+    }
+
+    final ok = await _formulaire(context, 'Calendrier de paiement', (maj) {
+      final c = calcul();
+      final tranches = periodicite == 'tranches';
+      return [
+        _liste('Périodicité de la scolarité', periodicite, _periodicites, (v) => maj(() {
+              periodicite = v;
+              remplir();
+            })),
+        TextField(
+          controller: nbMois,
+          keyboardType: TextInputType.number,
+          onChanged: (_) => maj(remplir),
+          decoration: _champ('Nombre de mois de scolarité', aide: 'À partir du mois de la rentrée (${_moisNom(rentree)})'),
+        ),
+        if (tranches) ...[
+          TextField(
+            controller: nbTranches,
+            keyboardType: TextInputType.number,
+            onChanged: (_) => maj(remplir),
+            decoration: _champ('Nombre de tranches'),
+          ),
+          Row(children: [
+            const Expanded(child: Text('Répartir par', style: TextStyle(fontSize: 13))),
+            Segments<bool>(
+              valeur: parMois,
+              choix: const {false: 'Pourcentage', true: 'Nombre de mois'},
+              onChanged: (v) => maj(() {
+                parMois = v;
+                final mois = moisParTranche(lire(nbMois, 9), valeurs.length);
+                for (var i = 0; i < valeurs.length; i++) {
+                  valeurs[i].text = v ? '${mois[i]}' : texte(mois[i] * 100 / lire(nbMois, 9));
+                }
+              }),
+            ),
+          ]),
+        ],
+        for (var k = 0; k < noms.length; k++)
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: noms[k],
+                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                style: const TextStyle(fontSize: 14),
+                onChanged: (_) => maj(() {}),
+              ),
+            ),
+            const SizedBox(width: 6),
+            SizedBox(
+              width: 92,
+              child: TextField(
+                controller: valeurs[k],
+                enabled: tranches,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(isDense: true, border: const OutlineInputBorder(), suffixText: tranches && parMois ? 'mois' : '%'),
+                style: styleMono.copyWith(fontSize: 13),
+                onChanged: (_) => maj(() {}),
+              ),
+            ),
+            const SizedBox(width: 4),
+            // En mois, la date suit : fin du dernier mois de la tranche.
+            TextButton(
+              onPressed: tranches && parMois
+                  ? null
+                  : () async {
+                      final d = await _choisirDate(context, dates[k], premier: DateTime(2024), dernier: DateTime(2035));
+                      if (d != null) maj(() => dates[k] = d);
+                    },
+              child: Text('avant le ${_dateLisible(_date(c.erreur == null && k < c.lignes.length ? c.lignes[k].dateLimite : dates[k]))}'),
+            ),
+          ]),
+        if (c.erreur != null) Text(c.erreur!, style: const TextStyle(fontSize: 13, color: Couleurs.retard)),
+        Text(
+            tranches && parMois
+                ? 'Chaque tranche se paie avant la fin de son dernier mois ; sa part suit son nombre de mois. '
+                    'Les échéances de tous les niveaux seront refaites.'
+                : 'Les échéances de tous les niveaux seront refaites.',
+            style: const TextStyle(fontSize: 12)),
+      ];
+    });
+    if (!ok || !context.mounted) return;
+    final c = calcul();
+    if (c.erreur != null || c.lignes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(c.erreur ?? 'Calendrier vide.')));
+      return;
+    }
+    final lignes = c.lignes;
     final maintenant = _maintenant();
     await db.writeTransaction((tx) async {
       await tx.execute('UPDATE annees_scolaires SET periodicite = ?, nb_mois = ?, updated_at = ? WHERE id = ?',
@@ -280,9 +385,10 @@ class _Calendrier extends StatelessWidget {
       await tx.execute('DELETE FROM tranches_annee WHERE annee_id = ?', [annee['id']]);
       for (var k = 0; k < lignes.length; k++) {
         await tx.execute(
-            'INSERT INTO tranches_annee (id, organisation_id, annee_id, ordre, libelle, date_limite, part, created_at, updated_at) '
-            'VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?)',
-            [espace.orgId, annee['id'], k + 1, lignes[k].libelle, _date(lignes[k].dateLimite), lignes[k].part, maintenant, maintenant]);
+            'INSERT INTO tranches_annee (id, organisation_id, annee_id, ordre, libelle, date_limite, part, mois, created_at, updated_at) '
+            'VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [espace.orgId, annee['id'], k + 1, lignes[k].libelle, _date(lignes[k].dateLimite), lignes[k].part, c.mois?[k],
+              maintenant, maintenant]);
       }
       // Les échéances de toutes les scolarités de l'année suivent le nouveau calendrier.
       for (final f in await tx.getAll("SELECT id, montant_gnf FROM frais WHERE annee_id = ? AND type_frais = 'scolarite'", [annee['id']])) {
@@ -325,7 +431,7 @@ class _Calendrier extends StatelessWidget {
                       decoration: BoxDecoration(color: Couleurs.doux(context), borderRadius: BorderRadius.circular(6)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text('${t['libelle']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                        Text('${_part(t['part'] as num)} · avant le ${_dateLisible(t['date_limite'])}',
+                        Text('${t['mois'] != null ? '${t['mois']} mois · ' : ''}${_part(t['part'] as num)} · avant le ${_dateLisible(t['date_limite'])}',
                             style: TextStyle(fontSize: 12, color: gris)),
                       ]),
                     ),

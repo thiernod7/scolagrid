@@ -317,6 +317,19 @@ class _AccueilScreenState extends State<AccueilScreen> {
       ),
     );
 
+    // Poste en attente de validation : on le dit en haut de chaque écran.
+    final corps = _cePoste?['statut'] == 'a_valider'
+        ? Column(children: [
+            Container(
+              width: double.infinity,
+              color: Couleurs.attenteFond,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: const Text(messagePosteEnAttente, style: TextStyle(color: Couleurs.attente, fontSize: 13)),
+            ),
+            Expanded(child: contenu),
+          ])
+        : contenu;
+
     return LayoutBuilder(builder: (context, c) {
       final largeur = c.maxWidth;
       if (largeur >= 1000) {
@@ -340,7 +353,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   fonction: fonctions[_rattachement?['role']] ?? '',
                   seDeconnecter: _seDeconnecter,
                 ),
-                Expanded(child: contenu),
+                Expanded(child: corps),
               ]),
             ),
           ]),
@@ -372,7 +385,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
               ],
             ),
             const VerticalDivider(width: 1),
-            Expanded(child: contenu),
+            Expanded(child: corps),
           ]),
         );
       }
@@ -381,7 +394,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
       final autres = entrees.where((x) => x.rubrique.index > _Rubrique.caisse.index).toList();
       final iPrincipale = principales.indexWhere((x) => x.rubrique == _rubrique);
       return Scaffold(
-        body: contenu,
+        body: corps,
         bottomNavigationBar: NavigationBar(
           selectedIndex: iPrincipale >= 0 ? iPrincipale : principales.length,
           onDestinationSelected: (i) {

@@ -120,6 +120,23 @@ List<TrancheCalendrier> calendrierPropose({
   }
 }
 
+/// Tranches définies en mois : 4, 3 et 2 mois à partir de la rentrée.
+/// Chaque tranche se paie avant la fin de son dernier mois ; sa part de la
+/// scolarité suit son nombre de mois (4 sur 9 = 44,4 %).
+List<TrancheCalendrier> tranchesParMois({required DateTime rentree, required List<int> mois, List<String> noms = const []}) {
+  final total = mois.fold<int>(0, (s, m) => s + m);
+  final premier = DateTime(rentree.year, rentree.month);
+  var fin = 0;
+  return [
+    for (var i = 0; i < mois.length; i++)
+      (
+        libelle: i < noms.length && noms[i].trim().isNotEmpty ? noms[i].trim() : 'Tranche ${i + 1}',
+        dateLimite: _finDuMois(premier.year, premier.month + (fin += mois[i]) - 1),
+        part: total == 0 ? 0.0 : mois[i] * 100 / total,
+      ),
+  ];
+}
+
 /// Les échéances d'un montant selon le calendrier de l'école : chaque tranche
 /// reçoit sa part (arrondie au franc), la dernière absorbe l'arrondi.
 List<Echeance> echeancesDuCalendrier({required int total, required List<TrancheCalendrier> calendrier}) {

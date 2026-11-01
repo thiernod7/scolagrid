@@ -26,11 +26,11 @@ class PersonnelScreen extends StatelessWidget {
     final telephone = TextEditingController();
     final libelle = TextEditingController();
     var site = sites.keys.first;
-    var fonction = 'enseignant';
-    final choixFonctions = {
-      for (final f in fonctions.entries)
-        if (f.key != 'fondateur' && (espace.fondateur || !fonctionsDeDirection.contains(f.key))) f.key: f.value,
-    };
+    final choisis = <String>{'enseignant'};
+    final choixTitres = [
+      for (final t in titres.entries)
+        if (espace.fondateur || !fonctionsDeDirection.contains(t.value.fonction)) t.key,
+    ];
     final ok = await _formulaire(context, 'Nouvelle personne', (maj) => [
           TextField(
               controller: nom,
@@ -42,12 +42,23 @@ class PersonnelScreen extends StatelessWidget {
               keyboardType: TextInputType.phone,
               decoration: _champ('Téléphone (facultatif)',
                   aide: "Si renseigné, seul ce numéro pourra utiliser l'invitation")),
-          _liste('Fonction', fonction, choixFonctions, (v) => maj(() => fonction = v)),
-          if (fonction == 'autre')
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Fonctions (plusieurs possibles : les droits s\'additionnent)', style: TextStyle(fontSize: 13)),
+          ),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final t in choixTitres)
+              FilterChip(
+                label: Text(nomTitre(t)),
+                selected: choisis.contains(t),
+                onSelected: (v) => maj(() => v ? choisis.add(t) : choisis.remove(t)),
+              ),
+          ]),
+          if (choisis.contains('autre'))
             TextField(controller: libelle, decoration: _champ('Précisez', aide: 'Gardien, chauffeur, cuisinière…')),
           if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
         ]);
-    if (!ok || nom.text.trim().length < 2) return;
+    if (!ok || nom.text.trim().length < 2 || choisis.isEmpty) return;
     final tel = telephone.text.trim().isEmpty ? null : numeroInternational(telephone.text);
     final maintenant = _maintenant();
     await db.writeTransaction((tx) async {
@@ -56,14 +67,17 @@ class PersonnelScreen extends StatelessWidget {
           'INSERT INTO personnel (id, organisation_id, site_id, nom_complet, telephone, statut, created_at, updated_at) '
           "VALUES (?, ?, ?, ?, ?, 'actif', ?, ?)",
           [id, espace.orgId, site, nom.text.trim(), tel, maintenant, maintenant]);
-      await tx.execute(
-          'INSERT INTO affectations (id, organisation_id, personnel_id, site_id, fonction, libelle, actif, created_at, updated_at) '
-          'VALUES (uuid(), ?, ?, ?, ?, ?, 1, ?, ?)',
-          [
-            espace.orgId, id, site, fonction,
-            fonction == 'autre' && libelle.text.trim().length >= 2 ? libelle.text.trim() : null,
-            maintenant, maintenant,
-          ]);
+      for (final t in choisis) {
+        final titre = titres[t]!;
+        await tx.execute(
+            'INSERT INTO affectations (id, organisation_id, personnel_id, site_id, fonction, libelle, actif, created_at, updated_at) '
+            'VALUES (uuid(), ?, ?, ?, ?, ?, 1, ?, ?)',
+            [
+              espace.orgId, id, site, titre.fonction,
+              t == 'autre' ? (libelle.text.trim().length >= 2 ? libelle.text.trim() : null) : titre.libelle,
+              maintenant, maintenant,
+            ]);
+      }
     });
   }
 
@@ -222,21 +236,25 @@ class FicheScreen extends StatelessWidget {
     };
     if (!context.mounted || sites.isEmpty) return;
     final choix = {
-      for (final f in fonctions.entries)
-        if (espace.fondateur || !fonctionsDeDirection.contains(f.key)) f.key: f.value,
+      for (final t in titres.entries)
+        if (espace.fondateur || !fonctionsDeDirection.contains(t.value.fonction)) t.key: nomTitre(t.key),
     };
-    var fonction = 'enseignant';
+    var cle = 'enseignant';
     String? site = sites.containsKey(fiche['site_id']) ? fiche['site_id'] as String? : sites.keys.first;
     final libelle = TextEditingController();
     final ok = await _formulaire(context, 'Ajouter une fonction', (maj) => [
-          _liste('Fonction', fonction, choix, (v) => maj(() => fonction = v)),
-          if (fonction == 'autre') TextField(controller: libelle, decoration: _champ('Précisez')),
+          _liste('Fonction', cle, choix, (v) => maj(() => cle = v)),
+          if (cle == 'autre') TextField(controller: libelle, decoration: _champ('Précisez')),
+          const Text('Elle s\'ajoute aux fonctions actuelles : les droits s\'additionnent.', style: TextStyle(fontSize: 12)),
           if (sites.length > 1) _liste('Sur', site, sites, (v) => maj(() => site = v)),
         ]);
     if (!ok) return;
+    final fonction = titres[cle]!.fonction;
+    final titre = cle == 'autre' ? (libelle.text.trim().length >= 2 ? libelle.text.trim() : null) : titres[cle]!.libelle;
     // Une fonction retirée puis redonnée : on réactive la ligne existante.
     final existante = await db.getOptional(
-        'SELECT id FROM affectations WHERE personnel_id = ? AND fonction = ? AND site_id IS ?', [ficheId, fonction, site]);
+        'SELECT id FROM affectations WHERE personnel_id = ? AND fonction = ? AND site_id IS ? AND libelle IS ?',
+        [ficheId, fonction, site, titre]);
     if (existante != null) {
       await _modifier('affectations', existante['id'] as String, {'actif': 1});
     } else {
@@ -245,7 +263,7 @@ class FicheScreen extends StatelessWidget {
         'personnel_id': ficheId,
         'site_id': site,
         'fonction': fonction,
-        'libelle': fonction == 'autre' && libelle.text.trim().length >= 2 ? libelle.text.trim() : null,
+        'libelle': titre,
         'actif': 1,
       });
     }

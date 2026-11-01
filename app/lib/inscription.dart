@@ -92,7 +92,8 @@ class _InscrireScreenState extends State<InscrireScreen> {
   final _recherche = TextEditingController();
   final _nom = TextEditingController();
   final _prenoms = TextEditingController();
-  final _lieu = TextEditingController(text: 'Conakry');
+  // Lieu de naissance : la ville de l'école par défaut (modifiable).
+  final _lieu = TextEditingController();
   final _nationalite = TextEditingController(text: 'Guinéenne');
   final _quartier = TextEditingController();
   final _matriculeEtat = TextEditingController();
@@ -182,6 +183,10 @@ class _InscrireScreenState extends State<InscrireScreen> {
       if (deja != null) annee = annees.last;
     }
     final donnees = await _donneesAnnee(annee);
+    final ville = await db.getOptional(
+        'SELECT coalesce(s.ville, o.ville) AS v FROM organisations o LEFT JOIN sites s ON s.organisation_id = o.id '
+        'AND (s.id = ? OR ? IS NULL) WHERE o.id = ? ORDER BY s.created_at LIMIT 1',
+        [widget.espace.siteId, widget.espace.siteId, o]);
     final classes = donnees.classes;
     final frais = donnees.frais;
     final org = await db.get(
@@ -233,6 +238,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
     if (!mounted) return;
     setState(() {
       _annees = annees;
+      if (_lieu.text.isEmpty && existant == null) _lieu.text = '${ville?['v'] ?? ''}';
       _annee = annee;
       if (annee != null) _dateEffective = _dateParDefaut(annee);
       _classes = classes;
@@ -667,6 +673,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
   Future<void> _enregistrer({required bool encaisser}) async {
     final messager = ScaffoldMessenger.of(context);
     void erreur(String m) => messager.showSnackBar(SnackBar(content: Text(m)));
+    if (await posteEnAttente()) return erreur(messagePosteEnAttente);
     if (!_form.currentState!.validate()) return erreur('Complétez les champs signalés en rouge.');
     if (_classe == null) return erreur('Choisissez la classe.');
     final arriveeNegociee = _arriveeTardive && _scolariteNette > 0 && _arrivee == 'negocie';

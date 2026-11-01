@@ -417,9 +417,41 @@ class _ElevesScreenState extends State<ElevesScreen> {
             ),
           ),
         );
+    // Les menus de filtre ; [apres] rafraîchit la feuille du téléphone.
+    List<Widget> menusFiltres(VoidCallback apres, {double? largeurFixe}) => [
+          if (cycles.isNotEmpty)
+            menu<String>(largeurFixe ?? 160, _cycle, 'Tous les cycles', {for (final c in cycles) c: c}, (v) {
+              filtrer(() {
+                _cycle = v;
+                if (classe != null && v != null && classe['cycle'] != v) _classe = null;
+              });
+              apres();
+            }),
+          menu<String>(largeurFixe ?? 176, _classe, 'Toutes les classes', {
+            for (final c in classes)
+              if (_cycle == null || c['cycle'] == _cycle)
+                c['id'] as String: '${c['nom']}${plusieursSites ? ' · ${c['site']}' : ''}  ${c['effectif']}',
+          }, (v) {
+            filtrer(() {
+              _classe = v;
+              for (final c in classes) {
+                if (c['id'] == v) _cycle = c['cycle'] as String?;
+              }
+            });
+            apres();
+          }),
+          menu<String>(largeurFixe ?? 160, _statut, 'Tous les statuts', {
+            for (final s in statutsInscription.entries) s.key: s.value == 'En attente de paiement' ? 'En attente' : s.value,
+            'non_inscrit': 'Pas inscrit',
+          }, (v) {
+            filtrer(() => _statut = v);
+            apres();
+          }),
+        ];
+    final nbFiltres = [_cycle, _classe, _statut].where((x) => x != null).length;
     final barreFiltres = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
       SizedBox(
-        width: telephone ? double.infinity : (panneau ? 260 : 340),
+        width: telephone ? MediaQuery.sizeOf(context).width - 24 - 52 : (panneau ? 260 : 340),
         height: 36,
         child: TextField(
           controller: _recherche,
@@ -435,26 +467,40 @@ class _ElevesScreenState extends State<ElevesScreen> {
           ),
         ),
       ),
-      if (cycles.isNotEmpty)
-        menu<String>(160, _cycle, 'Tous les cycles', {for (final c in cycles) c: c}, (v) => filtrer(() {
-              _cycle = v;
-              if (classe != null && v != null && classe['cycle'] != v) _classe = null;
-            })),
-      menu<String>(176, _classe, 'Toutes les classes', {
-        for (final c in classes)
-          if (_cycle == null || c['cycle'] == _cycle)
-            c['id'] as String: '${c['nom']}${plusieursSites ? ' · ${c['site']}' : ''}  ${c['effectif']}',
-      }, (v) => filtrer(() {
-        _classe = v;
-        for (final c in classes) {
-          if (c['id'] == v) _cycle = c['cycle'] as String?;
-        }
-      })),
-      menu<String>(160, _statut, 'Tous les statuts', {
-        for (final s in statutsInscription.entries) s.key: s.value == 'En attente de paiement' ? 'En attente' : s.value,
-        'non_inscrit': 'Pas inscrit',
-      }, (v) => filtrer(() => _statut = v)),
-      if (filtres)
+      if (telephone)
+        SizedBox(
+          width: 44,
+          height: 36,
+          child: Badge(
+            isLabelVisible: nbFiltres > 0,
+            label: Text('$nbFiltres'),
+            child: IconButton.outlined(
+              tooltip: 'Filtres',
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.tune, size: 18),
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                showDragHandle: true,
+                builder: (context) => StatefulBuilder(
+                  builder: (context, maj) => SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        const Text('Filtres', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 12),
+                        for (final m in menusFiltres(() => maj(() {}), largeurFixe: double.infinity)) ...[m, const SizedBox(height: 10)],
+                        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Voir les élèves')),
+                      ]),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        )
+      else
+        ...menusFiltres(() {}),
+      if (filtres && !telephone)
         TextButton.icon(
           style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
           onPressed: () => filtrer(() {
@@ -661,6 +707,50 @@ class _TableauEleves extends StatelessWidget {
     }
   }
 
+  /// Les gestes possibles sur un élève : (action, icône, libellé, en rouge ?).
+  /// Un `null` sépare les groupes.
+  static List<(String, IconData, String, bool)?> _gestes(Map<String, Object?> e) => [
+        ('ouvrir', Icons.description_outlined, 'Ouvrir la fiche', false),
+        ('modifier', Icons.edit_outlined, 'Modifier', false),
+        null,
+        ('encaisser', Icons.account_balance_wallet_outlined, 'Encaisser', false),
+        if (e['statut'] == 'actif') ('attestation', Icons.description_outlined, "Attestation d'inscription", false),
+        null,
+        if (e['statut'] == null)
+          ('reinscrire', Icons.how_to_reg_outlined, 'Réinscrire', false)
+        else if (e['statut'] == 'actif' || e['statut'] == 'en_attente') ...[
+          ('classe', Icons.swap_horiz, 'Changer de classe', false),
+          null,
+          ('clore', Icons.block, "Clore l'inscription", true),
+        ],
+      ];
+
+  /// Téléphone : un appui long ouvre les gestes en bas de l'écran.
+  Future<void> _feuilleGestes(BuildContext context, Map<String, Object?> e) async {
+    final choix = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(_nomEleve(e), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ),
+          for (final g in _gestes(e))
+            if (g == null)
+              const Divider(height: 1)
+            else
+              ListTile(
+                leading: Icon(g.$2, color: g.$4 ? Couleurs.retard : null),
+                title: Text(g.$3, style: TextStyle(color: g.$4 ? Couleurs.retard : null)),
+                onTap: () => Navigator.pop(context, g.$1),
+              ),
+        ]),
+      ),
+    );
+    if (choix != null && context.mounted) await _action(context, choix, e);
+  }
+
   @override
   Widget build(BuildContext context) {
     final schema = Theme.of(context).colorScheme;
@@ -668,6 +758,69 @@ class _TableauEleves extends StatelessWidget {
     final bordure = Theme.of(context).dividerColor;
     const entete = TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
     final c = colonnes;
+
+    // Téléphone : une liste de cartes plutôt qu'un tableau.
+    if (telephone) {
+      if (eleves.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(vide, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
+          ),
+        );
+      }
+      return ListView.separated(
+        padding: const EdgeInsets.only(bottom: 88),
+        itemCount: eleves.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (context, i) {
+          final e = eleves[i];
+          return Material(
+            color: schema.surface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: bordure)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => onOuvrir(e['id'] as String),
+              onLongPress: () => _feuilleGestes(context, e),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Row(children: [
+                  _AvatarListe(eleve: e, taille: 44),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        Flexible(
+                          child: Text(_nomEleve(e),
+                              overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                        ),
+                        if (AlerteSante.concerne(e)) ...[const SizedBox(width: 6), AlerteSante(eleve: e)],
+                      ]),
+                      const SizedBox(height: 2),
+                      Text('${e['classe'] ?? 'Pas inscrit'} · ${e['matricule']}',
+                          overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                      if (e['tuteur'] != null)
+                        Text('${e['tuteur']}${e['tuteur_tel'] != null ? ' · ${e['tuteur_tel']}' : ''}',
+                            overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                    ]),
+                  ),
+                  const SizedBox(width: 8),
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    _badgeStatut(e['statut']),
+                    IconButton(
+                      tooltip: 'Actions',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.more_horiz, size: 18),
+                      onPressed: () => _feuilleGestes(context, e),
+                    ),
+                  ]),
+                ]),
+              ),
+            ),
+          );
+        },
+      );
+    }
 
     Widget triable(String libelle, String cle) => InkWell(
           onTap: () => onTrier(cle),

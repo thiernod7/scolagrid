@@ -630,6 +630,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
   Future<void> _valider() async {
     final messager = ScaffoldMessenger.of(context);
     void erreur(String m) => messager.showSnackBar(SnackBar(content: Text(m)));
+    if (await posteEnAttente()) return erreur(messagePosteEnAttente);
     if (_nonClos.isNotEmpty) return erreur("Clôturez d'abord votre caisse du ${_dateLisible(_nonClos.first['jour'])}.");
     final recus = _recus.where((b) => b.lignes.any((l) => l.total > 0)).toList();
     if (_recus.every((b) => b.lignes.isEmpty)) return erreur('Ajoutez au moins un élève.');
@@ -2027,17 +2028,35 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
       """SELECT coalesce(sum(montant_gnf), 0) AS s FROM remboursements WHERE organisation_id = ? AND site_id = ?
          AND verse_par = ? AND verse_le = ? AND statut = 'verse' AND mode = 'especes'""",
       [orgId, siteId, monId, jour]))['s'] as int? ?? 0;
-  final attendu = (recus['especes'] as int? ?? 0) - sorties;
+  // Déjà clôturé ce jour-là : on clôture le complément (les reçus venus après).
+  final avant = await db.get(
+      '''SELECT count(*) AS n, coalesce(sum(attendu_especes), 0) AS attendu, coalesce(sum(nb_recus), 0) AS recus,
+                coalesce(sum(total_autres_modes), 0) AS autres
+         FROM clotures_caisse WHERE organisation_id = ? AND site_id = ? AND encaisse_par = ? AND jour = ?''',
+      [orgId, siteId, monId, jour]);
+  final rang = (avant['n'] as int? ?? 0) + 1;
+  final attendu = (recus['especes'] as int? ?? 0) - sorties - (avant['attendu'] as int? ?? 0);
+  final nbRecus = (recus['n'] as int? ?? 0) - (avant['recus'] as int? ?? 0);
+  final autres = (recus['autres'] as int? ?? 0) - (avant['autres'] as int? ?? 0);
+  if (rang > 1 && nbRecus <= 0 && attendu == 0) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rien de nouveau à clôturer pour ce jour.')));
+    }
+    return;
+  }
   final compte = TextEditingController();
   final justification = TextEditingController();
   if (!context.mounted) return;
-  final ok = await _formulaire(context, 'Clôturer ma caisse du ${_dateLisible(jour)}', (maj) {
+  final ok = await _formulaire(context, rang == 1 ? 'Clôturer ma caisse du ${_dateLisible(jour)}' : 'Clôturer le complément du ${_dateLisible(jour)}', (maj) {
     final c = int.tryParse(compte.text.replaceAll(RegExp(r'[^0-9]'), ''));
     final ecart = c == null ? null : c - attendu;
     return [
+      if (rang > 1)
+        Text('La caisse de ce jour est déjà clôturée (clôture n° $rang). Ce complément couvre les '
+            '$nbRecus reçu(s) encaissé(s) depuis : comptez seulement les espèces reçues depuis la dernière clôture.'),
       Text('Espèces attendues : ${gnf(attendu)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
       if (sorties > 0) Text('Remboursements versés en espèces déduits : ${gnf(sorties)}'),
-      Text('${recus['n']} reçu(s) ; autres modes (Orange Money, MTN, chèques, virements) : ${gnf(recus['autres'])}, '
+      Text('$nbRecus reçu(s) ; autres modes (Orange Money, MTN, chèques, virements) : ${gnf(autres)}, '
           'non comptés dans le tiroir.'),
       TextField(
         controller: compte,
@@ -2074,8 +2093,9 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
     'compte_especes': c,
     'ecart': ecart,
     'justification': ecart == 0 ? null : justification.text.trim(),
-    'nb_recus': recus['n'],
-    'total_autres_modes': recus['autres'],
+    'nb_recus': nbRecus,
+    'total_autres_modes': autres,
+    'rang': rang,
     'poste_id': poste?['poste_id'],
   });
 }
@@ -2083,9 +2103,10 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
 /// Jours passés où la personne connectée a encaissé sans clôturer (le plus ancien d'abord).
 Future<List<Map<String, Object?>>> joursNonClotures(String orgId) async => [
       for (final r in await db.getAll(
-          """SELECT DISTINCT e.date_effective AS jour, e.site_id FROM encaissements e
+          """SELECT e.date_effective AS jour, e.site_id FROM encaissements e
              WHERE e.organisation_id = ? AND e.encaisse_par = ? AND e.statut = 'valide' AND e.date_effective < ?
-               AND NOT EXISTS (SELECT 1 FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
+             GROUP BY e.date_effective, e.site_id
+             HAVING count(*) > (SELECT coalesce(sum(c.nb_recus), 0) FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
                  AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.date_effective)
              ORDER BY e.date_effective""",
           [orgId, monId, _date(DateTime.now())]))
@@ -2107,9 +2128,13 @@ class _ClotureDuJour extends StatelessWidget {
         parametres: [espace.orgId, jour],
         builder: (context, clotures) => Requete(
           // Mes sites de la journée qui restent à clôturer.
-          """SELECT DISTINCT e.site_id FROM encaissements e WHERE e.organisation_id = ? AND e.encaisse_par = ?
+          """SELECT e.site_id,
+                 (SELECT count(*) FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id AND c.site_id = e.site_id
+                   AND c.encaisse_par = e.encaisse_par AND c.jour = e.date_effective) AS deja
+               FROM encaissements e WHERE e.organisation_id = ? AND e.encaisse_par = ?
                AND e.date_effective = ? AND e.statut = 'valide'
-               AND NOT EXISTS (SELECT 1 FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
+               GROUP BY e.site_id
+               HAVING count(*) > (SELECT coalesce(sum(c.nb_recus), 0) FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
                  AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.date_effective)""",
           parametres: [espace.orgId, monId, jour],
           builder: (context, aClore) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -2119,14 +2144,14 @@ class _ClotureDuJour extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: () => cloturerCaisse(context, orgId: espace.orgId, siteId: s['site_id'] as String, jour: jour),
                   icon: const Icon(Icons.lock_outline),
-                  label: const Text('Clôturer ma caisse de ce jour'),
+                  label: Text((s['deja'] as int? ?? 0) > 0 ? 'Clôturer le complément (reçus après la clôture)' : 'Clôturer ma caisse de ce jour'),
                 ),
               ),
             for (final c in clotures)
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.lock),
-                  title: Text('Caisse clôturée · ${c['encaisseur'] ?? ''}'),
+                  title: Text('${(c['rang'] as int? ?? 1) > 1 ? 'Complément n° ${(c['rang'] as int) - 1}' : 'Caisse clôturée'} · ${c['encaisseur'] ?? ''}'),
                   subtitle: Text([
                     'Attendu ${gnf(c['attendu_especes'])} · compté ${gnf(c['compte_especes'])}',
                     if ((c['ecart'] as int? ?? 0) != 0) 'Écart ${gnf(c['ecart'])} : ${c['justification'] ?? ''}',

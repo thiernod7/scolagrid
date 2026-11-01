@@ -18,6 +18,28 @@ const fonctions = {
 /// Fonctions que seul le fondateur peut attribuer.
 const fonctionsDeDirection = {'fondateur', 'directeur'};
 
+/// Ce qu'on choisit pour une personne : un titre, tel qu'on le dit à l'école,
+/// qui porte une fonction (les droits). Une personne peut cumuler plusieurs titres.
+const titres = <String, ({String fonction, String? libelle})>{
+  'directeur_general': (fonction: 'directeur', libelle: 'Directeur général'),
+  'directeur': (fonction: 'directeur', libelle: null),
+  'proviseur': (fonction: 'directeur', libelle: 'Proviseur'),
+  'principal': (fonction: 'directeur', libelle: 'Principal'),
+  'directeur_primaire': (fonction: 'directeur', libelle: 'Directeur du primaire'),
+  'censeur': (fonction: 'directeur_etudes', libelle: 'Censeur'),
+  'directeur_etudes': (fonction: 'directeur_etudes', libelle: null),
+  'surveillant_general': (fonction: 'surveillant', libelle: 'Surveillant général'),
+  'surveillant': (fonction: 'surveillant', libelle: null),
+  'secretaire': (fonction: 'secretaire', libelle: null),
+  'comptable': (fonction: 'comptable', libelle: null),
+  'caissier': (fonction: 'caissier', libelle: null),
+  'enseignant': (fonction: 'enseignant', libelle: null),
+  'autre': (fonction: 'autre', libelle: null),
+};
+
+/// « Proviseur », ou le nom de la fonction s'il n'y a pas de titre.
+String nomTitre(String cle) => titres[cle]?.libelle ?? fonctions[titres[cle]?.fonction] ?? cle;
+
 const droits = {
   'valider_remboursement': 'Valider un remboursement',
   'annuler_recu': 'Annuler un reçu',

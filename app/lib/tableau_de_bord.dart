@@ -62,6 +62,9 @@ class _Mesures {
   /// Changements que le serveur a refusés sur ce poste.
   final refus = <Map<String, Object?>>[];
 
+  /// Postes activés hors direction, en attente de validation.
+  int postesAValider = 0;
+
   /// Remboursements autorisés de vive voix : à confirmer, dont en retard.
   int aConfirmer = 0;
   int confirmationsEnRetard = 0;
@@ -70,6 +73,9 @@ class _Mesures {
 Future<_Mesures> _mesurer(String o, Periode periode) async {
   final m = _Mesures();
   m.refus.addAll([for (final r in await db.getAll('SELECT * FROM refus_serveur ORDER BY quand DESC LIMIT 50')) Map.of(r)]);
+  m.postesAValider = (await db.get("SELECT count(*) AS n FROM postes WHERE organisation_id = ? AND statut = 'a_valider'", [o]))['n']
+          as int? ??
+      0;
   final annee = await db.getOptional('SELECT * FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [o]);
   m.personnel = (await db.get("SELECT count(*) AS n FROM personnel WHERE organisation_id = ? AND statut = 'actif'", [o]))['n']
           as int? ??
@@ -449,6 +455,7 @@ class _TableauDeBordState extends State<TableauDeBord> {
                   (SELECT max(updated_at) FROM frais WHERE organisation_id = ?) AS e,
                   (SELECT max(updated_at) FROM reductions_eleves WHERE organisation_id = ?) AS f,
                   (SELECT count(*) FROM refus_serveur) AS z,
+                  (SELECT max(updated_at) FROM postes) AS w,
                   (SELECT max(updated_at) FROM remboursements WHERE organisation_id = ?) AS g,
                   (SELECT count(*) FROM personnel WHERE organisation_id = ?) AS h''',
         parametres: [o, o, o, o, o, o, o, o],
@@ -533,7 +540,11 @@ class _TableauDeBordState extends State<TableauDeBord> {
               _PremierJour(importer: widget.importer, inscrire: widget.inscrire),
               const SizedBox(height: 20),
             ],
-            if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty || m.refus.isNotEmpty || (widget.voitFinances && m.aConfirmer > 0)) ...[
+            if (widget.aFaire.isNotEmpty ||
+                m.incomplets.isNotEmpty ||
+                m.refus.isNotEmpty ||
+                (widget.espace.gestionnaire && m.postesAValider > 0) ||
+                (widget.voitFinances && m.aConfirmer > 0)) ...[
               const TitreSection('À faire'),
               Container(
                 decoration: BoxDecoration(
@@ -560,6 +571,21 @@ class _TableauDeBordState extends State<TableauDeBord> {
                     ),
                     if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty || (widget.voitFinances && m.aConfirmer > 0))
                       Divider(height: 1, color: schema.outlineVariant),
+                  ],
+                  if (widget.espace.gestionnaire && m.postesAValider > 0) ...[
+                    InkWell(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PostesScreen(espace: widget.espace))),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(children: [
+                          Etat('${m.postesAValider}', ton: Ton.attente),
+                          const SizedBox(width: 12),
+                          const Expanded(child: Text('poste(s) à valider : activés par le personnel', style: TextStyle(fontSize: 14))),
+                          Icon(Icons.chevron_right, size: 16, color: gris),
+                        ]),
+                      ),
+                    ),
+                    Divider(height: 1, color: schema.outlineVariant),
                   ],
                   for (var i = 0; i < widget.aFaire.length; i++) ...[
                     if (i > 0) Divider(height: 1, color: schema.outlineVariant),

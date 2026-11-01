@@ -96,9 +96,9 @@ class AnneesScreen extends StatelessWidget {
           [id, espace.orgId, libelle.text.trim(), _date(dates.$1), _date(dates.$2), source['periodicite'], source['nb_mois'], m, m]);
       for (final t in await tx.getAll('SELECT * FROM tranches_annee WHERE annee_id = ? ORDER BY ordre', [source['id']])) {
         await tx.execute(
-            'INSERT INTO tranches_annee (id, organisation_id, annee_id, ordre, libelle, date_limite, part, created_at, updated_at) '
-            'VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?)',
-            [espace.orgId, id, t['ordre'], t['libelle'], decalerDate(t['date_limite'], decalage), t['part'], m, m]);
+            'INSERT INTO tranches_annee (id, organisation_id, annee_id, ordre, libelle, date_limite, part, mois, created_at, updated_at) '
+            'VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [espace.orgId, id, t['ordre'], t['libelle'], decalerDate(t['date_limite'], decalage), t['part'], t['mois'], m, m]);
       }
       for (final c in await tx.getAll('SELECT * FROM classes WHERE annee_id = ? AND coalesce(fermee, 0) = 0', [source['id']])) {
         await tx.execute(

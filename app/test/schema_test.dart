@@ -324,4 +324,13 @@ void main() {
     expect(decalerDate('2026-10-31', 364), '2027-10-30');
     expect(decalerDate('2027-02-28', 366), '2028-02-29');
   });
+
+  test('Tranches en mois : 4, 3 et 2 mois à partir d\'octobre', () {
+    final t = tranchesParMois(rentree: DateTime(2026, 10, 1), mois: [4, 3, 2], noms: ['Première', '', 'Dernière']);
+    expect(t.map((x) => x.libelle), ['Première', 'Tranche 2', 'Dernière']);
+    expect(t.map((x) => x.dateLimite), [DateTime(2027, 1, 31), DateTime(2027, 4, 30), DateTime(2027, 6, 30)]);
+    expect(t.first.part, closeTo(44.44, .01));
+    final e = echeancesDuCalendrier(total: 900000, calendrier: t);
+    expect(e.map((x) => x.montant), [400000, 300000, 200000]);
+  });
 }

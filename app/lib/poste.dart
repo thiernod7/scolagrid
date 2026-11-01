@@ -10,6 +10,13 @@ const versionApp = '0.6.0';
 /// Ce poste, tel qu'enregistré localement (table locale, jamais synchronisée).
 Future<Map<String, Object?>?> cePoste() => db.getOptional('SELECT * FROM ce_poste LIMIT 1');
 
+const messagePosteEnAttente =
+    'Ce poste attend la validation de la direction : il peut consulter, mais pas inscrire ni encaisser.';
+
+/// Vrai si ce poste a été activé par quelqu'un hors direction et n'est pas encore validé.
+Future<bool> posteEnAttente() async =>
+    (await db.getOptional('SELECT p.statut FROM ce_poste c JOIN postes p ON p.id = c.poste_id'))?['statut'] == 'a_valider';
+
 // Code PIN --------------------------------------------------------------------
 
 /// Empreinte du PIN : salée et répétée, pour qu'on ne puisse pas le retrouver
@@ -334,10 +341,12 @@ class PostesScreen extends StatelessWidget {
               child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
                 EnTetePage(
                   titre: 'Postes',
-                  sousTitre: '${postes.length} poste(s)${bloques > 0 ? ' · $bloques bloqué(s)' : ''}',
+                  sousTitre: '${postes.length} poste(s)${bloques > 0 ? ' · $bloques bloqué(s)' : ''}'
+                      '${postes.any((p) => p['statut'] == 'a_valider') ? ' · ${postes.where((p) => p['statut'] == 'a_valider').length} à valider' : ''}',
                 ),
                 const SizedBox(height: 8),
-                Text('Un poste perdu ou volé ? Bloquez-le : à sa prochaine connexion, il efface ses données. '
+                Text('Un poste activé par la direction est actif tout de suite ; activé par quelqu\'un d\'autre, il attend votre '
+                    'validation. Un poste perdu ou volé ? Bloquez-le : à sa prochaine connexion, il efface ses données. '
                     'Sa lettre ne sera jamais réutilisée.', style: TextStyle(fontSize: 12, color: gris)),
                 const SizedBox(height: 12),
                 Tableau(
@@ -370,8 +379,23 @@ class PostesScreen extends StatelessWidget {
                         if (!telephone) Text('${p['site'] ?? 'Tout le groupe'}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
                         if (largeur >= 1024) Text('${p['par'] ?? '—'}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
                         if (!telephone) Text(_depuis(p['derniere_synchro']), style: TextStyle(fontSize: 14, color: gris)),
-                        p['statut'] == 'bloque' ? const Etat('Bloqué', ton: Ton.retard) : const Etat('Actif', ton: Ton.regle),
-                        _gere(p)
+                        switch (p['statut']) {
+                          'bloque' => const Etat('Bloqué', ton: Ton.retard),
+                          'a_valider' => const Etat('À valider', ton: Ton.attente),
+                          _ => const Etat('Actif', ton: Ton.regle),
+                        },
+                        _gere(p) && p['statut'] == 'a_valider'
+                            ? FilledButton.tonal(
+                                onPressed: () async {
+                                  if (await _confirmer(context,
+                                      'Valider le poste ${p['code']} (${p['nom']}), activé par ${p['par'] ?? 'un membre du personnel'} ? '
+                                      'Il pourra inscrire et encaisser.')) {
+                                    await _modifier('postes', p['id'] as String, {'statut': 'actif'});
+                                  }
+                                },
+                                child: const Text('Valider'),
+                              )
+                            : _gere(p)
                             ? TextButton(
                                 style: TextButton.styleFrom(foregroundColor: p['statut'] == 'bloque' ? null : Couleurs.retard),
                                 onPressed: () => _basculer(context, p),
