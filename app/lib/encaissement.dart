@@ -1848,6 +1848,8 @@ class _CaisseScreenState extends State<CaisseScreen> {
                     const Text('saisi après la clôture', style: TextStyle(fontSize: 12, color: Couleurs.attente)),
                   if (m['confirmation'] == 'en_attente')
                     const Text("sous réserve d'encaissement", style: TextStyle(fontSize: 12, color: Couleurs.attente)),
+                  if (sens == 'recu' && (m['nb_eleves'] as int? ?? 0) == 0)
+                    const Text('sans détail : lignes non enregistrées', style: TextStyle(fontSize: 12, color: Couleurs.retard)),
                 ]),
               ),
               if (colonnesLarges)

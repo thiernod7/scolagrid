@@ -120,6 +120,11 @@ class SupabaseConnector extends PowerSyncBackendConnector {
   // servirait à rien et bloquerait toute la file, on abandonne le changement.
   static final _refusDefinitif = RegExp(r'^(22...|23...|42501)$');
 
+  /// Tables où l'on crée sans jamais modifier (reçus, clôtures, impressions) :
+  /// le serveur n'y donne pas le droit de modification, donc l'envoi se fait en
+  /// « créer, ou ne rien faire si c'est déjà là » — jamais en « créer ou remplacer ».
+  static const _creationSeule = {'lignes_encaissement', 'clotures_caisse', 'impressions_documents'};
+
   @override
   Future<PowerSyncCredentials?> fetchCredentials() async {
     final auth = Supabase.instance.client.auth;
@@ -164,13 +169,20 @@ class SupabaseConnector extends PowerSyncBackendConnector {
   /// Exécute une écriture ; un refus définitif est abandonné (signalé dans la
   /// console) sans bloquer le reste de la file. Une erreur réseau remonte :
   /// PowerSync réessaiera toute la transaction (les écritures sont rejouables).
-  static Future<bool> _essayer(Future<void> Function() ecriture) async {
+  static Future<bool> _essayer(Future<void> Function() ecriture,
+      {PowerSyncDatabase? base, String? table, Object? ligne, bool noter = true}) async {
     try {
       await ecriture();
       return true;
     } on PostgrestException catch (e) {
       if (!_refusDefinitif.hasMatch(e.code ?? '')) rethrow;
       debugPrint('Changement refusé par le serveur, abandonné : ${e.code} ${e.message}');
+      // Gardé sur le poste pour que l'école le voie (tableau de bord, « À faire »).
+      if (noter && base != null) {
+        await base.execute(
+            'INSERT INTO refus_serveur (id, quand, table_nom, ligne_id, code, message) VALUES (uuid(), ?, ?, ?, ?, ?)',
+            [DateTime.now().toUtc().toIso8601String(), table, ligne == null ? null : '$ligne', e.code, e.message]);
+      }
       return false;
     }
   }
@@ -193,11 +205,14 @@ class SupabaseConnector extends PowerSyncBackendConnector {
           j++;
         }
         final lot = [for (final o in ops.sublist(i, j)) _pourServeur(o.table, {...?o.opData, 'id': o.id})];
-        final ok = await _essayer(() => rest.from(op.table).upsert(lot));
+        final ignorer = _creationSeule.contains(op.table);
+        final ok = await _essayer(() => rest.from(op.table).upsert(lot, ignoreDuplicates: ignorer),
+            base: database, table: op.table, ligne: op.id, noter: lot.length == 1);
         if (!ok && lot.length > 1) {
           // Une ligne refusée : on renvoie une par une pour ne perdre que celle-là.
           for (final ligne in lot) {
-            await _essayer(() => rest.from(op.table).upsert(ligne));
+            await _essayer(() => rest.from(op.table).upsert(ligne, ignoreDuplicates: ignorer),
+                base: database, table: op.table, ligne: ligne['id']);
           }
         }
         i = j;
@@ -210,7 +225,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
         } else {
           await table.delete().eq('id', op.id);
         }
-      });
+      }, base: database, table: op.table, ligne: op.id);
       i++;
     }
     await tx.complete();

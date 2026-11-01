@@ -59,6 +59,9 @@ class _Mesures {
   final reductionsParRegle = <String, int>{};
   int eleveReduits = 0;
 
+  /// Changements que le serveur a refusés sur ce poste.
+  final refus = <Map<String, Object?>>[];
+
   /// Remboursements autorisés de vive voix : à confirmer, dont en retard.
   int aConfirmer = 0;
   int confirmationsEnRetard = 0;
@@ -66,6 +69,7 @@ class _Mesures {
 
 Future<_Mesures> _mesurer(String o, Periode periode) async {
   final m = _Mesures();
+  m.refus.addAll([for (final r in await db.getAll('SELECT * FROM refus_serveur ORDER BY quand DESC LIMIT 50')) Map.of(r)]);
   final annee = await db.getOptional('SELECT * FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [o]);
   m.personnel = (await db.get("SELECT count(*) AS n FROM personnel WHERE organisation_id = ? AND statut = 'actif'", [o]))['n']
           as int? ??
@@ -384,6 +388,51 @@ class _TableauDeBordState extends State<TableauDeBord> {
         Periode.annee => "vs l'an dernier à date",
       };
 
+  static const _tablesLisibles = {
+    'lignes_encaissement': 'Ligne de reçu',
+    'encaissements': 'Reçu',
+    'clotures_caisse': 'Clôture de caisse',
+    'impressions_documents': 'Impression de document',
+    'inscriptions': 'Inscription',
+    'eleves': 'Élève',
+    'remboursements': 'Remboursement',
+    'reductions_eleves': 'Réduction',
+    'classes': 'Classe',
+    'frais': 'Frais',
+  };
+
+  Future<void> _voirRefus(List<Map<String, Object?>> refus) async {
+    final effacer = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Refusés par le serveur'),
+        content: SizedBox(
+          width: 520,
+          child: ListView(shrinkWrap: true, children: [
+            const Text("Ces changements faits sur ce poste n'ont pas été acceptés (droits, règle de l'école, doublon). "
+                'Ils ne sont pas enregistrés : refaites-les si besoin, ou signalez-les.', style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 8),
+            for (final r in refus)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text('${_tablesLisibles[r['table_nom']] ?? r['table_nom']} · ${_dateLisible(r['quand'])}'),
+                subtitle: Text('${r['message'] ?? ''} (${r['code'] ?? ''})'),
+              ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Effacer la liste')),
+          FilledButton(onPressed: () => Navigator.pop(context, false), child: const Text('Fermer')),
+        ],
+      ),
+    );
+    if (effacer == true) {
+      await db.execute('DELETE FROM refus_serveur');
+      if (mounted) setState(() {});
+    }
+  }
+
   void _voirArrieres(List<_EnRetard> retards) => Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => _ArrieresScreen(espace: widget.espace, retards: retards)));
 
@@ -399,6 +448,7 @@ class _TableauDeBordState extends State<TableauDeBord> {
                   (SELECT count(*) FROM inscriptions WHERE organisation_id = ?) AS d,
                   (SELECT max(updated_at) FROM frais WHERE organisation_id = ?) AS e,
                   (SELECT max(updated_at) FROM reductions_eleves WHERE organisation_id = ?) AS f,
+                  (SELECT count(*) FROM refus_serveur) AS z,
                   (SELECT max(updated_at) FROM remboursements WHERE organisation_id = ?) AS g,
                   (SELECT count(*) FROM personnel WHERE organisation_id = ?) AS h''',
         parametres: [o, o, o, o, o, o, o, o],
@@ -483,7 +533,7 @@ class _TableauDeBordState extends State<TableauDeBord> {
               _PremierJour(importer: widget.importer, inscrire: widget.inscrire),
               const SizedBox(height: 20),
             ],
-            if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty || (widget.voitFinances && m.aConfirmer > 0)) ...[
+            if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty || m.refus.isNotEmpty || (widget.voitFinances && m.aConfirmer > 0)) ...[
               const TitreSection('À faire'),
               Container(
                 decoration: BoxDecoration(
@@ -492,6 +542,25 @@ class _TableauDeBordState extends State<TableauDeBord> {
                   border: Border.all(color: schema.outlineVariant),
                 ),
                 child: Column(children: [
+                  if (m.refus.isNotEmpty) ...[
+                    InkWell(
+                      onTap: () => _voirRefus(m.refus),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(children: [
+                          Etat('${m.refus.length}', ton: Ton.retard),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Text('changement(s) refusé(s) par le serveur sur ce poste : à vérifier',
+                                style: TextStyle(fontSize: 14, color: Couleurs.retard)),
+                          ),
+                          Icon(Icons.chevron_right, size: 16, color: gris),
+                        ]),
+                      ),
+                    ),
+                    if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty || (widget.voitFinances && m.aConfirmer > 0))
+                      Divider(height: 1, color: schema.outlineVariant),
+                  ],
                   for (var i = 0; i < widget.aFaire.length; i++) ...[
                     if (i > 0) Divider(height: 1, color: schema.outlineVariant),
                     widget.aFaire[i],

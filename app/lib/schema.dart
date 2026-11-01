@@ -525,6 +525,14 @@ const schema = Schema([
     Column.text('device'),
     Column.text('created_at'),
   ]),
+  // Changements que le serveur a refusés : montrés à l'école, jamais envoyés.
+  Table.localOnly('refus_serveur', [
+    Column.text('quand'),
+    Column.text('table_nom'),
+    Column.text('ligne_id'),
+    Column.text('code'),
+    Column.text('message'),
+  ]),
   // Réglages propres à ce poste (mode clair ou sombre…), jamais synchronisés.
   Table.localOnly('preferences', [
     Column.text('valeur'),
