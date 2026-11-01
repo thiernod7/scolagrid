@@ -7,6 +7,7 @@ name: Android - créer la clé de signature
 # la mise à jour par-dessus l'application installée.
 # Ne relancez pas : une nouvelle clé empêcherait les mises à jour (le workflow
 # refuse d'ailleurs d'écraser une clé existante).
+# Le secret ANDROID_CLE_SECRET est à garder précieusement.
 
 on:
   push:
