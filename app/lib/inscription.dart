@@ -119,6 +119,12 @@ class _InscrireScreenState extends State<InscrireScreen> {
   bool _choisi = false;
   bool _peutEncaisser = false;
 
+  /// Réinscription : l'inscription précédente (niveau, dernier niveau ?), le
+  /// nombre de redoublements déjà faits et la limite de l'école.
+  Map<String, Object?>? _precedente;
+  int _redoublements = 0;
+  int _redoublementsMax = 1;
+
   Map<String, Object?>? _annee;
   Lignes _classes = [];
   Lignes _frais = [];
@@ -167,7 +173,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
                  (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
                   AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
                FROM classes c JOIN niveaux n ON n.id = c.niveau_id JOIN sites s ON s.id = c.site_id
-               WHERE c.annee_id = ? ORDER BY n.ordre, c.nom, s.created_at''', [annee['id']]))
+               WHERE c.annee_id = ? AND c.fermee = 0 ORDER BY n.ordre, c.nom, s.created_at''', [annee['id']]))
             .where((c) => sites.containsKey(c['site_id']))
             .map((c) => Map<String, Object?>.from(c))
             .toList();
@@ -176,7 +182,8 @@ class _InscrireScreenState extends State<InscrireScreen> {
         : (await db.getAll('SELECT * FROM frais WHERE annee_id = ? ORDER BY created_at', [annee['id']]))
             .map((f) => Map<String, Object?>.from(f))
             .toList();
-    final org = await db.get('SELECT reductions_cumul, reductions_plafond, arrivee_par_defaut FROM organisations WHERE id = ?', [o]);
+    final org = await db.get(
+        'SELECT reductions_cumul, reductions_plafond, arrivee_par_defaut, redoublements_max FROM organisations WHERE id = ?', [o]);
     final regles = [
       for (final r in await db.getAll(
           'SELECT * FROM regles_reduction WHERE organisation_id = ? AND actif = 1 ORDER BY created_at', [o]))
@@ -194,10 +201,21 @@ class _InscrireScreenState extends State<InscrireScreen> {
     final listePieces = await piecesDe(o);
 
     Map<String, Object?>? existant;
+    Map<String, Object?>? precedente;
+    var redoublements = 0;
     String? photo;
     final parents = <_Parent>[];
     if (widget.eleveId != null) {
       existant = await db.getOptional('SELECT * FROM eleves WHERE id = ?', [widget.eleveId]);
+      final p = await db.getOptional('''
+          SELECT i.id, i.statut, c.niveau_id, n.nom AS niveau, n.ordre, n.niveau_final, a.libelle AS annee
+          FROM inscriptions i JOIN classes c ON c.id = i.classe_id JOIN niveaux n ON n.id = c.niveau_id
+          JOIN annees_scolaires a ON a.id = i.annee_id
+          WHERE i.eleve_id = ? AND i.annee_id IS NOT ? AND i.statut <> 'annule'
+          ORDER BY a.debut DESC LIMIT 1''', [widget.eleveId, annee?['id']]);
+      precedente = p == null ? null : Map<String, Object?>.from(p);
+      redoublements = ((await db.get('SELECT count(*) AS n FROM inscriptions WHERE eleve_id = ? AND redoublant = 1',
+          [widget.eleveId]))['n'] as int?) ?? 0;
       photo = (await db.getOptional('SELECT updated_at FROM photos_eleves WHERE eleve_id = ?', [widget.eleveId]))?['updated_at']
           as String?;
       for (final p in await db.getAll(
@@ -226,6 +244,18 @@ class _InscrireScreenState extends State<InscrireScreen> {
       _plafond = (org['reductions_plafond'] as int?) ?? 100;
       _arrivee = org['arrivee_par_defaut'] as String? ?? 'mois';
       _peutEncaisser = peutEncaisser;
+      _precedente = precedente;
+      _redoublements = redoublements;
+      _redoublementsMax = (org['redoublements_max'] as int?) ?? 1;
+      // Réinscription : on propose le niveau au-dessus de celui de l'an dernier.
+      if (precedente != null && precedente['niveau_final'] != 1) {
+        final suivant = classes.where((c) => (c['ordre_niveau'] as int? ?? 0) > (precedente!['ordre'] as int? ?? 0)).firstOrNull;
+        if (suivant != null) {
+          _niveau = suivant['niveau_id'] as String;
+          final dansNiveau = classes.where((x) => x['niveau_id'] == _niveau).toList();
+          if (dansNiveau.length == 1) _classe = dansNiveau.first['id'] as String;
+        }
+      }
       _listePieces = listePieces;
       _existant = existant;
       _photoExistante = photo;
@@ -497,7 +527,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
       for (final f in _frais)
         if ((f['site_id'] == null || f['site_id'] == c['site_id']) &&
             (f['niveau_id'] == null || f['niveau_id'] == c['niveau_id']) &&
-            (f['type_frais'] == entree || f['type_frais'] == 'scolarite'))
+            (f['type_frais'] == entree || f['type_frais'] == 'scolarite' || f['examen'] == 1))
           f,
     ]);
     return [
@@ -1204,6 +1234,47 @@ class _InscrireScreenState extends State<InscrireScreen> {
     );
   }
 
+  /// Ce que dit l'année précédente : diplômé, redoublement, niveau inférieur.
+  List<Widget> _bandeauxParcours(String? niveau) {
+    final p = _precedente;
+    if (p == null) return const [];
+    final ordre = _classes.where((c) => c['niveau_id'] == niveau).firstOrNull?['ordre_niveau'] as int?;
+    final ordrePrecedent = p['ordre'] as int? ?? 0;
+    return [
+      _Bandeau(ton: Ton.info, icone: Icons.history_edu, enfants: [
+        Text("L'an dernier (${p['annee']}) : ${p['niveau']}."),
+      ]),
+      if (p['niveau_final'] == 1 && p['statut'] != 'diplome')
+        _Bandeau(ton: Ton.regle, icone: Icons.school_outlined, enfants: [
+          Text("${p['niveau']} est le dernier niveau de l'école : si l'élève a terminé, il est diplômé, pas réinscrit."),
+          const SizedBox(height: 6),
+          OutlinedButton(onPressed: _marquerDiplome, child: const Text('Marquer « Diplômé »')),
+        ]),
+      if (niveau != null && niveau == p['niveau_id'])
+        _Bandeau(
+          ton: _redoublements + 1 > _redoublementsMax ? Ton.retard : Ton.attente,
+          icone: Icons.replay,
+          enfants: [
+            Text('Redoublement${_redoublements > 0 ? ' (${_redoublements + 1}e)' : ''} : même niveau que l\'an dernier.'),
+            if (_redoublements + 1 > _redoublementsMax)
+              Text("Au-delà de la limite de l'école ($_redoublementsMax redoublement${_redoublementsMax > 1 ? 's' : ''}). "
+                  "L'inscription reste possible, sur décision de la direction."),
+          ],
+        )
+      else if (ordre != null && ordre < ordrePrecedent)
+        const _Bandeau(ton: Ton.attente, icone: Icons.south, enfants: [Text("Niveau inférieur à celui de l'an dernier.")]),
+    ];
+  }
+
+  Future<void> _marquerDiplome() async {
+    final p = _precedente;
+    if (p == null) return;
+    if (!await _confirmer(context, "Marquer l'élève « Diplômé » pour ${p['annee']} ? Il ne sera pas réinscrit.")) return;
+    await db.execute("UPDATE inscriptions SET statut = 'diplome', date_sortie = coalesce(date_sortie, ?), updated_at = ? WHERE id = ?",
+        [_date(DateTime.now()), _maintenant(), p['id']]);
+    if (mounted) Navigator.of(context).pop();
+  }
+
   Widget _sectionClasse(BuildContext context) {
     final c = _classeChoisie;
     final pleine = c != null && c['capacite'] != null && ((c['effectif'] as int?) ?? 0) >= (c['capacite'] as int);
@@ -1234,6 +1305,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
                 if (x['niveau_id'] == niveau) _carteClasse(x),
             ]),
           ],
+          ..._bandeauxParcours(niveau),
           if (pleine)
             const _Bandeau(
               ton: Ton.attente,

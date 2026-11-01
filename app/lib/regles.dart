@@ -184,7 +184,7 @@ class ReglesGeneralesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Requete(
-        'SELECT blocage_documents, seuil_recouvrement FROM organisations WHERE id = ?',
+        'SELECT blocage_documents, seuil_recouvrement, redoublements_max FROM organisations WHERE id = ?',
         parametres: [espace.orgId],
         builder: (context, l) {
           if (l.isEmpty) return _Page(titre: 'Règles générales', corps: _vide('Organisation introuvable.'));
@@ -193,6 +193,7 @@ class ReglesGeneralesScreen extends StatelessWidget {
           final schema = Theme.of(context).colorScheme;
           final regle = o['blocage_documents'] as String? ?? 'alerte';
           final seuil = o['seuil_recouvrement'] as int? ?? 70;
+          final redoublements = o['redoublements_max'] as int? ?? 1;
           return _Page(
             titre: 'Règles générales',
             corps: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
@@ -248,6 +249,22 @@ class ReglesGeneralesScreen extends StatelessWidget {
                           }
                         }
                       : null,
+                ),
+              ),
+              Card(
+                child: ListTile(
+                  title: const Text('Redoublements autorisés'),
+                  subtitle: Text(redoublements == 0
+                      ? "Aucun : à la réinscription, tout redoublement est signalé en rouge."
+                      : "$redoublements par élève. Au-delà, la réinscription le signale en rouge, sans bloquer."),
+                  trailing: f
+                      ? DropdownButton<int>(
+                          value: redoublements,
+                          underline: const SizedBox(),
+                          items: [for (var n = 0; n <= 5; n++) DropdownMenuItem(value: n, child: Text('$n'))],
+                          onChanged: (v) => v == null ? null : _modifier('organisations', espace.orgId, {'redoublements_max': v}),
+                        )
+                      : Text('$redoublements'),
                 ),
               ),
             ]),

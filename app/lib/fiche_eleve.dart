@@ -21,7 +21,7 @@ Future<void> _changerClasseEleve(BuildContext context, Map<String, Object?> ins)
         '''SELECT c.id, c.nom, c.capacite, (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
              AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
            FROM classes c JOIN niveaux n ON n.id = c.niveau_id
-           WHERE c.annee_id = ? AND c.site_id = ? AND c.id <> ? ORDER BY n.ordre, c.nom''',
+           WHERE c.annee_id = ? AND c.site_id = ? AND c.id <> ? AND c.fermee = 0 ORDER BY n.ordre, c.nom''',
         [ins['annee_id'], ins['site_id'], ins['classe_id']]))
       c['id'] as String: '${c['nom']} · ${c['effectif']}${c['capacite'] == null ? '' : '/${c['capacite']}'}',
   };
@@ -528,7 +528,7 @@ class _FicheEleveState extends State<FicheEleve> {
              (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj,
              (SELECT max(h.quand) FROM historique_eleves h WHERE h.eleve_id = e.id AND h.evenement = 'mutation') AS date_mutation,
              i.id AS ins_id, i.statut, i.type_admission, i.date_effective, i.date_actif, i.date_sortie, i.motif,
-             i.created_at AS ins_saisie, nv.cycle AS cycle, i.classe_id, i.annee_id, i.site_id AS ins_site, c.nom AS classe, a.libelle AS annee
+             i.created_at AS ins_saisie, i.redoublant, nv.cycle AS cycle, i.classe_id, i.annee_id, i.site_id AS ins_site, c.nom AS classe, a.libelle AS annee
            FROM eleves e
            LEFT JOIN sites s ON s.id = e.site_id
            LEFT JOIN sites so ON so.id = e.site_origine_id
@@ -591,6 +591,7 @@ class _FicheEleveState extends State<FicheEleve> {
               Text(_nomEleve(e), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
               AlerteSante(eleve: e),
               if (e['statut'] != null) etatInscription(e['statut'] as String) else const Etat('Pas inscrit cette année'),
+              if (e['redoublant'] == 1) const Etat('Redoublant', ton: Ton.attente, icone: Icons.replay),
             ]),
             const SizedBox(height: 4),
             Wrap(spacing: 12, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [

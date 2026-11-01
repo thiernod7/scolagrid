@@ -144,6 +144,10 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     ],
     'regles_reduction': ['pourcentage', 'actif'],
     'pieces_dossier': ['obligatoire', 'actif'],
+    'niveaux': ['niveau_final'],
+    'classes': ['fermee'],
+    'inscriptions': ['redoublant'],
+    'frais': ['examen'],
     'reductions_eleves': ['actif'],
   };
 

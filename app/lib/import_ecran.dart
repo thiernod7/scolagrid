@@ -47,7 +47,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
       final sites = await _sitesOuJInscris(o);
       final classes = (await db.getAll(
               '''SELECT c.id, c.nom, c.site_id, s.code AS code_site FROM classes c JOIN sites s ON s.id = c.site_id
-                 JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1 WHERE c.organisation_id = ?''', [o]))
+                 JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1 WHERE c.organisation_id = ? AND c.fermee = 0''', [o]))
           .where((c) => sites.containsKey(c['site_id']));
       final existants = await db.getAll('SELECT nom, prenoms, date_naissance FROM eleves WHERE organisation_id = ?', [o]);
       final resultat = analyserImport(

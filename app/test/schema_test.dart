@@ -4,7 +4,7 @@ import 'package:scolagrid/caisse.dart';
 import 'package:scolagrid/echeancier.dart';
 import 'package:scolagrid/import_eleves.dart';
 import 'package:scolagrid/matricule.dart';
-import 'package:scolagrid/configuration.dart' show empreintePin, gnf, pinValide;
+import 'package:scolagrid/configuration.dart' show empreintePin, gnf, lettresSuivantes, nomDeClasse, pinValide;
 import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_guineen.dart';
 import 'package:flutter/material.dart' show Brightness;
@@ -287,5 +287,22 @@ void main() {
     expect(enLettres(1000), 'mille');
     expect(enLettres(1250000), 'un million deux cent cinquante mille');
     expect(enLettres(2000000), 'deux millions');
+  });
+
+  test('Classes : nom construit et lettres suivantes', () {
+    expect(nomDeClasse('7ème', null, 'A'), '7ème A');
+    expect(nomDeClasse('Terminale', 'SM', 'B'), 'Terminale SM B');
+    expect(lettresSuivantes(['A', null, 'C'], 3), ['B', 'D', 'E']);
+    expect(lettresSuivantes(const [], 1), ['A']);
+  });
+
+  test('Modèle guinéen : noms d\'usage, examens, séries', () {
+    final tous = niveauxParCycle.values.expand((l) => l).toList();
+    expect(tous.firstWhere((n) => n.nom == 'CP1').usage, '1ère année');
+    expect(tous.where((n) => n.examen != null).map((n) => n.examen), ['CEE', 'BEPC', 'BAC']);
+    expect(tous.firstWhere((n) => n.nom == 'Terminale').series, 'SM,SE,SS,SL');
+    // Mêmes valeurs que les contrôles du serveur (migration 022).
+    expect(examens.keys, ['CEE', 'BEPC', 'BAC']);
+    expect(seriesLycee.keys, ['SM', 'SE', 'SS', 'SL']);
   });
 }

@@ -237,7 +237,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
             (f['niveau_id'] == null || f['niveau_id'] == i['niveau_id']) &&
             (f['type_frais'] == entree ||
                 f['type_frais'] == 'scolarite' ||
-                (f['type_frais'] == 'optionnel' && souscrits.contains('${i['id']}|${f['id']}'))))
+                (f['type_frais'] == 'optionnel' && (f['examen'] == 1 || souscrits.contains('${i['id']}|${f['id']}')))))
           Map<String, Object?>.from(f),
     ]);
     for (final f in siens) {

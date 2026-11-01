@@ -532,7 +532,7 @@ class _AutresFrais extends StatelessWidget {
         'SELECT f.*, n.nom AS niveau, (SELECT count(*) FROM lignes_encaissement l WHERE l.frais_id = f.id) AS payes, '
         '(SELECT count(*) FROM souscriptions s WHERE s.frais_id = f.id AND s.actif = 1) AS pris '
         'FROM frais f LEFT JOIN niveaux n ON n.id = f.niveau_id '
-        "WHERE f.annee_id = ? AND f.type_frais = 'optionnel' AND f.site_id IS ? ORDER BY f.libelle",
+        "WHERE f.annee_id = ? AND f.type_frais = 'optionnel' AND coalesce(f.examen, 0) = 0 AND f.site_id IS ? ORDER BY f.libelle",
         parametres: [annee['id'], site],
         builder: (context, frais) {
           final gris = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -541,7 +541,7 @@ class _AutresFrais extends StatelessWidget {
               const Expanded(child: Text('Autres frais', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
               if (ajouter != null) TextButton.icon(onPressed: ajouter, icon: const Icon(Icons.add, size: 16), label: const Text('Ajouter')),
             ]),
-            Text('Cantine, transport, tenue, examen : la famille choisit de les prendre.', style: TextStyle(fontSize: 12, color: gris)),
+            Text("Cantine, transport, tenue : la famille choisit de les prendre. Les frais d'examen se fixent dans Niveaux.", style: TextStyle(fontSize: 12, color: gris)),
             const SizedBox(height: 8),
             if (frais.isEmpty) Text('Aucun.', style: TextStyle(fontSize: 13, color: gris)),
             for (final f in frais)

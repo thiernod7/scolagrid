@@ -74,8 +74,8 @@ Future<List<FraisDu>> situationInscription(String inscriptionId, {bool paiementA
       FROM frais f
       WHERE f.annee_id = ? AND (f.site_id IS NULL OR f.site_id = ?) AND (f.niveau_id IS NULL OR f.niveau_id = ?)
         AND (f.type_frais IN (?, 'scolarite')
-             OR (f.type_frais = 'optionnel' AND EXISTS (SELECT 1 FROM souscriptions s
-                 WHERE s.inscription_id = ? AND s.frais_id = f.id AND s.actif = 1)))
+             OR (f.type_frais = 'optionnel' AND (f.examen = 1 OR EXISTS (SELECT 1 FROM souscriptions s
+                 WHERE s.inscription_id = ? AND s.frais_id = f.id AND s.actif = 1))))
       ORDER BY f.created_at''',
       [inscriptionId, inscriptionId, ins['annee_id'], ins['site_id'], ins['niveau_id'], typeEntree, inscriptionId]))
       .map((f) => Map<String, Object?>.from(f)));
@@ -291,7 +291,7 @@ class _Souscrire extends StatelessWidget {
              (SELECT s.id FROM souscriptions s WHERE s.inscription_id = i.id AND s.frais_id = f.id) AS souscription,
              (SELECT s.actif FROM souscriptions s WHERE s.inscription_id = i.id AND s.frais_id = f.id) AS actif
            FROM inscriptions i JOIN classes c ON c.id = i.classe_id
-           JOIN frais f ON f.annee_id = i.annee_id AND f.type_frais = 'optionnel'
+           JOIN frais f ON f.annee_id = i.annee_id AND f.type_frais = 'optionnel' AND coalesce(f.examen, 0) = 0
              AND (f.site_id IS NULL OR f.site_id = i.site_id) AND (f.niveau_id IS NULL OR f.niveau_id = c.niveau_id)
            WHERE i.id = ?''',
         parametres: [inscriptionId],

@@ -39,6 +39,7 @@ part 'poste.dart';
 part 'reductions.dart';
 part 'regles.dart';
 part 'remboursements.dart';
+part 'structure.dart';
 part 'tableau_de_bord.dart';
 
 /// Étape 2 de l'onboarding : configurer l'établissement.
@@ -269,15 +270,15 @@ class _Reglage {
 final _reglages = <_Reglage>[
   _Reglage('ecole', "L'école", 'Logo, contacts, responsable, documents', Icons.apartment_outlined, 'Établissement',
       (e) => IdentiteEcoleScreen(espace: e)),
-  _Reglage('regles', 'Règles générales', 'Documents si arriérés, seuil du tableau de bord', Icons.rule_outlined, 'Établissement',
+  _Reglage('regles', 'Règles générales', 'Documents si arriérés, seuil, redoublements', Icons.rule_outlined, 'Établissement',
       (e) => ReglesGeneralesScreen(espace: e)),
   _Reglage('annee', 'Année scolaire', "L'année en cours et ses dates", Icons.event_outlined, 'Scolarité',
       (e) => AnneesScreen(espace: e)),
-  _Reglage('niveaux', 'Niveaux', 'Du préscolaire à la terminale (modèle guinéen)', Icons.layers_outlined, 'Scolarité',
+  _Reglage('niveaux', 'Niveaux', "Noms d'usage, examens, séries, dernier niveau", Icons.layers_outlined, 'Scolarité',
       (e) => NiveauxScreen(espace: e)),
   _Reglage('matieres', 'Matières', 'Matières et coefficients par niveau', Icons.menu_book_outlined, 'Scolarité',
       (e) => MatieresScreen(espace: e)),
-  _Reglage('classes', 'Classes', "Classes de l'année, salles et places", Icons.grid_view_outlined, 'Scolarité',
+  _Reglage('classes', 'Classes', 'Groupes, effectifs, professeur principal', Icons.grid_view_outlined, 'Scolarité',
       (e) => ClassesScreen(espace: e)),
   _Reglage('pieces', 'Pièces du dossier', 'Ce que les familles fournissent', Icons.folder_open_outlined, 'Scolarité',
       (e) => PiecesDossierScreen(espace: e)),
@@ -347,7 +348,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       'frais': (n('frais') > 0, '${n('frais')} frais'),
       'reductions': (n('reductions') > 0, n('reductions') == 0 ? 'Aucune réduction' : '${n('reductions')} réduction(s)'),
       'remboursements': (true, "Ce que l'école accepte de rembourser"),
-      'regles': (true, 'Documents si arriérés, seuil du tableau de bord'),
+      'regles': (true, 'Documents si arriérés, seuil, redoublements'),
       'pieces': (true, 'Ce que les familles fournissent'),
     };
   }
@@ -586,114 +587,6 @@ class AnneesScreen extends StatelessWidget {
       );
 }
 
-// Niveaux ---------------------------------------------------------------------
-
-class NiveauxScreen extends StatelessWidget {
-  const NiveauxScreen({super.key, required this.espace});
-
-  final Espace espace;
-
-  Future<void> _appliquerModele(BuildContext context) async {
-    final choisis = {'primaire', 'college'};
-    final ok = await _formulaire(context, 'Quels cycles avez-vous ?', (maj) => [
-          for (final c in cycles.entries)
-            CheckboxListTile(
-              value: choisis.contains(c.key),
-              title: Text(c.value),
-              subtitle: Text(niveauxParCycle[c.key]!.map((n) => n.nom).join(', ')),
-              onChanged: (v) => maj(() => v == true ? choisis.add(c.key) : choisis.remove(c.key)),
-            ),
-          const Text('Les matières et coefficients indicatifs sont ajoutés aussi. Vous pourrez tout modifier.'),
-        ]);
-    if (!ok || choisis.isEmpty) return;
-    final maintenant = _maintenant();
-    await db.writeTransaction((tx) async {
-      for (final cycle in cycles.keys.where(choisis.contains)) {
-        for (final n in niveauxParCycle[cycle]!) {
-          // Les tables locales de PowerSync sont des vues : pas de RETURNING, on choisit l'id avant.
-          final id = (await tx.get('SELECT uuid() AS id'))['id'];
-          await tx.execute(
-              'INSERT INTO niveaux (id, organisation_id, cycle, nom, ordre, created_at, updated_at) '
-              'VALUES (?, ?, ?, ?, ?, ?, ?)',
-              [id, espace.orgId, cycle, n.nom, n.ordre, maintenant, maintenant]);
-          for (final m in (matieresParCycle[cycle] ?? const <String, double>{}).entries) {
-            await tx.execute(
-                'INSERT INTO matieres (id, organisation_id, niveau_id, nom, coefficient, created_at, updated_at) '
-                'VALUES (uuid(), ?, ?, ?, ?, ?, ?)',
-                [espace.orgId, id, m.key, m.value, maintenant, maintenant]);
-          }
-        }
-      }
-    });
-  }
-
-  Future<void> _ajouter(BuildContext context) async {
-    var cycle = 'primaire';
-    final nom = TextEditingController();
-    final ok = await _formulaire(context, 'Nouveau niveau', (maj) => [
-          _liste('Cycle', cycle, cycles, (v) => maj(() => cycle = v)),
-          TextField(controller: nom, decoration: _champ('Nom', aide: 'Par exemple CM2 ou 10ème')),
-        ]);
-    if (!ok || nom.text.trim().isEmpty) return;
-    final dernier = await db.get('SELECT coalesce(max(ordre), 0) AS o FROM niveaux WHERE organisation_id = ?',
-        [espace.orgId]);
-    await _inserer('niveaux', {
-      'organisation_id': espace.orgId,
-      'cycle': cycle,
-      'nom': nom.text.trim(),
-      'ordre': (dernier['o'] as int) + 1,
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => _Page(
-        titre: 'Niveaux',
-        ajouter: espace.fondateur ? () => _ajouter(context) : null,
-        libelleAjouter: 'Niveau',
-        corps: Requete('SELECT * FROM niveaux WHERE organisation_id = ? ORDER BY ordre, nom',
-            parametres: [espace.orgId], builder: (context, niveaux) {
-          if (niveaux.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Text('Aucun niveau pour le moment.', textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  if (espace.fondateur)
-                    FilledButton.icon(
-                      onPressed: () => _appliquerModele(context),
-                      icon: const Icon(Icons.auto_awesome),
-                      label: const Text('Utiliser le modèle guinéen'),
-                    ),
-                ]),
-              ),
-            );
-          }
-          return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 88), children: [
-            for (final n in niveaux)
-              Card(
-                child: ListTile(
-                  title: Text('${n['nom']}'),
-                  subtitle: Text(cycles[n['cycle']] ?? ''),
-                  trailing: espace.fondateur
-                      ? IconButton(
-                          tooltip: 'Supprimer',
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            if (await _confirmer(context,
-                                'Supprimer le niveau ${n['nom']} ? Ses matières et ses classes seront supprimées aussi.')) {
-                              await _supprimer('niveaux', n['id'] as String);
-                            }
-                          },
-                        )
-                      : null,
-                ),
-              ),
-          ]);
-        }),
-      );
-}
-
 // Matières et coefficients ----------------------------------------------------
 
 class MatieresScreen extends StatefulWidget {
@@ -791,94 +684,4 @@ class _MatieresScreenState extends State<MatieresScreen> {
       }),
     );
   }
-}
-
-// Classes ---------------------------------------------------------------------
-
-class ClassesScreen extends StatelessWidget {
-  const ClassesScreen({super.key, required this.espace});
-
-  final Espace espace;
-
-  Future<void> _ajouter(BuildContext context) async {
-    final annee = await db.getOptional(
-        'SELECT id FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [espace.orgId]);
-    final sites = {
-      for (final s in await db.getAll('SELECT id, nom FROM sites WHERE organisation_id = ? ORDER BY created_at',
-          [espace.orgId]))
-        if (espace.gereSite(s['id'] as String)) s['id'] as String: s['nom'] as String,
-    };
-    final niveaux = {
-      for (final n in await db.getAll('SELECT id, nom FROM niveaux WHERE organisation_id = ? ORDER BY ordre, nom',
-          [espace.orgId]))
-        n['id'] as String: n['nom'] as String,
-    };
-    if (!context.mounted) return;
-    if (annee == null || sites.isEmpty || niveaux.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Il faut d'abord une année scolaire en cours et des niveaux.")));
-      return;
-    }
-    var site = sites.keys.first;
-    var niveau = niveaux.keys.first;
-    final nom = TextEditingController(text: '${niveaux[niveau]} A');
-    final salle = TextEditingController();
-    final ok = await _formulaire(context, 'Nouvelle classe', (maj) => [
-          if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
-          _liste('Niveau', niveau, niveaux, (v) => maj(() {
-                niveau = v;
-                nom.text = '${niveaux[v]} A';
-              })),
-          TextField(controller: nom, decoration: _champ('Nom de la classe', aide: 'Par exemple 7ème A')),
-          TextField(controller: salle, decoration: _champ('Salle (facultatif)')),
-        ]);
-    if (!ok || nom.text.trim().isEmpty) return;
-    await _inserer('classes', {
-      'organisation_id': espace.orgId,
-      'site_id': site,
-      'annee_id': annee['id'],
-      'niveau_id': niveau,
-      'nom': nom.text.trim(),
-      'salle': salle.text.trim().isEmpty ? null : salle.text.trim(),
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => _Page(
-        titre: 'Classes et salles',
-        ajouter: espace.gestionnaire ? () => _ajouter(context) : null,
-        libelleAjouter: 'Classe',
-        corps: Requete(
-            '''SELECT c.*, n.nom AS niveau, s.nom AS site
-               FROM classes c
-               JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1
-               JOIN niveaux n ON n.id = c.niveau_id
-               JOIN sites s ON s.id = c.site_id
-               WHERE c.organisation_id = ?
-               ORDER BY s.created_at, n.ordre, c.nom''',
-            parametres: [espace.orgId], builder: (context, classes) {
-          if (classes.isEmpty) return _vide("Aucune classe pour l'année en cours.");
-          return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 88), children: [
-            for (final c in classes)
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.meeting_room_outlined),
-                  title: Text('${c['nom']}'),
-                  subtitle: Text([c['site'], if (c['salle'] != null) c['salle']].join(' · ')),
-                  trailing: espace.gereSite(c['site_id'] as String)
-                      ? IconButton(
-                          tooltip: 'Supprimer',
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            if (await _confirmer(context, 'Supprimer la classe ${c['nom']} ?')) {
-                              await _supprimer('classes', c['id'] as String);
-                            }
-                          },
-                        )
-                      : null,
-                ),
-              ),
-          ]);
-        }),
-      );
 }
