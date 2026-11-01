@@ -983,6 +983,10 @@ class _OngletFinances extends StatelessWidget {
         Text("Pas d'inscription cette année.", style: TextStyle(fontSize: 14, color: gris))
       else
         _Solde(inscriptionId: ins['id'] as String),
+      if (ins != null) ...[
+        const SizedBox(height: 20),
+        _ArrangementPaiement(espace: espace, inscriptionId: ins['id'] as String),
+      ],
       const SizedBox(height: 32),
       _Versements(espace: espace, eleveId: eleve['id'] as String),
       if (ins != null) ...[
@@ -1308,5 +1312,187 @@ class _OngletSuivi extends StatelessWidget {
         ]),
       ),
     ]);
+  }
+}
+
+
+// Arrivée en cours d'année et échéancier aménagé --------------------------------------------
+
+/// Ce qui a été convenu avec la famille : arrivée en cours d'année, échéancier
+/// aménagé. La direction peut aménager ou revenir au calendrier de l'école.
+class _ArrangementPaiement extends StatelessWidget {
+  const _ArrangementPaiement({required this.espace, required this.inscriptionId});
+
+  final Espace espace;
+  final String inscriptionId;
+
+  @override
+  Widget build(BuildContext context) => Requete(
+        '''SELECT i.*, p.nom_complet AS auteur,
+             (SELECT count(*) FROM echeances_eleves e WHERE e.inscription_id = i.id) AS amenagees,
+             (SELECT e.motif FROM echeances_eleves e WHERE e.inscription_id = i.id LIMIT 1) AS motif_amenagement
+           FROM inscriptions i LEFT JOIN personnel p ON p.user_id = i.cree_par AND p.organisation_id = i.organisation_id
+           WHERE i.id = ?''',
+        parametres: [inscriptionId],
+        builder: (context, l) {
+          if (l.isEmpty) return const SizedBox.shrink();
+          final i = l.first;
+          final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+          final direction = espace.gereSite(i['site_id'] as String);
+          final amenage = (i['amenagees'] as int? ?? 0) > 0;
+          final arrivee = switch (i['arrivee_mode']) {
+            'complete' => "Arrivée en cours d'année : année complète",
+            'mois' => "Arrivée en cours d'année : paie à partir du mois d'arrivée",
+            'negocie' => "Arrivée en cours d'année : montant négocié (− ${gnf(i['arrivee_retrait_gnf'])}) · ${i['arrivee_motif'] ?? ''}",
+            _ => null,
+          };
+          if (arrivee == null && !amenage && !direction) return const SizedBox.shrink();
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _rubrique(context, 'Arrangement de paiement'),
+            const SizedBox(height: 8),
+            if (arrivee != null) Text(arrivee, style: const TextStyle(fontSize: 14)),
+            if (amenage)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(children: [
+                  const Etat('Échéancier aménagé', ton: Ton.info),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('${i['motif_amenagement'] ?? ''}', style: TextStyle(fontSize: 13, color: gris))),
+                ]),
+              ),
+            if (arrivee == null && !amenage) Text("Calendrier de l'école.", style: TextStyle(fontSize: 14, color: gris)),
+            if (direction)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Wrap(spacing: 8, runSpacing: 8, children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _amenager(context, i),
+                    icon: const Icon(Icons.edit_calendar_outlined, size: 15),
+                    label: Text(amenage ? "Modifier l'échéancier" : "Aménager l'échéancier"),
+                  ),
+                  if (amenage)
+                    TextButton(
+                      onPressed: () async {
+                        if (await _confirmer(context, "Revenir au calendrier de l'école pour cet élève ?")) {
+                          await db.execute('DELETE FROM echeances_eleves WHERE inscription_id = ?', [inscriptionId]);
+                        }
+                      },
+                      child: const Text("Revenir au calendrier de l'école"),
+                    ),
+                ]),
+              ),
+          ]);
+        },
+      );
+
+  /// Aménager l'échéancier de scolarité : dates et découpage, même total.
+  Future<void> _amenager(BuildContext context, Map<String, Object?> ins) async {
+    final messager = ScaffoldMessenger.of(context);
+    final frais = (await situationInscription(inscriptionId)).where((f) => f.type == 'scolarite').toList();
+    if (frais.isEmpty) {
+      messager.showSnackBar(const SnackBar(content: Text('Aucune scolarité configurée pour cette classe.')));
+      return;
+    }
+    final f = frais.first;
+    // On part du calendrier actuel (montants avant réduction : la réduction s'applique ensuite).
+    final actuelles = await db.getAll(
+        'SELECT libelle, montant_gnf, date_limite FROM echeances_eleves WHERE inscription_id = ? AND frais_id = ? ORDER BY ordre',
+        [inscriptionId, f.id]);
+    final ecole = await db.getAll('SELECT libelle, montant_gnf, date_limite FROM echeances WHERE frais_id = ? ORDER BY ordre', [f.id]);
+    final brut = (await db.get('SELECT montant_gnf FROM frais WHERE id = ?', [f.id]))['montant_gnf'] as int;
+    final depart = actuelles.isNotEmpty ? actuelles : ecole;
+    final lignes = [
+      for (final e in depart)
+        (
+          libelle: TextEditingController(text: '${e['libelle']}'),
+          montant: TextEditingController(text: '${e['montant_gnf']}'),
+          date: DateTime.parse('${e['date_limite']}'),
+        ),
+    ];
+    if (lignes.isEmpty) {
+      lignes.add((libelle: TextEditingController(text: 'Scolarité'), montant: TextEditingController(text: '$brut'), date: DateTime.now()));
+    }
+    final dates = [for (final l in lignes) l.date];
+    final motif = TextEditingController();
+    if (!context.mounted) return;
+    int somme() => lignes.fold(0, (s, l) => s + (int.tryParse(l.montant.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0));
+    final ok = await _formulaire(context, "Aménager l'échéancier", (maj) => [
+          Text('${f.libelle} : ${gnf(brut)} avant réduction. Le total ne change pas ; seules les dates et le découpage changent.',
+              style: const TextStyle(fontSize: 13)),
+          for (var k = 0; k < lignes.length; k++)
+            Row(children: [
+              Expanded(flex: 3, child: TextField(controller: lignes[k].libelle, decoration: _champ('Libellé'))),
+              const SizedBox(width: 6),
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: lignes[k].montant,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => maj(() {}),
+                  decoration: _champ('Montant', suffixe: 'GNF'),
+                ),
+              ),
+              const SizedBox(width: 6),
+              TextButton(
+                onPressed: () async {
+                  final d = await _choisirDate(context, dates[k], premier: DateTime(2024), dernier: DateTime(2035));
+                  if (d != null) maj(() => dates[k] = d);
+                },
+                child: Text(_dateLisible(_date(dates[k]))),
+              ),
+              IconButton(
+                tooltip: 'Retirer',
+                icon: const Icon(Icons.close, size: 16),
+                onPressed: lignes.length <= 1
+                    ? null
+                    : () => maj(() {
+                          lignes.removeAt(k);
+                          dates.removeAt(k);
+                        }),
+              ),
+            ]),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => maj(() {
+                lignes.add((
+                  libelle: TextEditingController(text: 'Échéance ${lignes.length + 1}'),
+                  montant: TextEditingController(text: '${brut - somme() > 0 ? brut - somme() : 0}'),
+                  date: dates.last.add(const Duration(days: 30)),
+                ));
+                dates.add(dates.last.add(const Duration(days: 30)));
+              }),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Ajouter une échéance'),
+            ),
+          ),
+          Etat(somme() == brut ? 'Total : ${gnf(somme())}' : 'Total : ${gnf(somme())} au lieu de ${gnf(brut)}',
+              ton: somme() == brut ? Ton.regle : Ton.retard),
+          TextField(controller: motif, decoration: _champ('Motif', aide: 'Par exemple : père payé en fin de mois')),
+        ]);
+    if (!ok) return;
+    if (somme() != brut) {
+      messager.showSnackBar(SnackBar(content: Text('Le total doit rester ${gnf(brut)}.')));
+      return;
+    }
+    if (motif.text.trim().length < 3) {
+      messager.showSnackBar(const SnackBar(content: Text("Indiquez le motif de l'aménagement.")));
+      return;
+    }
+    final m = _maintenant();
+    await db.writeTransaction((tx) async {
+      await tx.execute('DELETE FROM echeances_eleves WHERE inscription_id = ? AND frais_id = ?', [inscriptionId, f.id]);
+      for (var k = 0; k < lignes.length; k++) {
+        await tx.execute(
+            'INSERT INTO echeances_eleves (id, organisation_id, inscription_id, frais_id, ordre, libelle, montant_gnf, date_limite, '
+            'motif, par, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+              ins['organisation_id'], inscriptionId, f.id, k + 1,
+              lignes[k].libelle.text.trim().isEmpty ? 'Échéance ${k + 1}' : lignes[k].libelle.text.trim(),
+              int.tryParse(lignes[k].montant.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
+              _date(dates[k]), motif.text.trim(), monId, m, m,
+            ]);
+      }
+    });
   }
 }

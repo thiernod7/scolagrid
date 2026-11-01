@@ -14,20 +14,44 @@ const modesPaiement = {
 const ordreTypes = ['inscription', 'reinscription', 'scolarite', 'optionnel'];
 
 class EcheanceDue {
-  EcheanceDue(this.libelle, this.montant, this.dateLimite);
+  EcheanceDue(this.libelle, this.montant, this.dateLimite, {this.grace = 0});
 
   final String libelle;
   final int montant;
   final DateTime dateLimite;
+
+  /// Jours de grâce après la date limite avant de parler de retard.
+  final int grace;
   int paye = 0;
 
   int get reste => montant - paye;
   bool get soldee => reste <= 0;
-  bool enRetard(DateTime aujourdhui) => !soldee && aujourdhui.isAfter(dateLimite);
+  bool enRetard(DateTime aujourdhui) => !soldee && aujourdhui.isAfter(dateLimite.add(Duration(days: grace)));
+}
+
+/// Nombre de mois entiers entre deux dates (de mois à mois).
+int moisEntre(DateTime a, DateTime b) => (b.year - a.year) * 12 + b.month - a.month;
+
+/// Arrivée en cours d'année, « à partir du mois d'arrivée » : ce qu'on retire
+/// de la scolarité pour les mois déjà passés. 900 000 sur 9 mois (octobre à
+/// juin), arrivée en novembre : 100 000 retirés.
+int retraitMoisArrivee({required int total, required DateTime rentree, required DateTime fin, required DateTime arrivee}) {
+  final mois = moisEntre(rentree, fin) + 1;
+  final passes = moisEntre(rentree, arrivee);
+  if (mois <= 0 || passes <= 0) return 0;
+  return (total * (passes > mois ? mois : passes) / mois).floor();
 }
 
 class FraisDu {
-  FraisDu({required this.id, required this.libelle, required this.type, required this.total, required this.echeances, this.reduction = 0});
+  FraisDu({
+    required this.id,
+    required this.libelle,
+    required this.type,
+    required this.total,
+    required this.echeances,
+    this.reduction = 0,
+    this.retrait = 0,
+  });
 
   final String id;
   final String libelle;
@@ -37,7 +61,10 @@ class FraisDu {
   final List<EcheanceDue> echeances;
   final int reduction;
 
-  int get brut => total + reduction;
+  /// Retiré pour une arrivée en cours d'année (mois passés ou montant négocié).
+  final int retrait;
+
+  int get brut => total + reduction + retrait;
 
   int get paye => echeances.fold(0, (s, e) => s + e.paye);
   int get reste => total - paye;
@@ -54,19 +81,38 @@ FraisDu situationFrais({
   required DateTime arrivee,
   required int dejaPaye,
   int reduction = 0,
+  int retrait = 0,
+  int grace = 0,
 }) {
   // La réduction se répartit sur les échéances au prorata : 750 000 en 3 tranches,
   // moins 20 %, donne 3 tranches de 200 000.
   final brut = total;
   total = brut - reduction;
-  final liste = echeances.isEmpty
-      ? [EcheanceDue(libelle, total, arrivee)]
-      : [for (final e in echeances) EcheanceDue(e.libelle, brut == 0 ? 0 : (e.montant * total / brut).floor(), e.dateLimite)];
+  var liste = echeances.isEmpty
+      ? [EcheanceDue(libelle, total, arrivee, grace: grace)]
+      : [
+          for (final e in echeances)
+            EcheanceDue(e.libelle, brut == 0 ? 0 : (e.montant * total / brut).floor(), e.dateLimite, grace: grace),
+        ];
   // Si les échéances ne font pas exactement le total, la dernière s'ajuste.
   final somme = liste.fold(0, (s, e) => s + e.montant);
   if (somme != total && liste.isNotEmpty) {
     final d = liste.last;
-    liste[liste.length - 1] = EcheanceDue(d.libelle, d.montant + total - somme, d.dateLimite);
+    liste[liste.length - 1] = EcheanceDue(d.libelle, d.montant + total - somme, d.dateLimite, grace: grace);
+  }
+  // Arrivée en cours d'année : on retire d'abord sur les premières échéances.
+  if (retrait > total) retrait = total;
+  if (retrait > 0) {
+    var aRetirer = retrait;
+    liste = [
+      for (final e in liste)
+        () {
+          final moins = aRetirer < e.montant ? aRetirer : e.montant;
+          aRetirer -= moins;
+          return EcheanceDue(e.libelle, e.montant - moins, e.dateLimite, grace: grace);
+        }(),
+    ].where((e) => e.montant > 0).toList();
+    total -= retrait;
   }
   var reste = dejaPaye;
   for (final e in liste) {
@@ -74,7 +120,7 @@ FraisDu situationFrais({
     e.paye = part < 0 ? 0 : part;
     reste -= e.paye;
   }
-  return FraisDu(id: id, libelle: libelle, type: type, total: total, echeances: liste, reduction: reduction);
+  return FraisDu(id: id, libelle: libelle, type: type, total: total, echeances: liste, reduction: reduction, retrait: retrait);
 }
 
 /// Répartit un versement sur les frais d'un élève : inscription d'abord, puis

@@ -46,6 +46,9 @@ class _Mesures {
   int sexeInconnu = 0;
   final parNiveau = <(String, String?, int)>[];
   int personnel = 0;
+
+  /// Retiré de la scolarité pour des arrivées en cours d'année.
+  int retraitsArrivee = 0;
 }
 
 Future<_Mesures> _mesurer(String o, Periode periode) async {
@@ -108,6 +111,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
   // Les inscriptions de l'année.
   final inscriptions = await db.getAll('''
       SELECT i.id, i.eleve_id, i.site_id, i.type_admission, i.statut, i.date_effective,
+             i.arrivee_mode, i.arrivee_retrait_gnf,
              c.niveau_id, c.nom AS classe, n.nom AS niveau, n.cycle, n.ordre, e.sexe, e.nom, e.prenoms
       FROM inscriptions i JOIN classes c ON c.id = i.classe_id JOIN niveaux n ON n.id = c.niveau_id
       JOIN eleves e ON e.id = i.eleve_id
@@ -159,7 +163,15 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
     final k = '${r['inscription_id']}|${r['frais_id']}';
     payes[k] = (payes[k] ?? 0) - (r['t'] as int? ?? 0);
   }
-  final org = await db.get('SELECT reductions_cumul, reductions_plafond FROM organisations WHERE id = ?', [o]);
+  final amenagees = <String, List<({String libelle, int montant, DateTime dateLimite})>>{};
+  for (final e in await db.getAll('SELECT * FROM echeances_eleves WHERE organisation_id = ? ORDER BY ordre', [o])) {
+    amenagees.putIfAbsent('${e['inscription_id']}|${e['frais_id']}', () => []).add(
+        (libelle: e['libelle'] as String, montant: e['montant_gnf'] as int, dateLimite: DateTime.parse('${e['date_limite']}')));
+  }
+  final org = await db.get(
+      'SELECT reductions_cumul, reductions_plafond, delai_grace_jours FROM organisations WHERE id = ?', [o]);
+  final grace = (org['delai_grace_jours'] as int?) ?? 7;
+  final finAnnee = DateTime.tryParse('${annee['fin']}') ?? DateTime(rentree.year + 1, 6, 30);
   final cumul = org['reductions_cumul'] == 1;
   final plafond = (org['reductions_plafond'] as int?) ?? 100;
   final regles = [
@@ -200,6 +212,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
     final arrivee = DateTime.tryParse('${i['date_effective']}') ?? jour;
     var retard = 0;
     var plusVieux = 0;
+    var retraitNegocie = i['arrivee_mode'] == 'negocie' ? (i['arrivee_retrait_gnf'] as int? ?? 0) : 0;
     for (final f in frais) {
       if (f['site_id'] != null && f['site_id'] != i['site_id']) continue;
       if (f['niveau_id'] != null && f['niveau_id'] != i['niveau_id']) continue;
@@ -208,16 +221,29 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
         continue;
       }
       final total = f['montant_gnf'] as int;
+      final reduction = reductionSurFrais(typeFrais: type, total: total, applicables: applicables, cumul: cumul, plafond: plafond);
+      var retrait = 0;
+      if (type == 'scolarite') {
+        if (i['arrivee_mode'] == 'mois') {
+          retrait = retraitMoisArrivee(total: total - reduction, rentree: rentree, fin: finAnnee, arrivee: arrivee);
+        } else if (retraitNegocie > 0) {
+          retrait = retraitNegocie < total - reduction ? retraitNegocie : total - reduction;
+          retraitNegocie -= retrait;
+        }
+      }
       final s = situationFrais(
         id: f['id'] as String,
         libelle: f['libelle'] as String,
         type: type,
         total: total,
-        echeances: echeances[f['id']] ?? const [],
+        echeances: amenagees['${i['id']}|${f['id']}'] ?? echeances[f['id']] ?? const [],
         arrivee: arrivee,
         dejaPaye: payes['${i['id']}|${f['id']}'] ?? 0,
-        reduction: reductionSurFrais(typeFrais: type, total: total, applicables: applicables, cumul: cumul, plafond: plafond),
+        reduction: reduction,
+        retrait: retrait,
+        grace: grace,
       );
+      m.retraitsArrivee += s.retrait;
       m.du += s.total;
       m.regle += s.paye;
       for (final e in s.echeances) {
@@ -435,7 +461,12 @@ class _TableauDeBordState extends State<TableauDeBord> {
                   barre: m.du == 0 ? null : recouvrement,
                   detail: Padding(
                     padding: const EdgeInsets.only(top: 6),
-                    child: Text('${gnf(m.regle)} / ${gnf(m.du)}', style: TextStyle(fontSize: 14, color: gris)),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('${gnf(m.regle)} / ${gnf(m.du)}', style: TextStyle(fontSize: 14, color: gris)),
+                      if (m.retraitsArrivee > 0)
+                        Text('dont ${gnf(m.retraitsArrivee)} retirés pour des arrivées en cours d\'année',
+                            style: TextStyle(fontSize: 12, color: gris)),
+                    ]),
                   ),
                   onTap: () => _voirArrieres(m.retards),
                 ),

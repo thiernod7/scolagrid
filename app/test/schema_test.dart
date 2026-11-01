@@ -139,6 +139,33 @@ void main() {
     expect(ins.echeances.single.dateLimite, DateTime(2026, 10, 5));
   });
 
+  test('arrivée en cours d\'année et délai de grâce', () {
+    // 900 000 sur 9 mois (octobre à juin), arrivée en novembre : 100 000 retirés.
+    expect(retraitMoisArrivee(total: 900000, rentree: DateTime(2026, 10, 1), fin: DateTime(2027, 6, 30), arrivee: DateTime(2026, 11, 4)),
+        100000);
+    expect(retraitMoisArrivee(total: 900000, rentree: DateTime(2026, 10, 1), fin: DateTime(2027, 6, 30), arrivee: DateTime(2026, 10, 20)), 0);
+    final t = [
+      (libelle: 'Tranche 1', montant: 300000, dateLimite: DateTime(2026, 10, 15)),
+      (libelle: 'Tranche 2', montant: 300000, dateLimite: DateTime(2027, 1, 15)),
+      (libelle: 'Tranche 3', montant: 300000, dateLimite: DateTime(2027, 4, 15)),
+    ];
+    // Montant négocié : 850 000, soit 50 000 retirés sur la première tranche.
+    final f = situationFrais(
+        id: 'sco', libelle: 'Scolarité', type: 'scolarite', total: 900000, echeances: t, arrivee: DateTime(2026, 11, 4),
+        dejaPaye: 0, retrait: 50000, grace: 7);
+    expect(f.total, 850000);
+    expect(f.echeances.map((e) => e.montant), [250000, 300000, 300000]);
+    expect(f.brut, 900000);
+    // Grâce de 7 jours : pas en retard le 20 janvier, en retard le 23.
+    expect(f.echeances[1].enRetard(DateTime(2027, 1, 20)), isFalse);
+    expect(f.echeances[1].enRetard(DateTime(2027, 1, 23)), isTrue);
+    // Un retrait plus grand qu'une tranche passe sur la suivante.
+    final g = situationFrais(
+        id: 'sco', libelle: 'Scolarité', type: 'scolarite', total: 900000, echeances: t, arrivee: DateTime(2027, 2, 1),
+        dejaPaye: 0, retrait: 400000);
+    expect(g.echeances.map((e) => e.montant), [200000, 300000]);
+  });
+
   test('versement réparti et plafonné', () {
     final ins = situationFrais(
         id: 'ins', libelle: 'Inscription', type: 'inscription', total: 150000, echeances: const [], arrivee: DateTime(2026, 10, 5), dejaPaye: 50000);

@@ -144,10 +144,16 @@ class FraisScreen extends StatelessWidget {
                         WHEN 'scolarite' THEN 2 ELSE 3 END, n.ordre, f.libelle''',
             parametres: [espace.orgId], builder: (context, frais) {
           if (frais.isEmpty) {
-            return _vide("Aucun frais pour l'année en cours.\n\n"
-                "Ajoutez au moins les frais d'inscription, de réinscription et la scolarité de chaque niveau.");
+            return ListView(padding: const EdgeInsets.all(16), children: [
+              _ReglesPaiement(espace: espace),
+              const SizedBox(height: 24),
+              Text("Aucun frais pour l'année en cours. Ajoutez au moins les frais d'inscription, "
+                  'de réinscription et la scolarité de chaque niveau.'),
+            ]);
           }
           return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 88), children: [
+            _ReglesPaiement(espace: espace),
+            const SizedBox(height: 12),
             for (final f in frais)
               Card(
                 child: ExpansionTile(
@@ -190,4 +196,78 @@ String _ligneEcheance(String brut) {
   final m = RegExp(r'^(.*) : (\d+) avant le (.*)$').firstMatch(brut);
   if (m == null) return brut;
   return '${m[1]} : ${gnf(int.parse(m[2]!))} avant le ${_dateLisible(m[3])}';
+}
+
+
+/// Règles de paiement de l'école : délai de grâce, et ce que paie par défaut
+/// un élève qui arrive en cours d'année.
+class _ReglesPaiement extends StatelessWidget {
+  const _ReglesPaiement({required this.espace});
+
+  final Espace espace;
+
+  static const _arrivees = {
+    'complete': 'Année complète',
+    'mois': "À partir du mois d'arrivée",
+    'negocie': 'Montant négocié (direction)',
+  };
+
+  @override
+  Widget build(BuildContext context) => Requete(
+        'SELECT delai_grace_jours, arrivee_par_defaut FROM organisations WHERE id = ?',
+        parametres: [espace.orgId],
+        builder: (context, l) {
+          if (l.isEmpty) return const SizedBox.shrink();
+          final o = l.first;
+          final grace = (o['delai_grace_jours'] as int?) ?? 7;
+          final modifiable = espace.fondateur;
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Text('Règles de paiement', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Délai de grâce'),
+                  subtitle: Text("Une échéance devient un arriéré $grace jour${grace > 1 ? 's' : ''} après sa date limite."),
+                  trailing: modifiable ? const Icon(Icons.edit_outlined, size: 18) : null,
+                  onTap: modifiable
+                      ? () async {
+                          final c = TextEditingController(text: '$grace');
+                          final ok = await _formulaire(context, 'Délai de grâce', (_) => [
+                                TextField(
+                                  controller: c,
+                                  autofocus: true,
+                                  keyboardType: TextInputType.number,
+                                  decoration: _champ('Jours après la date limite', aide: 'De 0 à 60'),
+                                ),
+                              ]);
+                          final n = int.tryParse(c.text.trim());
+                          if (ok && n != null && n >= 0 && n <= 60) {
+                            await _modifier('organisations', espace.orgId, {'delai_grace_jours': n});
+                          }
+                        }
+                      : null,
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text("Arrivée en cours d'année, par défaut"),
+                  subtitle: Text('${_arrivees[o['arrivee_par_defaut']] ?? _arrivees['mois']} · le guichet peut choisir autre chose'),
+                  trailing: modifiable
+                      ? PopupMenuButton<String>(
+                          tooltip: 'Changer',
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          onSelected: (v) => _modifier('organisations', espace.orgId, {'arrivee_par_defaut': v}),
+                          itemBuilder: (_) => [
+                            for (final a in _arrivees.entries) PopupMenuItem(value: a.key, child: Text(a.value)),
+                          ],
+                        )
+                      : null,
+                ),
+              ]),
+            ),
+          );
+        },
+      );
 }

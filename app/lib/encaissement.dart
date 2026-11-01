@@ -57,7 +57,10 @@ Future<({List<Regle> applicables, bool cumul, int plafond})> reductionsInscripti
 /// échéances, déjà payé. Calculé sur le poste, d'après les données synchronisées.
 Future<List<FraisDu>> situationInscription(String inscriptionId, {bool paiementAnnuel = false}) async {
   final ins = await db.getOptional(
-      'SELECT i.*, c.niveau_id FROM inscriptions i JOIN classes c ON c.id = i.classe_id WHERE i.id = ?', [inscriptionId]);
+      '''SELECT i.*, c.niveau_id, a.debut AS annee_debut, a.fin AS annee_fin, o.delai_grace_jours
+         FROM inscriptions i JOIN classes c ON c.id = i.classe_id
+         JOIN annees_scolaires a ON a.id = i.annee_id JOIN organisations o ON o.id = i.organisation_id
+         WHERE i.id = ?''', [inscriptionId]);
   if (ins == null) return [];
   final red = await reductionsInscription(inscriptionId, paiementAnnuel: paiementAnnuel);
   final typeEntree = ins['type_admission'] == 'reinscription' ? 'reinscription' : 'inscription';
@@ -75,28 +78,53 @@ Future<List<FraisDu>> situationInscription(String inscriptionId, {bool paiementA
                  WHERE s.inscription_id = ? AND s.frais_id = f.id AND s.actif = 1)))
       ORDER BY f.created_at''',
       [inscriptionId, inscriptionId, ins['annee_id'], ins['site_id'], ins['niveau_id'], typeEntree, inscriptionId]);
+  final amenagees = <String, List<({String libelle, int montant, DateTime dateLimite})>>{};
+  for (final e in await db.getAll(
+      'SELECT * FROM echeances_eleves WHERE inscription_id = ? ORDER BY frais_id, ordre', [inscriptionId])) {
+    amenagees.putIfAbsent(e['frais_id'] as String, () => []).add(
+        (libelle: e['libelle'] as String, montant: e['montant_gnf'] as int, dateLimite: DateTime.parse('${e['date_limite']}')));
+  }
   final arrivee = DateTime.tryParse('${ins['date_effective']}') ?? DateTime.now();
-  return [
-    for (final f in frais)
-      situationFrais(
-        id: f['id'] as String,
-        libelle: f['libelle'] as String,
-        type: f['type_frais'] as String? ?? 'optionnel',
-        total: f['montant_gnf'] as int,
-        echeances: [
-          for (final e in await db.getAll('SELECT * FROM echeances WHERE frais_id = ? ORDER BY ordre', [f['id']]))
-            (libelle: e['libelle'] as String, montant: e['montant_gnf'] as int, dateLimite: DateTime.parse('${e['date_limite']}')),
-        ],
-        arrivee: arrivee,
-        dejaPaye: f['paye'] as int? ?? 0,
-        reduction: reductionSurFrais(
-            typeFrais: f['type_frais'] as String? ?? 'optionnel',
-            total: f['montant_gnf'] as int,
-            applicables: red.applicables,
-            cumul: red.cumul,
-            plafond: red.plafond),
-      ),
-  ];
+  final grace = (ins['delai_grace_jours'] as int?) ?? 7;
+  final resultats = <FraisDu>[];
+  // Arrivée en cours d'année : ce qu'on retire de la scolarité (mois passés ou montant négocié).
+  var retraitNegocie = ins['arrivee_mode'] == 'negocie' ? (ins['arrivee_retrait_gnf'] as int? ?? 0) : 0;
+  for (final f in frais) {
+    final type = f['type_frais'] as String? ?? 'optionnel';
+    final total = f['montant_gnf'] as int;
+    final reduction = reductionSurFrais(typeFrais: type, total: total, applicables: red.applicables, cumul: red.cumul, plafond: red.plafond);
+    var retrait = 0;
+    if (type == 'scolarite') {
+      if (ins['arrivee_mode'] == 'mois') {
+        retrait = retraitMoisArrivee(
+          total: total - reduction,
+          rentree: DateTime.tryParse('${ins['annee_debut']}') ?? arrivee,
+          fin: DateTime.tryParse('${ins['annee_fin']}') ?? arrivee,
+          arrivee: arrivee,
+        );
+      } else if (retraitNegocie > 0) {
+        retrait = retraitNegocie < total - reduction ? retraitNegocie : total - reduction;
+        retraitNegocie -= retrait;
+      }
+    }
+    resultats.add(situationFrais(
+      id: f['id'] as String,
+      libelle: f['libelle'] as String,
+      type: type,
+      total: total,
+      echeances: amenagees[f['id']] ??
+          [
+            for (final e in await db.getAll('SELECT * FROM echeances WHERE frais_id = ? ORDER BY ordre', [f['id']]))
+              (libelle: e['libelle'] as String, montant: e['montant_gnf'] as int, dateLimite: DateTime.parse('${e['date_limite']}')),
+          ],
+      arrivee: arrivee,
+      dejaPaye: f['paye'] as int? ?? 0,
+      reduction: reduction,
+      retrait: retrait,
+      grace: grace,
+    ));
+  }
+  return resultats;
 }
 
 /// Résumé financier sur la fiche de l'élève.

@@ -65,6 +65,10 @@ class _InscrireScreenState extends State<InscrireScreen> {
   DateTime? _naissance;
   DateTime _dateEffective = DateTime.now();
   final DateTime _dateSaisie = DateTime.now();
+  // Arrivée en cours d'année : année complète, à partir du mois d'arrivée, ou montant négocié.
+  String _arrivee = 'mois';
+  final _scolariteNegociee = TextEditingController();
+  final _motifArrivee = TextEditingController();
   String _type = 'nouvelle';
   String? _niveau;
   String? _classe;
@@ -133,7 +137,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
         : (await db.getAll('SELECT * FROM frais WHERE annee_id = ? ORDER BY created_at', [annee['id']]))
             .map((f) => Map<String, Object?>.from(f))
             .toList();
-    final org = await db.get('SELECT reductions_cumul, reductions_plafond FROM organisations WHERE id = ?', [o]);
+    final org = await db.get('SELECT reductions_cumul, reductions_plafond, arrivee_par_defaut FROM organisations WHERE id = ?', [o]);
     final regles = [
       for (final r in await db.getAll(
           'SELECT * FROM regles_reduction WHERE organisation_id = ? AND actif = 1 ORDER BY created_at', [o]))
@@ -180,6 +184,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
       _regles = regles;
       _cumul = org['reductions_cumul'] == 1;
       _plafond = (org['reductions_plafond'] as int?) ?? 100;
+      _arrivee = org['arrivee_par_defaut'] as String? ?? 'mois';
       _peutEncaisser = peutEncaisser;
       _existant = existant;
       _photoExistante = photo;
@@ -441,7 +446,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
 
   /// Frais de l'année pour la classe choisie : inscription (ou réinscription)
   /// et scolarité, avec les réductions prévues (même calcul qu'à la caisse).
-  List<({String libelle, int brut, int reduction})> get _lignesFrais {
+  List<({String libelle, String type, int brut, int reduction})> get _lignesFrais {
     final c = _classeChoisie;
     if (c == null) return [];
     final entree = _type == 'reinscription' ? 'reinscription' : 'inscription';
@@ -454,6 +459,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
             (f['type_frais'] == entree || f['type_frais'] == 'scolarite'))
           (
             libelle: '${f['libelle']}',
+            type: '${f['type_frais']}',
             brut: f['montant_gnf'] as int,
             reduction: reductionSurFrais(
                 typeFrais: '${f['type_frais']}',
@@ -465,7 +471,40 @@ class _InscrireScreenState extends State<InscrireScreen> {
     ];
   }
 
-  int get _totalAnnee => _lignesFrais.fold(0, (s, l) => s + l.brut - l.reduction);
+  int get _totalAnnee => _lignesFrais.fold(0, (s, l) => s + l.brut - l.reduction) - _retraitArrivee;
+
+  DateTime get _rentree => DateTime.tryParse('${_annee?['debut']}') ?? _dateEffective;
+  DateTime get _finAnnee => DateTime.tryParse('${_annee?['fin']}') ?? _dateEffective;
+
+  /// L'élève arrive au moins un mois après la rentrée.
+  bool get _arriveeTardive => moisEntre(_rentree, _dateEffective) >= 1 && !_dateEffective.isAfter(_finAnnee);
+
+  /// Scolarité de l'année, réductions déduites.
+  int get _scolariteNette => _lignesFrais.where((l) => l.type == 'scolarite').fold(0, (s, l) => s + l.brut - l.reduction);
+
+  int get _retraitMois => retraitMoisArrivee(total: _scolariteNette, rentree: _rentree, fin: _finAnnee, arrivee: _dateEffective);
+
+  int? get _scolariteSaisie => int.tryParse(_scolariteNegociee.text.replaceAll(RegExp(r'[^0-9]'), ''));
+
+  /// Ce qu'on retire de la scolarité pour cette arrivée.
+  int get _retraitArrivee {
+    if (!_arriveeTardive || _scolariteNette == 0) return 0;
+    return switch (_arrivee) {
+      'mois' => _retraitMois,
+      'negocie' => () {
+          final saisie = _scolariteSaisie;
+          if (saisie == null || saisie >= _scolariteNette) return 0;
+          return _scolariteNette - (saisie < 0 ? 0 : saisie);
+        }(),
+      _ => 0,
+    };
+  }
+
+  /// Le montant négocié : la direction du site de la classe.
+  bool get _peutNegocier {
+    final c = _classeChoisie;
+    return c != null && widget.espace.gereSite(c['site_id'] as String);
+  }
 
   // Avancement ----------------------------------------------------------------
 
@@ -492,6 +531,15 @@ class _InscrireScreenState extends State<InscrireScreen> {
     void erreur(String m) => messager.showSnackBar(SnackBar(content: Text(m)));
     if (!_form.currentState!.validate()) return erreur('Complétez les champs signalés en rouge.');
     if (_classe == null) return erreur('Choisissez la classe.');
+    final arriveeNegociee = _arriveeTardive && _scolariteNette > 0 && _arrivee == 'negocie';
+    if (arriveeNegociee) {
+      if (!_peutNegocier) return erreur('Seule la direction peut accorder un montant négocié.');
+      final saisie = _scolariteSaisie;
+      if (saisie == null || saisie > _scolariteNette) {
+        return erreur('Indiquez la scolarité négociée (au plus ${gnf(_scolariteNette)}).');
+      }
+      if (_motifArrivee.text.trim().length < 3) return erreur('Indiquez le motif du montant négocié.');
+    }
     if (!_reinscription && _parents.isEmpty) return erreur('Ajoutez au moins un parent ou tuteur.');
     if (!_reinscription && _parents.every((p) => p.telephone == null)) {
       return erreur('Il faut au moins un numéro de téléphone de parent.');
@@ -594,10 +642,15 @@ class _InscrireScreenState extends State<InscrireScreen> {
         }
         await tx.execute(
             '''INSERT INTO inscriptions (id, organisation_id, eleve_id, annee_id, site_id, classe_id, type_admission,
-                 statut, date_effective, poste_id, cree_par, created_at, updated_at)
-               VALUES (uuid(), ?, ?, ?, ?, ?, ?, 'en_attente', ?, ?, ?, ?, ?)''',
-            [o, eleveId, _annee!['id'], classe['site_id'], _classe, _type, _date(_dateEffective), poste['poste_id'], monId,
-              maintenant, maintenant]);
+                 statut, date_effective, arrivee_mode, arrivee_retrait_gnf, arrivee_motif, poste_id, cree_par, created_at, updated_at)
+               VALUES (uuid(), ?, ?, ?, ?, ?, ?, 'en_attente', ?, ?, ?, ?, ?, ?, ?, ?)''',
+            [
+              o, eleveId, _annee!['id'], classe['site_id'], _classe, _type, _date(_dateEffective),
+              _arriveeTardive && _scolariteNette > 0 ? _arrivee : null,
+              arriveeNegociee ? _retraitArrivee : null,
+              arriveeNegociee ? _motifArrivee.text.trim() : null,
+              poste['poste_id'], monId, maintenant, maintenant,
+            ]);
       });
     } finally {
       if (mounted) setState(() => _envoi = false);
@@ -817,6 +870,77 @@ class _InscrireScreenState extends State<InscrireScreen> {
             ],
           ),
       ],
+    );
+  }
+
+  /// Arrivée en cours d'année : l'école choisit avec la famille ce qu'elle paie.
+  Widget _encadreArrivee(BuildContext context) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    const mois = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    Widget option(String cle, String titre, String detail, {Widget? enPlus, bool permis = true}) {
+      final choisi = _arrivee == cle;
+      return InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: permis ? () => setState(() => _arrivee = cle) : null,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: choisi ? schema.onSurface : schema.outlineVariant, width: choisi ? 1.5 : 1),
+          ),
+          child: Opacity(
+            opacity: permis ? 1 : .5,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Icon(choisi ? Icons.radio_button_checked : Icons.radio_button_unchecked, size: 18,
+                    color: choisi ? schema.onSurface : gris),
+                const SizedBox(width: 8),
+                Expanded(child: Text(titre, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+                Text(detail, style: styleMono.copyWith(fontSize: 13)),
+              ]),
+              if (choisi && enPlus != null) ...[const SizedBox(height: 10), enPlus],
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Couleurs.infoFond, borderRadius: BorderRadius.circular(8)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text("Arrivée en cours d'année (${mois[_dateEffective.month - 1]})",
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text("Ce que la famille paie pour la scolarité, selon l'accord avec l'école.", style: TextStyle(fontSize: 12, color: gris)),
+        const SizedBox(height: 10),
+        option('complete', 'Année complète', gnf(_scolariteNette)),
+        const SizedBox(height: 6),
+        option('mois', "À partir du mois d'arrivée", gnf(_scolariteNette - _retraitMois)),
+        const SizedBox(height: 6),
+        option(
+          'negocie',
+          'Montant négocié',
+          _scolariteSaisie == null ? '…' : gnf(_scolariteSaisie),
+          permis: _peutNegocier,
+          enPlus: Column(children: [
+            TextField(
+              controller: _scolariteNegociee,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: _champ('Scolarité à payer', suffixe: 'GNF', aide: 'Au plus ${gnf(_scolariteNette)}'),
+            ),
+            const SizedBox(height: 8),
+            TextField(controller: _motifArrivee, decoration: _champ('Motif', aide: 'Par exemple : accord du directeur')),
+          ]),
+        ),
+        if (!_peutNegocier)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('Le montant négocié est réservé à la direction.', style: TextStyle(fontSize: 12, color: gris)),
+          ),
+      ]),
     );
   }
 
@@ -1096,6 +1220,12 @@ class _InscrireScreenState extends State<InscrireScreen> {
                 'Réduction (${reductionsApplicables(regles: _regles, attribuees: const {}, enfantsDuPayeur: _freres.length + 1, cumul: _cumul).map((r) => r.libelle).join(', ')})',
                 '− ${gnf(reduction)}',
                 couleur: Couleurs.regle),
+          if (_arriveeTardive && _scolariteNette > 0) ...[
+            const SizedBox(height: 8),
+            _encadreArrivee(context),
+            if (_retraitArrivee > 0)
+              ligne("Arrivée en cours d'année", '− ${gnf(_retraitArrivee)}', couleur: Couleurs.regle),
+          ],
           const Divider(height: 20),
           ligne('Total année', gnf(_totalAnnee), style: texte.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),

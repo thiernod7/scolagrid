@@ -23,6 +23,8 @@ const schema = Schema([
     Column.integer('remboursable_reinscription'),
     Column.integer('remboursable_scolarite'),
     Column.integer('remboursable_optionnel'),
+    Column.integer('delai_grace_jours'),
+    Column.text('arrivee_par_defaut'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -107,6 +109,22 @@ const schema = Schema([
     Column.text('updated_at'),
   ]),
   // Échéances d'un frais : tranches ou mois de la scolarité.
+  // Échéancier aménagé d'un élève (dates changées ou tranche découpée).
+  Table('echeances_eleves', [
+    Column.text('organisation_id'),
+    Column.text('inscription_id'),
+    Column.text('frais_id'),
+    Column.integer('ordre'),
+    Column.text('libelle'),
+    Column.integer('montant_gnf'),
+    Column.text('date_limite'),
+    Column.text('motif'),
+    Column.text('par'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_inscription', [IndexedColumn('inscription_id')]),
+  ]),
   Table('echeances', [
     Column.text('organisation_id'),
     Column.text('frais_id'),
@@ -242,6 +260,9 @@ const schema = Schema([
     Column.text('date_effective'),
     Column.text('date_actif'),
     Column.text('date_sortie'),
+    Column.text('arrivee_mode'),
+    Column.integer('arrivee_retrait_gnf'),
+    Column.text('arrivee_motif'),
     Column.text('motif'),
     Column.text('poste_id'),
     Column.text('cree_par'),
