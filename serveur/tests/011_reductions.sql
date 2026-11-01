@@ -60,8 +60,8 @@ select pg_temp.connecte(:'g');
 set local role authenticated;
 do $$ begin
   begin
-    insert into public.reductions_eleves (organisation_id, inscription_id, regle_id)
-      values ((select organisation_id from public.inscriptions limit 1), '10000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000002');
+    insert into public.reductions_eleves (organisation_id, inscription_id, regle_id, motif)
+      values ((select organisation_id from public.inscriptions limit 1), '10000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000002', 'Essai');
     raise exception 'Un enseignant a attribué une réduction';
   exception when insufficient_privilege then null;
   end;
@@ -74,8 +74,8 @@ insert into public.reductions_eleves (organisation_id, inscription_id, regle_id)
   values (:'org_a', '10000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000003');
 do $$ begin
   begin
-    insert into public.reductions_eleves (organisation_id, inscription_id, regle_id)
-      values ((select organisation_id from public.inscriptions limit 1), '10000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000002');
+    insert into public.reductions_eleves (organisation_id, inscription_id, regle_id, motif)
+      values ((select organisation_id from public.inscriptions limit 1), '10000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000002', 'Essai');
     raise exception 'La caisse a attribué une bourse';
   exception when insufficient_privilege then null;
   end;

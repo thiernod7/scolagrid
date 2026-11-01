@@ -52,6 +52,16 @@ class _Mesures {
 
   /// Retiré de la scolarité pour des arrivées en cours d'année.
   int retraitsArrivee = 0;
+
+  /// Ce que coûtent les réductions cette année, en tout et par réduction, et
+  /// combien d'élèves en ont une.
+  int reductions = 0;
+  final reductionsParRegle = <String, int>{};
+  int eleveReduits = 0;
+
+  /// Remboursements autorisés de vive voix : à confirmer, dont en retard.
+  int aConfirmer = 0;
+  int confirmationsEnRetard = 0;
 }
 
 Future<_Mesures> _mesurer(String o, Periode periode) async {
@@ -231,6 +241,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
     var retard = 0;
     var plusVieux = 0;
     var retraitNegocie = i['arrivee_mode'] == 'negocie' ? (i['arrivee_retrait_gnf'] as int? ?? 0) : 0;
+    var reduitIci = false;
     final siens = fraisRetenus([
       for (final f in frais)
         if ((f['site_id'] == null || f['site_id'] == i['site_id']) &&
@@ -244,6 +255,16 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
       final type = f['type_frais'] as String? ?? 'optionnel';
       final total = f['montant_gnf'] as int;
       final reduction = reductionSurFrais(typeFrais: type, total: total, applicables: applicables, cumul: cumul, plafond: plafond);
+      if (reduction > 0) {
+        reduitIci = true;
+        m.reductions += reduction;
+        // Réparti entre les réductions de l'élève, au prorata de ce que chacune donnerait seule.
+        final parts = [for (final x in applicables.where((x) => x.couvre(type))) (x.libelle, x.montantSur(total))];
+        final somme = parts.fold<int>(0, (acc, p) => acc + p.$2);
+        for (final (libelle, part) in parts) {
+          if (somme > 0) m.reductionsParRegle[libelle] = (m.reductionsParRegle[libelle] ?? 0) + (reduction * part / somme).round();
+        }
+      }
       var retrait = 0;
       if (type == 'scolarite') {
         if (i['arrivee_mode'] == 'mois') {
@@ -282,12 +303,20 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
         }
       }
     }
+    if (reduitIci) m.eleveReduits++;
     if (retard > 0) {
       m.arrieres += retard;
       m.retards.add(_EnRetard(i['eleve_id'] as String, '${i['nom']} ${i['prenoms']}', '${i['classe']}', retard, plusVieux));
     }
   }
   m.retards.sort((a, b) => b.montant.compareTo(a.montant));
+  final delai = ((await db.get('SELECT delai_confirmation_heures AS h FROM organisations WHERE id = ?', [o]))['h'] as int?) ?? 48;
+  for (final r in await db.getAll(
+      "SELECT autorise_le FROM remboursements WHERE organisation_id = ? AND confirmation = 'attendue'", [o])) {
+    m.aConfirmer++;
+    final le = DateTime.tryParse('${r['autorise_le']}');
+    if (le != null && DateTime.now().toUtc().difference(le.toUtc()).inHours >= delai) m.confirmationsEnRetard++;
+  }
   return m;
 }
 
@@ -454,7 +483,7 @@ class _TableauDeBordState extends State<TableauDeBord> {
               _PremierJour(importer: widget.importer, inscrire: widget.inscrire),
               const SizedBox(height: 20),
             ],
-            if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty) ...[
+            if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty || (widget.voitFinances && m.aConfirmer > 0)) ...[
               const TitreSection('À faire'),
               Container(
                 decoration: BoxDecoration(
@@ -478,6 +507,27 @@ class _TableauDeBordState extends State<TableauDeBord> {
                           Etat('${m.incomplets.length}', ton: Ton.attente),
                           const SizedBox(width: 12),
                           const Expanded(child: Text('dossier(s) incomplet(s) : pièce obligatoire manquante', style: TextStyle(fontSize: 14))),
+                          Icon(Icons.chevron_right, size: 16, color: gris),
+                        ]),
+                      ),
+                    ),
+                  ],
+                  if (widget.voitFinances && m.aConfirmer > 0) ...[
+                    if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty) Divider(height: 1, color: schema.outlineVariant),
+                    InkWell(
+                      onTap: () => Navigator.of(context)
+                          .push(MaterialPageRoute(builder: (_) => RemboursementsScreen(espace: widget.espace))),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(children: [
+                          Etat('${m.aConfirmer}', ton: m.confirmationsEnRetard > 0 ? Ton.retard : Ton.attente),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                                'remboursement(s) autorisé(s) de vive voix à confirmer'
+                                '${m.confirmationsEnRetard > 0 ? ' — ${m.confirmationsEnRetard} hors délai' : ''}',
+                                style: TextStyle(fontSize: 14, color: m.confirmationsEnRetard > 0 ? Couleurs.retard : null)),
+                          ),
                           Icon(Icons.chevron_right, size: 16, color: gris),
                         ]),
                       ),
@@ -540,6 +590,22 @@ class _TableauDeBordState extends State<TableauDeBord> {
                           child: Text('sur ${m.inscrits} inscrits', style: TextStyle(fontSize: 14, color: gris)),
                         ),
                   onTap: () => _voirArrieres(m.retards),
+                ),
+                CarteKpi(
+                  titre: 'Coût des réductions',
+                  aide: "Ce que l'école renonce à percevoir cette année : fratrie, enfants du personnel, bourses…",
+                  valeur: gnf(m.reductions),
+                  detail: m.reductions == 0
+                      ? null
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('${m.eleveReduits} élève(s)${m.du + m.reductions > 0 ? ' · ${pourcent(m.reductions * 100 / (m.du + m.reductions))} du brut' : ''}',
+                                style: TextStyle(fontSize: 14, color: gris)),
+                            for (final e in (m.reductionsParRegle.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).take(4))
+                              Text('${e.key} : ${millions(e.value)}', style: TextStyle(fontSize: 12, color: gris)),
+                          ]),
+                        ),
                 ),
               ]),
               const SizedBox(height: 12),

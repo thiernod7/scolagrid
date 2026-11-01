@@ -168,6 +168,7 @@ String? feuilleSuivante(String? derniere) {
 const typesReduction = {
   'fratrie': 'Fratrie (même payeur)',
   'paiement_annuel': "Paiement de l'année en une fois",
+  'personnel': 'Enfant du personnel',
   'personnalisee': 'Personnalisée (bourse, orphelin, mérite…)',
 };
 
@@ -208,7 +209,7 @@ class Regle {
 /// Réductions dont l'élève bénéficie : fratrie selon le nombre d'enfants du même
 /// payeur (le barème au seuil le plus haut atteint), paiement annuel et
 /// réductions personnalisées si elles lui sont attribuées. Sans cumul, une seule :
-/// Fratrie, puis Paiement annuel, puis Personnalisée.
+/// Fratrie, puis Enfant du personnel, puis Paiement annuel, puis Personnalisée.
 List<Regle> reductionsApplicables({
   required List<Regle> regles,
   required Set<String> attribuees,
@@ -219,6 +220,7 @@ List<Regle> reductionsApplicables({
     ..sort((a, b) => (b.nbEnfants ?? 2).compareTo(a.nbEnfants ?? 2));
   final liste = [
     if (fratries.isNotEmpty) fratries.first,
+    ...regles.where((r) => r.type == 'personnel' && attribuees.contains(r.id)),
     ...regles.where((r) => r.type == 'paiement_annuel' && attribuees.contains(r.id)),
     ...regles.where((r) => r.type == 'personnalisee' && attribuees.contains(r.id)),
   ];

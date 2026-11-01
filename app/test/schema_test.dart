@@ -305,4 +305,16 @@ void main() {
     expect(examens.keys, ['CEE', 'BEPC', 'BAC']);
     expect(seriesLycee.keys, ['SM', 'SE', 'SS', 'SL']);
   });
+
+  test("Réductions : l'enfant du personnel passe après la fratrie, avant le paiement annuel", () {
+    const regles = [
+      Regle(id: 'f', type: 'fratrie', libelle: 'Fratrie', pourcentage: true, valeur: 10, portee: 'scolarite', nbEnfants: 2),
+      Regle(id: 'a', type: 'paiement_annuel', libelle: 'Annuel', pourcentage: true, valeur: 5, portee: 'scolarite'),
+      Regle(id: 'p', type: 'personnel', libelle: 'Personnel', pourcentage: true, valeur: 50, portee: 'tous'),
+    ];
+    expect(reductionsApplicables(regles: regles, attribuees: {'a', 'p'}, enfantsDuPayeur: 1, cumul: false).single.id, 'p');
+    expect(reductionsApplicables(regles: regles, attribuees: {'a', 'p'}, enfantsDuPayeur: 2, cumul: false).single.id, 'f');
+    expect(reductionsApplicables(regles: regles, attribuees: {'a', 'p'}, enfantsDuPayeur: 2, cumul: true).map((r) => r.id), ['f', 'p', 'a']);
+    expect(typesReduction.keys, containsAll(['fratrie', 'personnel', 'paiement_annuel', 'personnalisee']));
+  });
 }

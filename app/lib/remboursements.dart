@@ -53,6 +53,20 @@ Future<void> demanderRemboursement(BuildContext context, Map<String, Object?> re
   final beneficiaire = TextEditingController(text: '${recu['payeur_nom']}');
   final motif = TextEditingController();
   var mode = 'especes';
+  // Qui peut dire oui : direction, ou droit « valider un remboursement ».
+  final direction = {
+    for (final p in await db.getAll('''
+        SELECT p.id, p.nom_complet FROM personnel p
+        WHERE p.organisation_id = ? AND p.statut = 'actif' AND (
+          EXISTS (SELECT 1 FROM affectations a WHERE a.personnel_id = p.id AND a.actif = 1 AND a.fonction IN ('fondateur', 'directeur'))
+          OR EXISTS (SELECT 1 FROM droits_personnel d WHERE d.personnel_id = p.id AND d.droit = 'valider_remboursement' AND d.accorde = 1))
+        ORDER BY p.nom_complet''', [recu['organisation_id']]))
+      p['id'] as String: p['nom_complet'] as String,
+  };
+  final delai = (org['delai_confirmation_heures'] as int?) ?? 48;
+  var orale = false;
+  String? parQui;
+  if (!context.mounted) return;
   final ok = await _formulaire(context, 'Demande de remboursement', (maj) => [
         _liste('Ligne du reçu', ligne, {
           for (final l in lignes)
@@ -65,7 +79,16 @@ Future<void> demanderRemboursement(BuildContext context, Map<String, Object?> re
         TextField(controller: beneficiaire, decoration: _champ('Remis à', aide: 'La personne qui signera la décharge')),
         _liste('Rendu en', mode, modesPaiement, (v) => maj(() => mode = v)),
         TextField(controller: motif, decoration: _champ('Motif', aide: 'Obligatoire : annulation, départ, erreur…')),
-        const Text("La demande devra être autorisée par une personne habilitée avant que l'argent sorte de la caisse."),
+        if (direction.isNotEmpty)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: orale,
+            onChanged: (v) => maj(() => orale = v),
+            title: const Text('Déjà autorisé de vive voix'),
+            subtitle: Text("L'argent peut sortir tout de suite ; la personne devra confirmer dans l'application sous $delai h."),
+          ),
+        if (orale) _liste<String?>('Autorisé par', parQui, {null: 'Choisir', ...direction}, (v) => maj(() => parQui = v)),
+        if (!orale) const Text("La demande devra être autorisée par une personne habilitée avant que l'argent sorte de la caisse."),
       ]);
   final m = int.tryParse(montant.text.replaceAll(RegExp(r'[^0-9]'), ''));
   final choisie = lignes.firstWhere((l) => l['id'] == ligne);
@@ -76,6 +99,10 @@ Future<void> demanderRemboursement(BuildContext context, Map<String, Object?> re
   }
   if (motif.text.trim().length < 3 || beneficiaire.text.trim().length < 2) {
     messager.showSnackBar(const SnackBar(content: Text('Le motif et le nom de la personne sont obligatoires.')));
+    return;
+  }
+  if (orale && parQui == null) {
+    messager.showSnackBar(const SnackBar(content: Text('Indiquez qui a autorisé le remboursement.')));
     return;
   }
   final poste = await cePoste();
@@ -91,11 +118,18 @@ Future<void> demanderRemboursement(BuildContext context, Map<String, Object?> re
     'beneficiaire': beneficiaire.text.trim(),
     'motif': motif.text.trim(),
     'mode': mode,
-    'statut': 'demande',
+    'statut': orale ? 'autorise' : 'demande',
     'demande_par': monId,
     'poste_id': poste?['poste_id'],
+    'autorisation_orale': orale ? 1 : 0,
+    'autorise_oralement_par': orale ? parQui : null,
+    'autorise_le': orale ? _maintenant() : null,
+    'confirmation': orale ? 'attendue' : null,
   });
-  messager.showSnackBar(const SnackBar(content: Text('Demande enregistrée : en attente d\'autorisation.')));
+  messager.showSnackBar(SnackBar(
+      content: Text(orale
+          ? 'Autorisé de vive voix : vous pouvez verser. ${direction[parQui]} devra confirmer sous $delai h.'
+          : 'Demande enregistrée : en attente d\'autorisation.')));
 }
 
 class RemboursementsScreen extends StatefulWidget {
@@ -145,6 +179,28 @@ class _RemboursementsScreenState extends State<RemboursementsScreen> {
       'autorise_par': monId,
       'autorise_le': _maintenant(),
       'motif_refus': refus,
+    });
+  }
+
+  /// Autorisation orale : la direction confirme, ou conteste avec un motif.
+  Future<void> _confirmerOral(Map<String, Object?> r, bool confirme) async {
+    String? motif;
+    if (confirme) {
+      if (!await _confirmer(context, 'Confirmer avoir autorisé le remboursement de ${gnf(r['montant_gnf'])} à ${r['beneficiaire']} ?')) return;
+    } else {
+      final c = TextEditingController();
+      final ok = await _formulaire(context, 'Contester le remboursement', (_) => [
+            const Text("Le remboursement reste enregistré ; la contestation est gardée pour le suivi."),
+            TextField(controller: c, autofocus: true, decoration: _champ('Motif', aide: 'Obligatoire')),
+          ]);
+      if (!ok || c.text.trim().length < 3) return;
+      motif = c.text.trim();
+    }
+    await _modifier('remboursements', r['id'] as String, {
+      'confirmation': confirme ? 'confirmee' : 'contestee',
+      'confirme_par': monId,
+      'confirme_le': _maintenant(),
+      'motif_contestation': motif,
     });
   }
 
@@ -199,22 +255,36 @@ class _RemboursementsScreenState extends State<RemboursementsScreen> {
         titre: 'Remboursements',
         corps: Requete(
           '''SELECT r.*, e.nom, e.prenoms, f.libelle AS frais, x.numero,
-               pd.nom_complet AS demandeur, pa.nom_complet AS autorisateur
-             FROM remboursements r JOIN eleves e ON e.id = r.eleve_id JOIN frais f ON f.id = r.frais_id
+               pd.nom_complet AS demandeur, pa.nom_complet AS autorisateur, po.nom_complet AS autorisateur_oral,
+               pc.nom_complet AS confirmateur, o.delai_confirmation_heures AS delai
+             FROM remboursements r JOIN organisations o ON o.id = r.organisation_id JOIN eleves e ON e.id = r.eleve_id JOIN frais f ON f.id = r.frais_id
              JOIN encaissements x ON x.id = r.encaissement_id
              LEFT JOIN personnel pd ON pd.user_id = r.demande_par AND pd.organisation_id = r.organisation_id
              LEFT JOIN personnel pa ON pa.user_id = r.autorise_par AND pa.organisation_id = r.organisation_id
+             LEFT JOIN personnel po ON po.id = r.autorise_oralement_par
+             LEFT JOIN personnel pc ON pc.user_id = r.confirme_par AND pc.organisation_id = r.organisation_id
              WHERE r.organisation_id = ?
-             ORDER BY CASE r.statut WHEN 'demande' THEN 0 WHEN 'autorise' THEN 1 ELSE 2 END, r.created_at DESC
+             ORDER BY CASE WHEN r.confirmation = 'attendue' THEN 0 WHEN r.statut = 'demande' THEN 1 WHEN r.statut = 'autorise' THEN 2 ELSE 3 END,
+               r.created_at DESC
              LIMIT 200''',
           parametres: [widget.espace.orgId],
           builder: (context, liste) {
             if (liste.isEmpty) {
               return _vide('Aucun remboursement.\n\nPour en demander un, ouvrez le reçu concerné (Caisse) : « Demander un remboursement ».');
             }
+            bool horsDelai(Map<String, Object?> r) {
+              final le = DateTime.tryParse('${r['autorise_le']}');
+              return r['confirmation'] == 'attendue' &&
+                  le != null &&
+                  DateTime.now().toUtc().difference(le.toUtc()).inHours >= ((r['delai'] as int?) ?? 48);
+            }
+
             return ListView(padding: const EdgeInsets.all(16), children: [
               for (final r in liste)
                 Card(
+                  shape: horsDelai(r)
+                      ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Couleurs.retard))
+                      : null,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -233,10 +303,26 @@ class _RemboursementsScreenState extends State<RemboursementsScreen> {
                         if (r['autorisateur'] != null)
                           '${r['statut'] == 'refuse' ? 'Refusé' : 'Autorisé'} par ${r['autorisateur']}'
                               '${r['motif_refus'] != null ? ' : ${r['motif_refus']}' : ''}',
+                        if (r['autorisation_orale'] == 1)
+                          'Autorisé de vive voix par ${r['autorisateur_oral'] ?? '?'} le ${_dateLisible(r['autorise_le'])}'
+                              '${switch (r['confirmation']) {
+                            'confirmee' => ' · confirmé${r['confirmateur'] != null ? ' par ${r['confirmateur']}' : ''}',
+                            'contestee' => ' · CONTESTÉ${r['confirmateur'] != null ? ' par ${r['confirmateur']}' : ''} : ${r['motif_contestation']}',
+                            _ => ' · à confirmer sous ${r['delai'] ?? 48} h',
+                          }}',
                         if (r['statut'] == 'verse') 'Versé le ${_dateLisible(r['verse_le'])}${r['decharge'] != null ? ' · décharge ${r['decharge']}' : ''}',
                       ].join('\n')),
                       const SizedBox(height: 8),
+                      if (horsDelai(r))
+                        const Padding(
+                          padding: EdgeInsets.only(top: 6),
+                          child: Etat('Confirmation en retard', ton: Ton.retard, icone: Icons.schedule),
+                        ),
                       Wrap(spacing: 8, runSpacing: 8, children: [
+                        if (r['confirmation'] == 'attendue' && _valideur) ...[
+                          FilledButton(onPressed: () => _confirmerOral(r, true), child: const Text("Confirmer l'autorisation")),
+                          OutlinedButton(onPressed: () => _confirmerOral(r, false), child: const Text('Contester')),
+                        ],
                         if (r['statut'] == 'demande' && _valideur) ...[
                           FilledButton(onPressed: () => _decider(r, true), child: const Text('Autoriser')),
                           OutlinedButton(onPressed: () => _decider(r, false), child: const Text('Refuser')),
@@ -299,6 +385,26 @@ class PolitiqueRemboursementScreen extends StatelessWidget {
                 choix('remboursable_scolarite', 'Scolarité'),
                 choix('remboursable_optionnel', 'Frais optionnels (cantine, transport…)'),
               ]),
+            ),
+            Card(
+              child: ListTile(
+                title: const Text('Autorisation de vive voix : délai pour confirmer'),
+                subtitle: Text("Quand la direction dit oui oralement, la caisse verse tout de suite ; la direction confirme dans "
+                    "l'application sous ${o['delai_confirmation_heures'] ?? 48} h, sinon c'est signalé en rouge."),
+                trailing: espace.fondateur
+                    ? DropdownButton<int>(
+                        value: const [24, 48, 72, 168].contains(o['delai_confirmation_heures']) ? o['delai_confirmation_heures'] as int : 48,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 24, child: Text('24 h')),
+                          DropdownMenuItem(value: 48, child: Text('48 h')),
+                          DropdownMenuItem(value: 72, child: Text('72 h')),
+                          DropdownMenuItem(value: 168, child: Text('7 jours')),
+                        ],
+                        onChanged: (v) => v == null ? null : _modifier('organisations', espace.orgId, {'delai_confirmation_heures': v}),
+                      )
+                    : null,
+              ),
             ),
           ]);
         }),

@@ -148,6 +148,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     'classes': ['fermee'],
     'inscriptions': ['redoublant'],
     'frais': ['examen'],
+    'remboursements': ['autorisation_orale'],
     'reductions_eleves': ['actif'],
   };
 

@@ -201,8 +201,10 @@ class SituationFinanciere extends StatelessWidget {
       );
 }
 
-/// Réductions de l'élève : celles qui s'appliquent, et l'attribution des
-/// réductions personnalisées (bourse, orphelin…) par la direction.
+/// Réductions de l'élève : celles qui s'appliquent, l'attribution des
+/// réductions accordées élève par élève (bourse, orphelin, enfant du personnel)
+/// avec motif et durée, et la reconduction — jamais automatique — de celles de
+/// l'an dernier qui courent encore.
 class _Reductions extends StatelessWidget {
   const _Reductions({required this.espace, required this.inscriptionId});
 
@@ -212,30 +214,62 @@ class _Reductions extends StatelessWidget {
   Future<void> _attribuer(BuildContext context) async {
     final ins = await db.get('SELECT organisation_id, site_id FROM inscriptions WHERE id = ?', [inscriptionId]);
     final regles = await db.getAll(
-        '''SELECT g.*, r.id AS attribution, r.actif AS attribuee, r.motif FROM regles_reduction g
+        '''SELECT g.*, r.id AS attribution, r.actif AS attribuee, r.motif, r.duree_annees, r.annee_rang FROM regles_reduction g
            LEFT JOIN reductions_eleves r ON r.regle_id = g.id AND r.inscription_id = ?
-           WHERE g.organisation_id = ? AND g.actif = 1 AND g.type = 'personnalisee' ORDER BY g.created_at''',
+           WHERE g.organisation_id = ? AND g.actif = 1 AND g.type IN ('personnalisee', 'personnel') ORDER BY g.type, g.created_at''',
         [inscriptionId, ins['organisation_id']]);
+    final personnel = {
+      for (final p in await db.getAll(
+          "SELECT id, nom_complet FROM personnel WHERE organisation_id = ? AND statut = 'actif' ORDER BY nom_complet",
+          [ins['organisation_id']]))
+        p['id'] as String: p['nom_complet'] as String,
+    };
     if (!context.mounted) return;
     if (regles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Aucune réduction personnalisée. Le fondateur les crée dans Paramètres → Réductions.")));
+          content: Text("Aucune réduction à accorder. Le fondateur les crée dans Paramètres → Réductions.")));
       return;
     }
     final choix = {for (final r in regles) r['id'] as String: r['attribuee'] == 1};
+    bool nouvelle(Map<String, Object?> r) => r['attribution'] == null && choix[r['id']] == true;
     final motif = TextEditingController();
-    final ok = await _formulaire(context, 'Réductions accordées', (maj) => [
-          for (final r in regles)
-            CheckboxListTile(
-              value: choix[r['id']],
-              title: Text('${r['libelle']}'),
-              subtitle: Text('${r['pourcentage'] == 1 ? '${'${r['valeur']}'.replaceAll('.0', '')} %' : gnf((r['valeur'] as num).toInt())}'
-                  ' · ${porteesReduction[r['portee']]}${r['motif'] != null ? ' · ${r['motif']}' : ''}'),
-              onChanged: (v) => maj(() => choix[r['id'] as String] = v ?? false),
-            ),
-          TextField(controller: motif, decoration: _champ('Motif (pour une nouvelle réduction)', aide: 'Ex. père décédé, bourse du mérite')),
-        ]);
-    if (!ok) return;
+    var duree = 1;
+    String? parent;
+    final ok = await _formulaire(context, 'Réductions accordées', (maj) {
+      final nouvelles = regles.where(nouvelle).toList();
+      return [
+        for (final r in regles)
+          CheckboxListTile(
+            value: choix[r['id']],
+            title: Text('${r['libelle']}'),
+            subtitle: Text([
+              r['pourcentage'] == 1 ? '${'${r['valeur']}'.replaceAll('.0', '')} %' : gnf((r['valeur'] as num).toInt()),
+              porteesReduction[r['portee']],
+              if (r['motif'] != null) '${r['motif']}',
+              if (r['attribution'] != null && (r['duree_annees'] as int? ?? 1) > 1) 'année ${r['annee_rang']} sur ${r['duree_annees']}',
+            ].join(' · ')),
+            onChanged: (v) => maj(() => choix[r['id'] as String] = v ?? false),
+          ),
+        if (nouvelles.isNotEmpty) ...[
+          TextField(controller: motif, decoration: _champ('Motif', aide: 'Obligatoire : père décédé, bourse du mérite, fille du surveillant…')),
+          _liste('Durée', duree, {for (var n = 1; n <= 6; n++) n: n == 1 ? 'Cette année seulement' : '$n ans'}, (v) => maj(() => duree = v)),
+          if (duree > 1)
+            const Text("Elle ne se reconduit pas seule : à la réinscription, la direction choisit de la reconduire.",
+                style: TextStyle(fontSize: 12)),
+          if (nouvelles.any((r) => r['type'] == 'personnel'))
+            _liste<String?>('Parent membre du personnel', parent, {null: 'Choisir', ...personnel}, (v) => maj(() => parent = v)),
+        ],
+      ];
+    });
+    if (!ok || !context.mounted) return;
+    final nouvelles = regles.where(nouvelle).toList();
+    String? probleme;
+    if (nouvelles.isNotEmpty && motif.text.trim().length < 3) probleme = 'Le motif est obligatoire.';
+    if (nouvelles.any((r) => r['type'] == 'personnel') && parent == null) probleme = 'Choisissez le parent membre du personnel.';
+    if (probleme != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(probleme)));
+      return;
+    }
     final m = _maintenant();
     await db.writeTransaction((tx) async {
       for (final r in regles) {
@@ -243,9 +277,10 @@ class _Reductions extends StatelessWidget {
         if (r['attribution'] == null) {
           if (voulu) {
             await tx.execute(
-                'INSERT INTO reductions_eleves (id, organisation_id, inscription_id, regle_id, actif, motif, accorde_par, created_at, updated_at) '
-                'VALUES (uuid(), ?, ?, ?, 1, ?, ?, ?, ?)',
-                [ins['organisation_id'], inscriptionId, r['id'], motif.text.trim().isEmpty ? null : motif.text.trim(), monId, m, m]);
+                'INSERT INTO reductions_eleves (id, organisation_id, inscription_id, regle_id, actif, motif, accorde_par, '
+                'personnel_id, duree_annees, annee_rang, created_at, updated_at) VALUES (uuid(), ?, ?, ?, 1, ?, ?, ?, ?, 1, ?, ?)',
+                [ins['organisation_id'], inscriptionId, r['id'], motif.text.trim(), monId,
+                  r['type'] == 'personnel' ? parent : null, duree, m, m]);
           }
         } else if (voulu != (r['attribuee'] == 1)) {
           await tx.execute('UPDATE reductions_eleves SET actif = ?, updated_at = ? WHERE id = ?', [voulu ? 1 : 0, m, r['attribution']]);
@@ -254,26 +289,74 @@ class _Reductions extends StatelessWidget {
     });
   }
 
+  /// Réductions de l'an dernier qui courent encore (année 1 sur 3…) et ne sont
+  /// pas déjà sur cette inscription.
+  static Future<List<Map<String, Object?>>> _aReconduire(String inscriptionId) async => [
+        for (final r in await db.getAll('''
+            SELECT re.*, g.libelle FROM inscriptions i
+            JOIN inscriptions p ON p.eleve_id = i.eleve_id AND p.id <> i.id
+            JOIN annees_scolaires ap ON ap.id = p.annee_id
+            JOIN annees_scolaires ai ON ai.id = i.annee_id AND ap.debut < ai.debut
+            JOIN reductions_eleves re ON re.inscription_id = p.id AND re.actif = 1 AND re.annee_rang < re.duree_annees
+            JOIN regles_reduction g ON g.id = re.regle_id AND g.actif = 1
+            WHERE i.id = ?
+              AND p.annee_id = (SELECT a2.id FROM inscriptions p2 JOIN annees_scolaires a2 ON a2.id = p2.annee_id
+                                WHERE p2.eleve_id = i.eleve_id AND a2.debut < ai.debut ORDER BY a2.debut DESC LIMIT 1)
+              AND NOT EXISTS (SELECT 1 FROM reductions_eleves x WHERE x.inscription_id = i.id AND x.regle_id = re.regle_id)''',
+            [inscriptionId]))
+          Map<String, Object?>.from(r),
+      ];
+
+  Future<void> _reconduire(BuildContext context, Map<String, Object?> r) async {
+    if (!await _confirmer(context,
+        'Reconduire « ${r['libelle']} » (${r['motif']}) : année ${(r['annee_rang'] as int) + 1} sur ${r['duree_annees']} ?')) {
+      return;
+    }
+    await _inserer('reductions_eleves', {
+      'organisation_id': r['organisation_id'],
+      'inscription_id': inscriptionId,
+      'regle_id': r['regle_id'],
+      'actif': 1,
+      'motif': r['motif'],
+      'accorde_par': monId,
+      'personnel_id': r['personnel_id'],
+      'duree_annees': r['duree_annees'],
+      'annee_rang': (r['annee_rang'] as int) + 1,
+      'reconduite_de': r['id'],
+    });
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder(
         future: Future.wait([
           reductionsInscription(inscriptionId),
           db.get('SELECT site_id FROM inscriptions WHERE id = ?', [inscriptionId]),
+          _aReconduire(inscriptionId),
         ]),
         builder: (context, s) {
           if (!s.hasData) return const SizedBox.shrink();
           final red = s.data![0] as ({List<Regle> applicables, bool cumul, int plafond});
           final site = (s.data![1] as Map<String, Object?>)['site_id'] as String;
-          return ListTile(
-            dense: true,
-            leading: const Icon(Icons.discount_outlined),
-            title: Text(red.applicables.isEmpty
-                ? 'Aucune réduction'
-                : 'Réductions : ${red.applicables.map((r) => r.libelle).join(', ')}'),
-            trailing: espace.gereSite(site)
-                ? TextButton(onPressed: () => _attribuer(context), child: const Text('Accorder'))
-                : null,
-          );
+          final reconduire = s.data![2] as List<Map<String, Object?>>;
+          final gere = espace.gereSite(site);
+          return Column(mainAxisSize: MainAxisSize.min, children: [
+            ListTile(
+              dense: true,
+              leading: const Icon(Icons.discount_outlined),
+              title: Text(red.applicables.isEmpty
+                  ? 'Aucune réduction'
+                  : 'Réductions : ${red.applicables.map((r) => r.libelle).join(', ')}'),
+              trailing: gere ? TextButton(onPressed: () => _attribuer(context), child: const Text('Accorder')) : null,
+            ),
+            for (final r in reconduire)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.update, color: Couleurs.attente),
+                title: Text('À reconduire ? ${r['libelle']} · année ${(r['annee_rang'] as int) + 1} sur ${r['duree_annees']}'),
+                subtitle: Text("${r['motif'] ?? ''} · accordée l'an dernier, pas reconduite d'office"),
+                trailing: gere ? TextButton(onPressed: () => _reconduire(context, r), child: const Text('Reconduire')) : null,
+              ),
+          ]);
         },
       );
 }

@@ -19,10 +19,11 @@ class ReductionsScreen extends StatelessWidget {
     final ok = await _formulaire(context, 'Nouvelle réduction', (maj) => [
           _liste('Type', type, typesReduction, (v) => maj(() {
                 type = v;
-                if (v != 'personnalisee') portee = 'scolarite';
+                if (v != 'personnalisee' && v != 'personnel') portee = 'scolarite';
                 libelle.text = switch (v) {
                   'fratrie' => '${enfants.text} enfants',
                   'paiement_annuel' => "Année payée d'un coup",
+                  'personnel' => 'Enfant du personnel',
                   _ => '',
                 };
               })),
@@ -44,7 +45,7 @@ class ReductionsScreen extends StatelessWidget {
             keyboardType: TextInputType.number,
             decoration: _champ(pourcentage ? 'Réduction' : 'Réduction par frais', suffixe: pourcentage ? '%' : 'GNF'),
           ),
-          if (type == 'personnalisee') _liste('Sur', portee, porteesReduction, (v) => maj(() => portee = v)),
+          if (type == 'personnalisee' || type == 'personnel') _liste('Sur', portee, porteesReduction, (v) => maj(() => portee = v)),
         ]);
     final v = num.tryParse(valeur.text.replaceAll(',', '.').replaceAll(' ', ''));
     final n = int.tryParse(enfants.text);
@@ -97,7 +98,7 @@ class ReductionsScreen extends StatelessWidget {
                     title: const Text('Les réductions se cumulent'),
                     subtitle: Text(cumul
                         ? 'Un élève peut avoir plusieurs réductions, jusqu\'à $plafond % au total.'
-                        : 'Une seule réduction par élève : fratrie, sinon paiement annuel, sinon personnalisée.'),
+                        : 'Une seule réduction par élève : fratrie, sinon enfant du personnel, sinon paiement annuel, sinon personnalisée.'),
                     onChanged: espace.fondateur ? (v) => _modifier('organisations', espace.orgId, {'reductions_cumul': v ? 1 : 0}) : null,
                   ),
                   if (cumul)
@@ -112,7 +113,7 @@ class ReductionsScreen extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text('Aucune réduction. Exemple : fratrie « 2 enfants » -10 %, « 3 enfants » -15 % ; '
-                      '« Orphelin » -100 % sur l\'inscription.'),
+                      '« Orphelin » -100 % sur l\'inscription ; « Enfant du personnel » -50 % sur tous les frais.'),
                 ),
               for (final r in regles)
                 Card(
@@ -121,7 +122,7 @@ class ReductionsScreen extends StatelessWidget {
                     title: Text('${r['libelle']} : -${r['pourcentage'] == 1 ? '${'${r['valeur']}'.replaceAll('.0', '')} %' : gnf((r['valeur'] as num).toInt())}'),
                     subtitle: Text('${typesReduction[r['type']]?.split(' (').first} · ${porteesReduction[r['portee']]}'
                         '${r['type'] == 'fratrie' ? ' · dès ${r['nb_enfants']} enfants' : ''}'
-                        '${r['type'] == 'personnalisee' ? ' · accordée élève par élève' : ''}'),
+                        '${r['type'] == 'personnalisee' || r['type'] == 'personnel' ? ' · accordée élève par élève, avec un motif' : ''}'),
                     onChanged: espace.fondateur ? (v) => _modifier('regles_reduction', r['id'] as String, {'actif': v ? 1 : 0}) : null,
                   ),
                 ),
