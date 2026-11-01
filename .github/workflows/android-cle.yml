@@ -1,0 +1,55 @@
+name: Android - créer la clé de signature
+
+# Se lance quand ce fichier change (ou à la main depuis la branche principale).
+# Crée la clé qui signe l'application Android, la chiffre avec le secret
+# ANDROID_CLE_SECRET et la range dans le dépôt (app/signature/scolagrid.jks.enc).
+# Toutes les versions suivantes sont signées avec elle : Android accepte alors
+# la mise à jour par-dessus l'application installée.
+# Ne relancez pas : une nouvelle clé empêcherait les mises à jour (le workflow
+# refuse d'ailleurs d'écraser une clé existante).
+
+on:
+  push:
+    paths:
+      - ".github/workflows/android-cle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  creer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Créer, chiffrer et ranger la clé
+        env:
+          SECRET: ${{ secrets.ANDROID_CLE_SECRET }}
+        run: |
+          if [ -z "$SECRET" ] || [ ${#SECRET} -lt 24 ]; then
+            echo "::warning::Ajoutez d'abord le secret ANDROID_CLE_SECRET (au moins 24 caractères au hasard), puis relancez."
+            exit 0
+          fi
+          if [ -f app/signature/scolagrid.jks.enc ]; then
+            echo "Une clé existe déjà : on ne la remplace jamais (les mises à jour ne s'installeraient plus)."
+            exit 0
+          fi
+          mkdir -p app/signature
+          dossier=$(mktemp -d)
+          keytool -genkeypair -v -keystore "$dossier/scolagrid.jks" -alias scolagrid \
+            -keyalg RSA -keysize 4096 -validity 20000 \
+            -storepass:env SECRET -keypass:env SECRET \
+            -dname "CN=Scolagrid, O=Scolagrid, C=GN" > /dev/null
+          openssl enc -aes-256-cbc -pbkdf2 -iter 250000 -salt \
+            -in "$dossier/scolagrid.jks" -out app/signature/scolagrid.jks.enc -pass env:SECRET
+          rm -rf "$dossier"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/signature/scolagrid.jks.enc
+          git commit -m "Clé de signature Android (chiffrée)"
+          git push
+          echo "Clé créée et rangée, chiffrée. Les prochaines compilations Android seront signées avec elle."

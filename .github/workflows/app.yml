@@ -114,6 +114,26 @@ jobs:
       - name: Vérifier que l'app connaît son serveur
         run: '[ -n "$DART_DEFINES$DART_DEFINES_ESSAI" ] || { echo "Aucune adresse de serveur : compilation arrêtée"; exit 1; }'
       - run: flutter build apk --release $DART_DEFINES $DART_DEFINES_ESSAI
+      # Signature avec la clé fixe de Scolagrid (créée une fois par le workflow
+      # « Android - créer la clé de signature ») : sans elle, chaque version a une
+      # clé différente et Android refuse la mise à jour (« application non installée »).
+      - name: Signer avec la clé de Scolagrid
+        env:
+          SECRET: ${{ secrets.ANDROID_CLE_SECRET }}
+        run: |
+          apk=build/app/outputs/flutter-apk/app-release.apk
+          if [ ! -f signature/scolagrid.jks.enc ] || [ -z "$SECRET" ]; then
+            echo "::warning::Pas de clé de signature fixe : cet APK ne s'installera pas par-dessus une version précédente. Lancez le workflow « Android - créer la clé de signature »."
+            exit 0
+          fi
+          cle=$(mktemp -d)/scolagrid.jks
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 250000 -in signature/scolagrid.jks.enc -out "$cle" -pass env:SECRET
+          outils=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$outils/apksigner" sign --ks "$cle" --ks-key-alias scolagrid --ks-pass env:SECRET --key-pass env:SECRET \
+            --out "$apk.signe" "$apk"
+          mv "$apk.signe" "$apk"
+          rm -f "$cle"
+          "$outils/apksigner" verify --print-certs "$apk" | grep -m1 "SHA-256"
       - uses: actions/upload-artifact@v4
         with:
           name: scolagrid-android-${{ needs.config.outputs.environnement }}
