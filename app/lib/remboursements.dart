@@ -190,7 +190,7 @@ class _RemboursementsScreenState extends State<RemboursementsScreen> {
       'par': monId,
       'poste_id': poste?['poste_id'],
     });
-    final pdf = await dechargePdf(ecole: Map.of(ecole), remboursement: Map.of(r), rang: deja + 1);
+    final pdf = await dechargePdf(ecole: Map.of(ecole), remboursement: Map.of(r), rang: deja + 1, images: await _imagesEcole(ecole['id']));
     await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Décharge ${r['matricule']}');
   }
 

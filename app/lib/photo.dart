@@ -128,3 +128,20 @@ class _PhotoEleveState extends State<PhotoEleve> {
       ? Initiales(widget.nom, taille: widget.taille)
       : CircleAvatar(radius: widget.taille / 2, backgroundImage: _image);
 }
+
+/// Logo, signature et cachet de l'école, prêts pour les documents.
+Future<ImagesEcole> _imagesEcole(Object? orgId) async {
+  Uint8List? lire(Map<String, Object?>? r) {
+    try {
+      return r == null ? null : base64Decode(r['image'] as String);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final l = {
+    for (final r in await db.getAll('SELECT sorte, image FROM images_ecole WHERE organisation_id = ?', [orgId]))
+      r['sorte'] as String: Map<String, Object?>.from(r),
+  };
+  return ImagesEcole(logo: lire(l['logo']), signature: lire(l['signature']), cachet: lire(l['cachet']));
+}

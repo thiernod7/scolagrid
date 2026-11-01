@@ -20,6 +20,69 @@ class LigneRecu {
   final int montant;
 }
 
+/// Logo, signature et cachet de l'école, quand elle en a.
+class ImagesEcole {
+  const ImagesEcole({this.logo, this.signature, this.cachet});
+
+  final Uint8List? logo;
+  final Uint8List? signature;
+  final Uint8List? cachet;
+}
+
+/// En-tête d'un document : logo, nom, devise, adresse, contacts, autorisation.
+pw.Widget _enTete(Map<String, Object?> ecole, ImagesEcole images, {double titre = 16, double petit = 10}) {
+  final st = pw.TextStyle(fontSize: petit);
+  final adresse = [ecole['quartier'], ecole['commune'], ecole['ville']].where((x) => x != null && '$x'.isNotEmpty).join(', ');
+  final contacts = [
+    if (ecole['telephone'] != null) 'Tél. ${ecole['telephone']}',
+    if (ecole['telephone2'] != null) '${ecole['telephone2']}',
+    if (ecole['email'] != null) '${ecole['email']}',
+    if (ecole['site_web'] != null) '${ecole['site_web']}',
+  ].join(' · ');
+  final admin = [
+    if (ecole['numero_autorisation'] != null) 'Autorisation : ${ecole['numero_autorisation']}',
+    if (ecole['nif'] != null) 'NIF : ${ecole['nif']}',
+  ].join(' · ');
+  return pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+    if (images.logo != null) ...[
+      pw.SizedBox(width: titre * 3.6, height: titre * 3.6, child: pw.Image(pw.MemoryImage(images.logo!), fit: pw.BoxFit.contain)),
+      pw.SizedBox(width: 12),
+    ],
+    pw.Expanded(
+      child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Text('${ecole['nom_officiel'] ?? ecole['nom']}', style: pw.TextStyle(fontSize: titre, fontWeight: pw.FontWeight.bold)),
+        if (ecole['slogan'] != null) pw.Text('« ${ecole['slogan']} »', style: st),
+        if (adresse.isNotEmpty) pw.Text(adresse, style: st),
+        if (contacts.isNotEmpty) pw.Text(contacts, style: st),
+        if (admin.isNotEmpty) pw.Text(admin, style: st),
+      ]),
+    ),
+  ]);
+}
+
+/// Bloc de signature : signature et cachet scannés si l'école l'a choisi,
+/// sinon la place pour signer à la main.
+pw.Widget _signer(Map<String, Object?> ecole, ImagesEcole images, {double hauteur = 70}) {
+  final scannes = (ecole['signature_documents'] == 1 || ecole['signature_documents'] == true) &&
+      (images.signature != null || images.cachet != null);
+  if (!scannes) {
+    return pw.Column(children: [
+      pw.SizedBox(height: hauteur),
+      pw.Text('Signature et cachet', style: const pw.TextStyle(fontSize: 10)),
+    ]);
+  }
+  return pw.SizedBox(
+    height: hauteur + 14,
+    width: hauteur * 2.4,
+    child: pw.Stack(alignment: pw.Alignment.center, children: [
+      if (images.cachet != null)
+        pw.Positioned(left: 0, top: 0, child: pw.SizedBox(width: hauteur * 1.2, height: hauteur * 1.2, child: pw.Opacity(opacity: .85, child: pw.Image(pw.MemoryImage(images.cachet!), fit: pw.BoxFit.contain)))),
+      if (images.signature != null)
+        pw.Positioned(right: 0, bottom: 0, child: pw.SizedBox(width: hauteur * 1.5, height: hauteur, child: pw.Image(pw.MemoryImage(images.signature!), fit: pw.BoxFit.contain))),
+    ]),
+  );
+}
+
 String _gnf(int m) {
   final s = '$m';
   final b = StringBuffer();
@@ -50,10 +113,11 @@ Future<Uint8List> recuPdf({
   required List<LigneRecu> lignes,
   required String encaissePar,
   required bool duplicata,
+  ImagesEcole images = const ImagesEcole(),
 }) {
   final doc = pw.Document(title: 'Reçu ${recu['numero']}');
   final annule = recu['statut'] == 'annule';
-  final sousReserve = recu['mode'] == 'cheque' || recu['mode'] == 'virement';
+  final sousReserve = recu['confirmation'] == 'en_attente';
   final marque = [if (annule) 'ANNULÉ', if (duplicata) 'DUPLICATA'].join(' - ');
   final petit = pw.TextStyle(fontSize: 8);
   final gras = pw.TextStyle(fontWeight: pw.FontWeight.bold);
@@ -80,10 +144,7 @@ Future<Uint8List> recuPdf({
               ),
     ),
     build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      pw.Text('${ecole['nom_officiel'] ?? ecole['nom']}', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-      if (ecole['slogan'] != null) pw.Text('« ${ecole['slogan']} »', style: petit),
-      pw.Text([ecole['quartier'], ecole['ville']].where((x) => x != null).join(', '), style: petit),
-      if (ecole['telephone'] != null) pw.Text('Tél. ${ecole['telephone']}', style: petit),
+      _enTete(ecole, images, titre: 13, petit: 8),
       pw.Divider(),
       pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
         pw.Text('REÇU DE PAIEMENT', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
@@ -136,12 +197,12 @@ Future<Uint8List> recuPdf({
       pw.Text('Encaissé par : $encaissePar', style: petit),
       pw.Text('Saisi le ${_heure(recu['created_at'] as String?)}', style: petit),
       pw.Spacer(),
-      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [
-        pw.Column(children: [
-          pw.Text('Signature et cachet', style: petit),
-          pw.SizedBox(height: 36),
-        ]),
-      ]),
+      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children: [_signer(ecole, images, hauteur: 40)]),
+      if (ecole['mention_recu'] != null)
+        pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 6),
+          child: pw.Center(child: pw.Text('${ecole['mention_recu']}', style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic))),
+        ),
     ]),
   ));
   return doc.save();
@@ -215,6 +276,7 @@ Future<Uint8List> attestationPdf({
   required DateTime date,
   required int rang,
   Uint8List? photo,
+  ImagesEcole images = const ImagesEcole(),
 }) {
   final doc = pw.Document(title: 'Attestation ${eleve['matricule']}');
   final duplicata = rang > 1;
@@ -249,11 +311,7 @@ Future<Uint8List> attestationPdf({
               ),
     ),
     build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      pw.Text(nomEcole, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-      if (ecole['slogan'] != null) pw.Text('« ${ecole['slogan']} »', style: const pw.TextStyle(fontSize: 10)),
-      pw.Text([ecole['quartier'], ecole['ville']].where((x) => x != null).join(', '), style: const pw.TextStyle(fontSize: 10)),
-      if (ecole['telephone'] != null) pw.Text('Tél. ${ecole['telephone']}', style: const pw.TextStyle(fontSize: 10)),
-      if (ecole['email'] != null) pw.Text('${ecole['email']}', style: const pw.TextStyle(fontSize: 10)),
+      _enTete(ecole, images),
       pw.SizedBox(height: 36),
       pw.Center(child: pw.Text("ATTESTATION D'INSCRIPTION", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, letterSpacing: 1))),
       if (duplicata)
@@ -297,8 +355,8 @@ Future<Uint8List> attestationPdf({
           pw.Text('Fait à ${ville.isEmpty ? '[ville]' : ville}, le ${_dateLongue(date)}', style: corps),
           pw.SizedBox(height: 8),
           pw.Text('${ecole['responsable_titre'] ?? 'Le responsable'}', style: gras),
-          pw.SizedBox(height: 70),
-          pw.Text('Signature et cachet', style: const pw.TextStyle(fontSize: 10)),
+          _signer(ecole, images),
+          if (ecole['responsable_nom'] != null) pw.Text('${ecole['responsable_nom']}', style: corps),
         ]),
       ),
       pw.Spacer(),
@@ -311,7 +369,11 @@ Future<Uint8List> attestationPdf({
 }
 
 /// Décharge de remboursement : le parent signe qu'il a reçu l'argent.
-Future<Uint8List> dechargePdf({required Map<String, Object?> ecole, required Map<String, Object?> remboursement, required int rang}) {
+Future<Uint8List> dechargePdf(
+    {required Map<String, Object?> ecole,
+    required Map<String, Object?> remboursement,
+    required int rang,
+    ImagesEcole images = const ImagesEcole()}) {
   final r = remboursement;
   final doc = pw.Document(title: 'Décharge ${r['matricule']}');
   final montant = r['montant_gnf'] as int;
@@ -335,8 +397,7 @@ Future<Uint8List> dechargePdf({required Map<String, Object?> ecole, required Map
               ),
     ),
     build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      pw.Text('${ecole['nom_officiel'] ?? ecole['nom']}', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
-      pw.Text([ecole['quartier'], ecole['ville']].where((x) => x != null).join(', '), style: const pw.TextStyle(fontSize: 9)),
+      _enTete(ecole, images, titre: 13, petit: 8),
       pw.Divider(),
       pw.Center(child: pw.Text('DÉCHARGE DE REMBOURSEMENT', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold))),
       if (r['decharge'] != null) pw.Center(child: pw.Text('Décharge papier : ${r['decharge']}', style: const pw.TextStyle(fontSize: 9))),
@@ -372,6 +433,7 @@ Future<Uint8List> certificatPdf({
   required DateTime date,
   required int rang,
   Uint8List? photo,
+  ImagesEcole images = const ImagesEcole(),
 }) {
   final doc = pw.Document(title: 'Certificat ${eleve['matricule']}');
   final duplicata = rang > 1;
@@ -399,10 +461,7 @@ Future<Uint8List> certificatPdf({
               ),
     ),
     build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      pw.Text(nomEcole, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
-      if (ecole['slogan'] != null) pw.Text('« ${ecole['slogan']} »', style: const pw.TextStyle(fontSize: 10)),
-      pw.Text([ecole['quartier'], ecole['ville']].where((x) => x != null).join(', '), style: const pw.TextStyle(fontSize: 10)),
-      if (ecole['telephone'] != null) pw.Text('Tél. ${ecole['telephone']}', style: const pw.TextStyle(fontSize: 10)),
+      _enTete(ecole, images),
       pw.SizedBox(height: 36),
       pw.Center(child: pw.Text('CERTIFICAT DE SCOLARITÉ', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, letterSpacing: 1))),
       if (duplicata) pw.Center(child: pw.Padding(padding: const pw.EdgeInsets.only(top: 4), child: pw.Text('Duplicata n° ${rang - 1}', style: gras))),
@@ -457,8 +516,8 @@ Future<Uint8List> certificatPdf({
           pw.Text('Fait à ${ville.isEmpty ? '[ville]' : ville}, le ${_dateLongue(date)}', style: corps),
           pw.SizedBox(height: 8),
           pw.Text('${ecole['responsable_titre'] ?? 'Le responsable'}', style: gras),
-          pw.SizedBox(height: 70),
-          pw.Text('Signature et cachet', style: const pw.TextStyle(fontSize: 10)),
+          _signer(ecole, images),
+          if (ecole['responsable_nom'] != null) pw.Text('${ecole['responsable_nom']}', style: corps),
         ]),
       ),
       pw.Spacer(),

@@ -139,6 +139,7 @@ Future<void> _imprimerAttestation(BuildContext context, Map<String, Object?> e, 
     annee: '${ins['annee']}',
     date: DateTime.now(),
     rang: deja + 1,
+    images: await _imagesEcole(e['organisation_id']),
   );
   await Printing.layoutPdf(
       onLayout: (_) async => pdf, name: 'Attestation ${e['matricule']}${deja > 0 ? ' duplicata $deja' : ''}');
@@ -192,6 +193,7 @@ Future<void> _imprimerCertificat(BuildContext context, Map<String, Object?> e) a
     sortie: const {'transfert_sortant', 'exclu', 'diplome'}.contains(derniere['statut']) ? derniere['date_sortie'] as String? : null,
     date: DateTime.now(),
     rang: deja + 1,
+    images: await _imagesEcole(e['organisation_id']),
   );
   await Printing.layoutPdf(
       onLayout: (_) async => pdf, name: 'Certificat ${e['matricule']}${deja > 0 ? ' duplicata $deja' : ''}');

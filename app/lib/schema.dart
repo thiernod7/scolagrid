@@ -26,6 +26,16 @@ const schema = Schema([
     Column.integer('delai_grace_jours'),
     Column.text('arrivee_par_defaut'),
     Column.text('modes_sous_reserve'),
+    Column.text('telephone2'),
+    Column.text('site_web'),
+    Column.text('commune'),
+    Column.text('responsable_telephone'),
+    Column.text('responsable_email'),
+    Column.text('numero_autorisation'),
+    Column.text('nif'),
+    Column.text('date_creation'),
+    Column.text('mention_recu'),
+    Column.integer('signature_documents'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -113,6 +123,16 @@ const schema = Schema([
     Column.text('updated_at'),
   ]),
   // Échéances d'un frais : tranches ou mois de la scolarité.
+  // Logo, signature et cachet de l'école (base64), pour les documents.
+  Table('images_ecole', [
+    Column.text('organisation_id'),
+    Column.text('sorte'),
+    Column.text('type_image'),
+    Column.text('image'),
+    Column.text('par'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ]),
   // Calendrier de paiement de l'année, commun à l'école (part en % de la scolarité).
   Table('tranches_annee', [
     Column.text('organisation_id'),

@@ -1409,6 +1409,7 @@ Future<void> _imprimerRecu(String encaissementId) async {
     lignes: await _lignesRecu(encaissementId),
     encaissePar: '${par?['nom_complet'] ?? ''}',
     duplicata: duplicata,
+    images: await _imagesEcole(r['organisation_id']),
   );
   await _modifier('encaissements', encaissementId, {'impressions': (r['impressions'] as int? ?? 0) + 1});
   await Printing.layoutPdf(onLayout: (_) async => pdf, name: '${r['numero']}${duplicata ? '-duplicata' : ''}');

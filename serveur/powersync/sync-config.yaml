@@ -34,6 +34,7 @@ streams:
       - SELECT * FROM regles_reduction WHERE organisation_id IN mes_orgs
       - SELECT * FROM tranches_annee WHERE organisation_id IN mes_orgs
       - SELECT * FROM historique_frais WHERE organisation_id IN mes_orgs
+      - SELECT * FROM images_ecole WHERE organisation_id IN mes_orgs AND sorte = 'logo'
 
   # Sa propre fiche du personnel, ses fonctions et ses droits particuliers :
   # l'app en déduit ce que la personne peut faire.
@@ -113,6 +114,8 @@ streams:
       - SELECT * FROM clotures_caisse WHERE organisation_id IN orgs_familles
       - SELECT * FROM remboursements WHERE organisation_id IN orgs_familles
       - SELECT * FROM echeances_eleves WHERE organisation_id IN orgs_familles
+      - SELECT * FROM images_ecole WHERE organisation_id IN orgs_familles AND sorte = 'signature'
+      - SELECT * FROM images_ecole WHERE organisation_id IN orgs_familles AND sorte = 'cachet'
 
   # Table de test « Bonjour » (première version de l'app).
   hellos:

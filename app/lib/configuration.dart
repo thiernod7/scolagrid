@@ -266,7 +266,7 @@ class _Reglage {
 }
 
 final _reglages = <_Reglage>[
-  _Reglage('ecole', "L'école", 'Sigle, codes des sites, responsable légal', Icons.apartment_outlined, 'Établissement',
+  _Reglage('ecole', "L'école", 'Logo, contacts, responsable, documents', Icons.apartment_outlined, 'Établissement',
       (e) => IdentiteEcoleScreen(espace: e)),
   _Reglage('annee', 'Année scolaire', "L'année en cours et ses dates", Icons.event_outlined, 'Scolarité',
       (e) => AnneesScreen(espace: e)),
