@@ -149,17 +149,45 @@ class _Page extends StatelessWidget {
   final String? libelleAjouter;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text(titre)),
-        floatingActionButton: ajouter == null
-            ? null
-            : FloatingActionButton.extended(
-                onPressed: ajouter, icon: const Icon(Icons.add), label: Text(libelleAjouter ?? 'Ajouter')),
-        body: Center(
-          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 960), child: corps),
+  Widget build(BuildContext context) {
+    final retour = Navigator.of(context).canPop();
+    return Scaffold(
+      body: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 960),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              // En-tête fin, comme la maquette : retour, titre, action principale.
+              Padding(
+                padding: EdgeInsets.fromLTRB(retour ? 4 : 16, 12, 16, 0),
+                child: Row(children: [
+                  if (retour)
+                    IconButton(
+                      tooltip: 'Retour',
+                      icon: const Icon(Icons.arrow_back, size: 18),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                  Expanded(
+                    child: Text(titre,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+                  ),
+                  if (ajouter != null)
+                    FilledButton.icon(
+                        onPressed: ajouter, icon: const Icon(Icons.add, size: 16), label: Text(libelleAjouter ?? 'Ajouter')),
+                ]),
+              ),
+              Expanded(child: corps),
+            ]),
+          ),
         ),
-      );
+      ),
+    );
+  }
 }
+
 
 Widget _vide(String message) => Center(
       child: Padding(padding: const EdgeInsets.all(32), child: Text(message, textAlign: TextAlign.center)),

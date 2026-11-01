@@ -164,7 +164,36 @@ ThemeData themeScolagrid(Brightness luminosite) {
       indicatorColor: schema.primaryContainer,
     ),
     dividerTheme: DividerThemeData(color: bordure, space: 1),
-    dialogTheme: DialogThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+    dialogTheme: DialogThemeData(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      backgroundColor: schema.surface,
+      titleTextStyle: TextStyle(fontFamily: policeTexte, fontSize: 17, fontWeight: FontWeight.w600, color: schema.onSurface),
+    ),
+    listTileTheme: ListTileThemeData(
+      titleTextStyle: TextStyle(fontFamily: policeTexte, fontSize: 14, fontWeight: FontWeight.w500, color: schema.onSurface),
+      subtitleTextStyle: TextStyle(fontFamily: policeTexte, fontSize: 13, color: schema.onSurfaceVariant, height: 1.35),
+      iconColor: schema.onSurfaceVariant,
+      minLeadingWidth: 24,
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(36, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        shape: RoundedRectangleBorder(borderRadius: arrondi),
+        foregroundColor: schema.onSurface,
+        textStyle: const TextStyle(fontFamily: policeTexte, fontWeight: FontWeight.w500, fontSize: 14),
+      ),
+    ),
+    popupMenuTheme: PopupMenuThemeData(
+      color: schema.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: bordure)),
+      textStyle: TextStyle(fontFamily: policeTexte, fontSize: 14, color: schema.onSurface),
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(color: sombre ? const Color(0xFFE5E5E5) : Couleurs.primaire, borderRadius: BorderRadius.circular(6)),
+      textStyle: TextStyle(fontFamily: policeTexte, fontSize: 12, color: sombre ? Couleurs.primaire : Colors.white),
+    ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
   );
 }
