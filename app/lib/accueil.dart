@@ -55,6 +55,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
   Map<String, Object?>? _cePoste;
   DateTime? _dernierSignal;
   bool _peutEncaisser = false;
+  Set<String> _droits = const {};
   bool _peutInscrire = false;
 
   _Rubrique _rubrique = _Rubrique.accueil;
@@ -102,12 +103,15 @@ class _AccueilScreenState extends State<AccueilScreen> {
   Future<void> _majDroits() async {
     final org = _organisation;
     if (org == null) return;
-    final encaisser = await jAiLeDroitQuelquePart(org['id'] as String, 'encaisser');
-    final inscrire = await jAiLeDroitQuelquePart(org['id'] as String, 'gerer_inscriptions');
+    final mes = <String>{
+      for (final d in droits.keys)
+        if (await jAiLeDroitQuelquePart(org['id'] as String, d)) d,
+    };
     if (mounted) {
       setState(() {
-        _peutEncaisser = encaisser;
-        _peutInscrire = inscrire;
+        _droits = mes;
+        _peutEncaisser = mes.contains('encaisser');
+        _peutInscrire = mes.contains('gerer_inscriptions');
       });
     }
   }
@@ -156,13 +160,15 @@ class _AccueilScreenState extends State<AccueilScreen> {
         ville: org['ville'] as String? ?? '',
         role: _rattachement?['role'] as String? ?? '',
         siteId: _rattachement?['site_id'] as String?,
+        droits: _droits,
       );
 
   List<_Entree> _entrees(Espace e) => [
         for (final x in _toutes)
           if (switch (x.rubrique) {
             _Rubrique.caisse => _peutEncaisser,
-            _Rubrique.personnel || _Rubrique.postes || _Rubrique.parametres => e.gestionnaire,
+            _Rubrique.personnel || _Rubrique.postes => e.gestionnaire,
+            _Rubrique.parametres => e.voitParametres,
             _ => true,
           })
             x,
@@ -744,7 +750,7 @@ class _TableauDeBord extends StatelessWidget {
           if (espace.fondateur && r['sigle'] == null)
             _AFaire(const Etat('Réglage', ton: Ton.attente), "Choisir le sigle de l'école (matricules et reçus)",
                 () => aller(_Rubrique.parametres)),
-          if ((r['annee'] as int? ?? 0) == 0 && espace.gestionnaire)
+          if ((r['annee'] as int? ?? 0) == 0 && espace.fondateur)
             _AFaire(const Etat('Réglage', ton: Ton.attente), "Créer l'année scolaire en cours", () => aller(_Rubrique.parametres)),
           if (attente > 0)
             _AFaire(Etat('$attente', ton: Ton.attente), "inscription(s) en attente des frais d'inscription",
@@ -763,7 +769,7 @@ class _TableauDeBord extends StatelessWidget {
         return TableauDeBord(
           espace: espace,
           organisation: organisation,
-          voitFinances: peutEncaisser || espace.gestionnaire,
+          voitFinances: espace.voitFinances,
           peutInscrire: peutInscrire,
           peutEncaisser: peutEncaisser,
           aFaire: aFaire,

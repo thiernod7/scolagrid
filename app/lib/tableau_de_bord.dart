@@ -378,13 +378,12 @@ class _TableauDeBordState extends State<TableauDeBord> {
 
     Widget deux(Widget a, Widget b) => LayoutBuilder(
           builder: (context, c) => c.maxWidth >= 1000
-              ? IntrinsicHeight(
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Expanded(flex: 2, child: a),
-                    const SizedBox(width: 12),
-                    Expanded(child: b),
-                  ]),
-                )
+              // Les deux cartes ont la même hauteur fixe : pas besoin de mesurer.
+              ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(flex: 2, child: a),
+                  const SizedBox(width: 12),
+                  Expanded(child: b),
+                ])
               : Column(children: [a, const SizedBox(height: 12), b]),
         );
 

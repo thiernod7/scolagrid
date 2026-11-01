@@ -11,6 +11,17 @@ import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Un écran qui plante affiche un message lisible plutôt qu'une page blanche.
+  ErrorWidget.builder = (details) => Material(
+        color: Colors.transparent,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text("Cet écran n'a pas pu s'afficher.\n${details.exceptionAsString()}",
+                textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, color: Color(0xFFD23F31))),
+          ),
+        ),
+      );
   await ouvrirBase();
   await _chargerModeTheme();
   if (cloudConfigured) {

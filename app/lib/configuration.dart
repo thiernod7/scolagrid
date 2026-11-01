@@ -46,16 +46,28 @@ part 'tableau_de_bord.dart';
 
 /// Qui configure, et sur quel périmètre.
 class Espace {
-  const Espace({required this.orgId, required this.ville, required this.role, this.siteId});
+  const Espace({required this.orgId, required this.ville, required this.role, this.siteId, this.droits = const {}});
 
   final String orgId;
   final String ville;
   final String role;
   final String? siteId; // vide = tous les sites
 
+  /// Droits de la personne connectée, sur au moins un site (fonctions et exceptions comprises).
+  final Set<String> droits;
+
   bool get fondateur => role == 'fondateur';
   bool get gestionnaire => fondateur || role == 'directeur';
   bool gereSite(String site) => fondateur || (role == 'directeur' && (siteId == null || siteId == site));
+
+  /// Matières et coefficients : le fondateur et ceux qui planifient les évaluations.
+  bool get gereMatieres => fondateur || droits.contains('planifier_evaluations');
+
+  /// Chiffres financiers de l'école (tableau de bord).
+  bool get voitFinances => fondateur || droits.contains('consulter_tableau_bord');
+
+  /// Le menu Paramètres : la direction, la direction des études, la comptabilité.
+  bool get voitParametres => gestionnaire || gereMatieres || voitFinances;
 }
 
 // Écriture locale -------------------------------------------------------------
@@ -285,7 +297,33 @@ class ConfigurationScreen extends StatefulWidget {
 }
 
 class _ConfigurationScreenState extends State<ConfigurationScreen> {
-  String _actif = _reglages.first.cle;
+  String? _choisi;
+
+  Espace get _e => widget.espace;
+
+  /// Qui voit quelle rubrique : la direction voit tout ; la direction des
+  /// études voit la scolarité ; la comptabilité voit l'argent.
+  bool _voit(String cle) => switch (cle) {
+        'ecole' => _e.gestionnaire,
+        'annee' || 'niveaux' || 'matieres' || 'classes' => _e.gestionnaire || _e.gereMatieres,
+        'frais' || 'reductions' || 'remboursements' => _e.gestionnaire || _e.voitFinances,
+        _ => false,
+      };
+
+  /// Qui peut modifier (le serveur applique les mêmes règles).
+  bool _modifie(String cle) => switch (cle) {
+        'ecole' || 'classes' || 'frais' => _e.gestionnaire,
+        'matieres' => _e.gereMatieres,
+        'annee' || 'niveaux' || 'reductions' || 'remboursements' => _e.fondateur,
+        _ => false,
+      };
+
+  List<_Reglage> get _visibles => _reglages.where((r) => _voit(r.cle)).toList();
+
+  String get _actif {
+    final v = _visibles;
+    return v.any((r) => r.cle == _choisi) ? _choisi! : (v.isEmpty ? _reglages.first.cle : v.first.cle);
+  }
 
   /// Où en est chaque rubrique : faite ou non, et un résumé.
   Map<String, (bool, String)> _etat(Map<String, Object?> r) {
@@ -336,7 +374,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   /// Rubriques par groupe, dans l'ordre.
   Map<String, List<_Reglage>> get _groupes {
     final g = <String, List<_Reglage>>{};
-    for (final r in _reglages) {
+    for (final r in _visibles) {
       g.putIfAbsent(r.groupe, () => []).add(r);
     }
     return g;
@@ -355,7 +393,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
           borderRadius: BorderRadius.circular(8),
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: () => setState(() => _actif = x.cle),
+            onTap: () => setState(() => _choisi = x.cle),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(children: [
@@ -368,7 +406,12 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                           fontWeight: choisie ? FontWeight.w600 : FontWeight.w400,
                           color: choisie ? schema.onSecondaryContainer : schema.onSurfaceVariant)),
                 ),
-                if (etat[x.cle]?.$1 == false)
+                if (!_modifie(x.cle))
+                  Tooltip(
+                    message: 'Lecture seule',
+                    child: Icon(Icons.lock_outline, size: 14, color: schema.onSurfaceVariant.withValues(alpha: .7)),
+                  )
+                else if (etat[x.cle]?.$1 == false)
                   Tooltip(
                     message: 'À compléter',
                     child: Container(
@@ -444,7 +487,10 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                 title: Text(x.titre),
                 subtitle: Text(etat[x.cle]?.$2 ?? x.aide),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (etat[x.cle]?.$1 == false) const Etat('À faire', ton: Ton.attente),
+                  if (!_modifie(x.cle))
+                    const Etat('Lecture seule', icone: Icons.lock_outline)
+                  else if (etat[x.cle]?.$1 == false)
+                    const Etat('À faire', ton: Ton.attente),
                   const Icon(Icons.chevron_right),
                 ]),
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => x.ecran(widget.espace))),
@@ -684,7 +730,7 @@ class _MatieresScreenState extends State<MatieresScreen> {
     final e = widget.espace;
     return _Page(
       titre: 'Matières et coefficients',
-      ajouter: e.fondateur && _niveau != null ? () => _editer() : null,
+      ajouter: e.gereMatieres && _niveau != null ? () => _editer() : null,
       libelleAjouter: 'Matière',
       corps: Requete('SELECT id, nom FROM niveaux WHERE organisation_id = ? ORDER BY ordre, nom',
           parametres: [e.orgId], builder: (context, niveaux) {
@@ -717,7 +763,7 @@ class _MatieresScreenState extends State<MatieresScreen> {
                       title: Text('${m['nom']}'),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                         Text('coef. ${'${m['coefficient']}'.replaceAll('.0', '')}'),
-                        if (e.fondateur)
+                        if (e.gereMatieres)
                           IconButton(
                             tooltip: 'Supprimer',
                             icon: const Icon(Icons.delete_outline),
@@ -728,7 +774,7 @@ class _MatieresScreenState extends State<MatieresScreen> {
                             },
                           ),
                       ]),
-                      onTap: e.fondateur ? () => _editer(matiere: m) : null,
+                      onTap: e.gereMatieres ? () => _editer(matiere: m) : null,
                     ),
                   ),
               ]);
