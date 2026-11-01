@@ -578,29 +578,160 @@ class _FicheEleveState extends State<FicheEleve> {
 
   Widget _entete(BuildContext context, Map<String, Object?> e) {
     final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final telephone = MediaQuery.sizeOf(context).width < 640;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(telephone ? 12 : 16),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         InkWell(
           customBorder: const CircleBorder(),
           onTap: _peutModifier ? () => _choisirPhotoEleve(context, e) : null,
-          child: PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: 72),
+          child: PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: telephone ? 52 : 72),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Text(_nomEleve(e), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              Text(_nomEleve(e), style: TextStyle(fontSize: telephone ? 16 : 18, fontWeight: FontWeight.w600)),
               AlerteSante(eleve: e),
               if (e['statut'] != null) etatInscription(e['statut'] as String) else const Etat('Pas inscrit cette année'),
               if (e['redoublant'] == 1) const Etat('Redoublant', ton: Ton.attente, icone: Icons.replay),
             ]),
             const SizedBox(height: 4),
             Wrap(spacing: 12, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              Text('${e['matricule']}', style: styleMono.copyWith(fontSize: 12, color: gris)),
-              if (e['classe'] != null) Text('${e['classe']}', style: TextStyle(fontSize: 14, color: gris)),
-              if (e['site'] != null) Text('${e['site']}', style: TextStyle(fontSize: 14, color: gris)),
+              Text('${e['matricule']}', style: styleMono.copyWith(fontSize: telephone ? 11 : 12, color: gris)),
+              if (e['classe'] != null) Text('${e['classe']}', style: TextStyle(fontSize: telephone ? 13 : 14, color: gris)),
+              if (e['site'] != null) Text('${e['site']}', style: TextStyle(fontSize: telephone ? 13 : 14, color: gris)),
+            ]),
+          ]),
+        ),
+        IconButton(
+          tooltip: 'Fermer',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close, size: 18),
+          onPressed: widget.onFermer,
+        ),
+      ]),
+    );
+  }
+
+  Widget _pied(BuildContext context, Map<String, Object?> e, Map<String, Object?>? ins) {
+    if (!_peutModifier) return const SizedBox.shrink();
+    final sorti = ins == null || const {'annule', 'exclu', 'transfert_sortant', 'diplome'}.contains(ins['statut']);
+    void reinscrire() => Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => InscrireScreen(espace: widget.espace, eleveId: widget.eleveId)));
+    // Les gestes de la fiche : (libellé, icône, action, en rouge ?).
+    final gestes = <(String, IconData, VoidCallback, bool)>[
+      // Inscriptions de la rentrée prochaine ouvertes, élève pas encore réinscrit.
+      if (ins != null && e['reinscription_ouverte'] != null && ins['statut'] != 'diplome')
+        ('Réinscrire pour ${e['reinscription_ouverte']}', Icons.how_to_reg_outlined, reinscrire, false),
+      if (ins == null)
+        ('Réinscrire', Icons.how_to_reg_outlined, reinscrire, false)
+      else if (ins['statut'] == 'suspendu')
+        ('Reprendre', Icons.undo, () => _reprendreEleve(context, ins), false)
+      else if (!sorti) ...[
+        ('Changer de classe', Icons.swap_horiz, () => _changerClasseEleve(context, ins), false),
+        ("Clore l'inscription", Icons.block, () => _clore(context, ins), true),
+      ],
+    ];
+    final schema = Theme.of(context).colorScheme;
+    final decoration = BoxDecoration(color: schema.surface, border: Border(top: BorderSide(color: Theme.of(context).dividerColor)));
+
+    // Téléphone : une seule ligne — Encaisser, Modifier, et le reste dans « ⋯ ».
+    if (MediaQuery.sizeOf(context).width < 640) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: decoration,
+        child: Row(children: [
+          Expanded(
+            child: _voitCaisse && ins != null
+                ? FilledButton.icon(
+                    onPressed: () => Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => EncaisserScreen(espace: widget.espace, eleveId: widget.eleveId))),
+                    icon: const Icon(Icons.account_balance_wallet_outlined, size: 16),
+                    label: const Text('Encaisser'),
+                  )
+                : FilledButton.icon(
+                    onPressed: () => _modifierIdentiteEleve(context, e),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Modifier'),
+                  ),
+          ),
+          if (_voitCaisse && ins != null) ...[
+            const SizedBox(width: 6),
+            IconButton.outlined(
+              tooltip: 'Modifier',
+              onPressed: () => _modifierIdentiteEleve(context, e),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+            ),
+          ],
+          if (gestes.isNotEmpty)
+            PopupMenuButton<int>(
+              tooltip: 'Autres actions',
+              icon: const Icon(Icons.more_horiz),
+              onSelected: (i) => gestes[i].$3(),
+              itemBuilder: (_) => [
+                for (var i = 0; i < gestes.length; i++)
+                  PopupMenuItem(
+                    value: i,
+                    child: Row(children: [
+                      Icon(gestes[i].$2, size: 18, color: gestes[i].$4 ? Couleurs.retard : null),
+                      const SizedBox(width: 10),
+                      Text(gestes[i].$1, style: TextStyle(color: gestes[i].$4 ? Couleurs.retard : null)),
+                    ]),
+                  ),
+              ],
+            ),
+        ]),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: decoration,
+      child: Wrap(spacing: 8, runSpacing: 8, children: [
+        FilledButton.icon(
+          onPressed: () => _modifierIdentiteEleve(context, e),
+          icon: const Icon(Icons.edit_outlined, size: 15),
+          label: const Text('Modifier'),
+        ),
+        for (final g in gestes)
+          OutlinedButton.icon(
+            style: g.$4 ? OutlinedButton.styleFrom(foregroundColor: Couleurs.retard) : null,
+            onPressed: g.$3,
+            icon: Icon(g.$2, size: 15),
+            label: Text(g.$1),
+          ),
+      ]),
+    );
+  }
+
+  Widget _entete(BuildContext context, Map<String, Object?> e) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final telephone = MediaQuery.sizeOf(context).width < 640;
+    return Container(
+      padding: EdgeInsets.all(telephone ? 12 : 16),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          customBorder: const CircleBorder(),
+          onTap: _peutModifier ? () => _choisirPhotoEleve(context, e) : null,
+          child: PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: telephone ? 52 : 72),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text(_nomEleve(e), style: TextStyle(fontSize: telephone ? 16 : 18, fontWeight: FontWeight.w600)),
+              AlerteSante(eleve: e),
+              if (e['statut'] != null) etatInscription(e['statut'] as String) else const Etat('Pas inscrit cette année'),
+              if (e['redoublant'] == 1) const Etat('Redoublant', ton: Ton.attente, icone: Icons.replay),
+            ]),
+            const SizedBox(height: 4),
+            Wrap(spacing: 12, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('${e['matricule']}', style: styleMono.copyWith(fontSize: telephone ? 11 : 12, color: gris)),
+              if (e['classe'] != null) Text('${e['classe']}', style: TextStyle(fontSize: telephone ? 13 : 14, color: gris)),
+              if (e['site'] != null) Text('${e['site']}', style: TextStyle(fontSize: telephone ? 13 : 14, color: gris)),
             ]),
           ]),
         ),
