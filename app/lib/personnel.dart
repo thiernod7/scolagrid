@@ -68,49 +68,134 @@ class PersonnelScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => _Page(
-        titre: 'Personnel',
-        ajouter: espace.gestionnaire ? () => _ajouter(context) : null,
-        libelleAjouter: 'Personne',
-        corps: Requete(
-            '''SELECT p.*, s.nom AS site,
-                 (SELECT group_concat(coalesce(a.libelle, a.fonction), ', ') FROM affectations a
-                  WHERE a.personnel_id = p.id AND a.actif = 1) AS fonctions
-               FROM personnel p LEFT JOIN sites s ON s.id = p.site_id
-               WHERE p.organisation_id = ?
-               ORDER BY p.statut = 'sorti', p.nom_complet''',
-            parametres: [espace.orgId], builder: (context, personnes) {
-          if (personnes.isEmpty) return _vide('Aucune fiche pour le moment.');
-          return ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 88), children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text('Tout le personnel a une fiche, même sans utiliser Scolagrid. '
-                  "Invitez ceux qui utiliseront l'app."),
-            ),
-            for (final p in personnes)
-              Card(
-                child: ListTile(
-                  leading: Icon(
-                    p['statut'] == 'sorti'
-                        ? Icons.person_off_outlined
-                        : p['user_id'] != null
-                            ? Icons.verified_user_outlined
-                            : Icons.person_outline,
-                  ),
-                  title: Text('${p['nom_complet']}'),
-                  subtitle: Text([
-                    (p['fonctions'] as String? ?? '').split(', ').map((f) => fonctions[f] ?? f).join(', '),
-                    p['site'] ?? 'Tout le groupe',
-                    if (p['statut'] == 'sorti') 'parti' else if (p['user_id'] != null) 'utilise l\'app',
-                  ].where((t) => '$t'.isNotEmpty).join(' · ')),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => FicheScreen(espace: espace, ficheId: p['id'] as String))),
+  Widget build(BuildContext context) => Scaffold(
+        body: Requete(
+          '''SELECT p.*, s.nom AS site,
+               (SELECT group_concat(coalesce(a.libelle, a.fonction), ', ') FROM affectations a
+                WHERE a.personnel_id = p.id AND a.actif = 1) AS fonctions
+             FROM personnel p LEFT JOIN sites s ON s.id = p.site_id
+             WHERE p.organisation_id = ?
+             ORDER BY p.statut = 'sorti', p.nom_complet''',
+          parametres: [espace.orgId],
+          builder: (context, personnes) => _ListePersonnel(espace: espace, personnes: personnes, ajouter: () => _ajouter(context)),
+        ),
+      );
+}
+
+class _ListePersonnel extends StatefulWidget {
+  const _ListePersonnel({required this.espace, required this.personnes, required this.ajouter});
+
+  final Espace espace;
+  final Lignes personnes;
+  final VoidCallback ajouter;
+
+  @override
+  State<_ListePersonnel> createState() => _ListePersonnelState();
+}
+
+class _ListePersonnelState extends State<_ListePersonnel> {
+  final _q = TextEditingController();
+  String? _fonction;
+
+  @override
+  Widget build(BuildContext context) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final largeur = MediaQuery.sizeOf(context).width;
+    final telephone = largeur < 640;
+    String libelles(Map<String, Object?> p) =>
+        (p['fonctions'] as String? ?? '').split(', ').where((f) => f.isNotEmpty).map((f) => fonctions[f] ?? f).join(', ');
+    final q = nomSimplifie(_q.text);
+    final liste = widget.personnes.where((p) {
+      if (_fonction != null && !'${p['fonctions'] ?? ''}'.split(', ').contains(_fonction)) return false;
+      return q.isEmpty || nomSimplifie('${p['nom_complet']} ${p['telephone'] ?? ''} ${libelles(p)}').contains(q);
+    }).toList();
+    final utilisent = widget.personnes.where((p) => p['user_id'] != null && p['statut'] != 'sorti').length;
+    final presentes = <String>{
+      for (final p in widget.personnes) ...'${p['fonctions'] ?? ''}'.split(', ').where((f) => f.isNotEmpty),
+    };
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1600),
+        child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
+          EnTetePage(
+            titre: 'Personnel',
+            sousTitre: '${widget.personnes.length} personne(s) · $utilisent utilise(nt) l\'app',
+            actions: [
+              if (widget.espace.gestionnaire)
+                FilledButton.icon(
+                    onPressed: widget.ajouter, icon: const Icon(Icons.person_add_alt, size: 16), label: const Text('Ajouter une personne')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            SizedBox(
+              width: telephone ? double.infinity : 340,
+              height: 36,
+              child: TextField(
+                controller: _q,
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(fontSize: 14),
+                decoration: InputDecoration(
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                  prefixIcon: Icon(Icons.search, size: 18, color: gris),
+                  prefixIconConstraints: const BoxConstraints(minWidth: 36),
+                  hintText: 'Nom, téléphone ou fonction',
+                  hintStyle: TextStyle(fontSize: 14, color: gris),
                 ),
               ),
-          ]);
-        }),
-      );
+            ),
+            MenuCompact<String>(
+              largeur: 200,
+              valeur: _fonction,
+              tous: 'Toutes les fonctions',
+              choix: {for (final f in presentes) f: fonctions[f] ?? f},
+              onChanged: (v) => setState(() => _fonction = v),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          Text("Tout le personnel a une fiche, même sans utiliser Scolagrid. Invitez ceux qui utiliseront l'app.",
+              style: TextStyle(fontSize: 12, color: gris)),
+          const SizedBox(height: 12),
+          Tableau(
+            vide: widget.personnes.isEmpty ? 'Aucune fiche pour le moment.' : 'Personne ne correspond.',
+            colonnes: [
+              ColonneTableau('', largeur: telephone ? 48 : 56),
+              const ColonneTableau('Nom', flex: 3),
+              if (!telephone) const ColonneTableau('Fonction', flex: 3),
+              if (largeur >= 1024) const ColonneTableau('Site', largeur: 160),
+              ColonneTableau('Accès', largeur: telephone ? 110 : 150),
+              const ColonneTableau('', largeur: 40),
+            ],
+            lignes: [
+              for (final p in liste)
+                [
+                  Initiales('${p['nom_complet']}', taille: telephone ? 32 : 36),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${p['nom_complet']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    if (telephone)
+                      Text(libelles(p), overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris))
+                    else if (p['telephone'] != null)
+                      Text('${p['telephone']}', style: TextStyle(fontSize: 12, color: gris)),
+                  ]),
+                  if (!telephone) Text(libelles(p), overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                  if (largeur >= 1024) Text('${p['site'] ?? 'Tout le groupe'}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                  p['statut'] == 'sorti'
+                      ? const Etat('Parti')
+                      : (p['user_id'] != null ? const Etat("Utilise l'app", ton: Ton.regle) : const Etat('Sans accès')),
+                  Icon(Icons.chevron_right, size: 16, color: gris),
+                ],
+            ],
+            onTap: (i) => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => FicheScreen(espace: widget.espace, ficheId: liste[i]['id'] as String))),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 // Fiche d'une personne --------------------------------------------------------

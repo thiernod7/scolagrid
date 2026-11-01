@@ -629,3 +629,101 @@ class Segments<T> extends StatelessWidget {
     );
   }
 }
+
+/// En-tête d'une page : titre, précision grise, boutons à droite.
+class EnTetePage extends StatelessWidget {
+  const EnTetePage({super.key, required this.titre, this.sousTitre, this.actions = const []});
+
+  final String titre;
+  final String? sousTitre;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 10,
+        children: [
+          Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 12, children: [
+            Text(titre, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+            if (sousTitre != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Text(sousTitre!, style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ),
+          ]),
+          if (actions.isNotEmpty) Wrap(spacing: 8, runSpacing: 8, children: actions),
+        ],
+      );
+}
+
+/// Une colonne de tableau : largeur fixe, ou part de la place restante.
+class ColonneTableau {
+  const ColonneTableau(this.titre, {this.largeur, this.flex = 1, this.droite = false});
+
+  final String titre;
+  final double? largeur;
+  final int flex;
+  final bool droite;
+}
+
+/// Tableau fin : en-tête de 36 px, lignes séparées d'un trait, survol gris.
+class Tableau extends StatelessWidget {
+  const Tableau({super.key, required this.colonnes, required this.lignes, this.onTap, this.vide = 'Aucune ligne.'});
+
+  final List<ColonneTableau> colonnes;
+  final List<List<Widget>> lignes;
+  final void Function(int index)? onTap;
+  final String vide;
+
+  @override
+  Widget build(BuildContext context) {
+    final schema = Theme.of(context).colorScheme;
+    Widget cellule(ColonneTableau c, Widget enfant) {
+      final contenu = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Align(alignment: c.droite ? Alignment.centerRight : Alignment.centerLeft, child: enfant),
+      );
+      return c.largeur == null ? Expanded(flex: c.flex, child: contenu) : SizedBox(width: c.largeur, child: contenu);
+    }
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: schema.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: schema.outlineVariant),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(
+          height: 36,
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
+          child: Row(children: [
+            for (final c in colonnes) cellule(c, Text(c.titre, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+          ]),
+        ),
+        if (lignes.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
+            child: Text(vide, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: schema.onSurfaceVariant)),
+          ),
+        for (var i = 0; i < lignes.length; i++)
+          InkWell(
+            onTap: onTap == null ? null : () => onTap!(i),
+            hoverColor: Couleurs.doux(context).withValues(alpha: .5),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 52),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: i == lignes.length - 1
+                  ? null
+                  : BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
+              child: Row(children: [
+                for (var j = 0; j < colonnes.length; j++) cellule(colonnes[j], j < lignes[i].length ? lignes[i][j] : const SizedBox()),
+              ]),
+            ),
+          ),
+      ]),
+    );
+  }
+}

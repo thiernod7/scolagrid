@@ -31,7 +31,7 @@ class _Entree {
 const _toutes = [
   _Entree(_Rubrique.accueil, 'Accueil', Icons.home_outlined, Icons.home, null),
   _Entree(_Rubrique.eleves, 'Élèves', Icons.school_outlined, Icons.school, 'ÉLÈVES'),
-  _Entree(_Rubrique.caisse, 'Caisse', Icons.point_of_sale_outlined, Icons.point_of_sale, 'ARGENT'),
+  _Entree(_Rubrique.caisse, 'Caisse', Icons.point_of_sale_outlined, Icons.point_of_sale, 'FINANCES'),
   _Entree(_Rubrique.personnel, 'Personnel', Icons.groups_outlined, Icons.groups, 'ÉCOLE'),
   _Entree(_Rubrique.postes, 'Postes', Icons.devices_other_outlined, Icons.devices_other, 'ÉCOLE'),
   _Entree(_Rubrique.parametres, 'Paramètres', Icons.settings_outlined, Icons.settings, 'ÉCOLE'),
@@ -451,10 +451,8 @@ class _Logo extends StatelessWidget {
         width: taille,
         height: taille,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(taille * 0.25)),
-        child: Text('S',
-            style: TextStyle(
-                color: Theme.of(context).colorScheme.onPrimary, fontWeight: FontWeight.w700, fontSize: taille * 0.45)),
+        decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(taille * 0.22)),
+        child: Icon(Icons.account_balance_outlined, size: taille * 0.5, color: Theme.of(context).colorScheme.onPrimary),
       );
 }
 
@@ -467,15 +465,19 @@ class PuceSynchro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget etat(IconData icone, Color couleur, String texte) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icone, size: 16, color: couleur),
+          const SizedBox(width: 6),
+          Text(texte, style: const TextStyle(fontSize: 14)),
+        ]);
     if (!statut.connected) {
       return Tooltip(
         message: 'Le poste travaille sans internet. Tout sera envoyé au retour de la connexion.',
-        child: Etat(enAttente > 0 ? 'Hors ligne · $enAttente en attente' : 'Hors ligne',
-            ton: Ton.attente, icone: Icons.cloud_off_outlined),
+        child: etat(Icons.cloud_off_outlined, Couleurs.attente, enAttente > 0 ? 'Hors ligne · $enAttente en attente' : 'Hors ligne'),
       );
     }
-    if (enAttente > 0) return Etat('Envoi en cours · $enAttente', ton: Ton.info, icone: Icons.cloud_upload_outlined);
-    return const Etat('À jour', ton: Ton.regle, icone: Icons.check);
+    if (enAttente > 0) return etat(Icons.cloud_upload_outlined, Couleurs.info, 'Envoi · $enAttente');
+    return Tooltip(message: 'Tout est envoyé au serveur', child: etat(Icons.cloud_done_outlined, Couleurs.regle, 'Connecté'));
   }
 }
 
@@ -500,79 +502,103 @@ class _Barre extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
     String? groupe;
     final elements = <Widget>[];
     for (final x in entrees) {
       if (x.groupe != null && x.groupe != groupe) {
         elements.add(Padding(
-          padding: const EdgeInsets.fromLTRB(12, 18, 12, 6),
-          child: Text(x.groupe!,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 0.8, color: schema.onSurfaceVariant)),
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 4),
+          child: Text(x.groupe!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: .6, color: gris)),
         ));
       }
       groupe = x.groupe;
       final actif = x.rubrique == rubrique;
       elements.add(Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
-        child: Material(
-          color: actif ? schema.primaryContainer : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(10),
-            onTap: () => aller(x.rubrique),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-              child: Row(children: [
-                Icon(actif ? x.iconeActive : x.icone, size: 21, color: actif ? schema.onPrimaryContainer : schema.onSurfaceVariant),
-                const SizedBox(width: 12),
-                Text(x.libelle,
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: actif ? FontWeight.w600 : FontWeight.w500,
-                        color: actif ? schema.onPrimaryContainer : schema.onSurface)),
-              ]),
+        child: Stack(children: [
+          Material(
+            color: actif ? Couleurs.doux(context) : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(6),
+              hoverColor: Couleurs.doux(context).withValues(alpha: .6),
+              onTap: () => aller(x.rubrique),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(children: [
+                  Icon(x.icone, size: 17, color: actif ? schema.onSurface : gris),
+                  const SizedBox(width: 12),
+                  Text(x.libelle,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: actif ? FontWeight.w500 : FontWeight.w400,
+                          color: actif ? schema.onSurface : schema.onSurface.withValues(alpha: .85))),
+                ]),
+              ),
             ),
           ),
-        ),
+          // Le trait à gauche de la rubrique ouverte.
+          if (actif)
+            Positioned(
+              left: -12,
+              top: 8,
+              bottom: 8,
+              child: Container(width: 2, decoration: BoxDecoration(color: schema.onSurface, borderRadius: BorderRadius.circular(2))),
+            ),
+        ]),
       ));
     }
     return Container(
-      width: 248,
+      width: 224,
       decoration: BoxDecoration(color: schema.surface, border: Border(right: BorderSide(color: schema.outlineVariant))),
-      padding: const EdgeInsets.fromLTRB(12, 18, 12, 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(6, 0, 6, 12),
+        Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
           child: Row(children: [
-            const _Logo(),
+            const _Logo(taille: 36),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${organisation['nom']}',
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                Text(siteNom ?? '${organisation['ville'] ?? ''}',
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: schema.onSurfaceVariant)),
-              ]),
+              child: Requete(
+                'SELECT libelle FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1',
+                parametres: [organisation['id']],
+                builder: (context, a) => Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${organisation['nom']}',
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    Text([if (a.isNotEmpty) a.first['libelle'], 'GNF'].join(' · '),
+                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                  ],
+                ),
+              ),
             ),
           ]),
         ),
-        Expanded(child: ListView(children: elements)),
+        Expanded(
+          child: ListView(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), clipBehavior: Clip.none, children: elements),
+        ),
         Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: schema.surfaceContainerLow, borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          decoration: BoxDecoration(border: Border(top: BorderSide(color: schema.outlineVariant))),
           child: Row(children: [
             Container(
-              width: 30,
-              height: 30,
+              width: 24,
+              height: 24,
               alignment: Alignment.center,
-              decoration: BoxDecoration(color: schema.onSurface, borderRadius: BorderRadius.circular(8)),
-              child: Text('${cePoste?['code'] ?? '–'}',
-                  style: TextStyle(color: schema.surface, fontWeight: FontWeight.w700, fontSize: 13)),
+              decoration: BoxDecoration(color: Couleurs.doux(context), borderRadius: BorderRadius.circular(6)),
+              child: Text('${cePoste?['code'] ?? '–'}', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: schema.onSurface)),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(cePoste == null ? 'Poste non activé' : 'Poste ${cePoste!['code']} · ${cePoste!['nom']}',
-                  maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+              child: Text(
+                  cePoste == null ? 'Poste non activé' : 'Poste ${cePoste!['code']} · ${cePoste!['nom']}${siteNom == null ? '' : ' · $siteNom'}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: gris)),
             ),
           ]),
         ),
@@ -602,30 +628,30 @@ class _EnTete extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
     return Container(
-      height: 68,
-      padding: const EdgeInsets.symmetric(horizontal: 28),
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(color: schema.surface, border: Border(bottom: BorderSide(color: schema.outlineVariant))),
       child: Row(children: [
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: SizedBox(
-            height: 36,
-            child: TextField(
-              controller: recherche,
-              textInputAction: TextInputAction.search,
-              onSubmitted: rechercher,
-              style: const TextStyle(fontSize: 14),
-              decoration: InputDecoration(
-                prefixIcon: Icon(Icons.search, size: 18, color: schema.onSurfaceVariant),
-                hintText: 'Élève, matricule, parent…',
-                hintStyle: TextStyle(fontSize: 14, color: schema.onSurfaceVariant),
-                contentPadding: EdgeInsets.zero,
-                fillColor: schema.surface,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: schema.outlineVariant)),
-              ),
+        SizedBox(
+          width: 288,
+          height: 36,
+          child: TextField(
+            controller: recherche,
+            textInputAction: TextInputAction.search,
+            onSubmitted: rechercher,
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              prefixIcon: Icon(Icons.search, size: 16, color: gris),
+              prefixIconConstraints: const BoxConstraints(minWidth: 34),
+              hintText: 'Élève, matricule, parent…',
+              hintStyle: TextStyle(fontSize: 14, color: gris),
+              contentPadding: EdgeInsets.zero,
+              fillColor: schema.surface,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+              enabledBorder:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: schema.outlineVariant)),
             ),
           ),
         ),
@@ -633,7 +659,7 @@ class _EnTete extends StatelessWidget {
         synchro,
         const SizedBox(width: 8),
         const BoutonTheme(),
-        const SizedBox(width: 10),
+        Container(width: 1, height: 24, margin: const EdgeInsets.symmetric(horizontal: 12), color: schema.outlineVariant),
         PopupMenuButton<String>(
           tooltip: 'Mon compte',
           onSelected: (v) {
@@ -641,13 +667,14 @@ class _EnTete extends StatelessWidget {
           },
           itemBuilder: (_) => const [PopupMenuItem(value: 'sortir', child: Text('Se déconnecter'))],
           child: Row(children: [
-            Initiales(nom.isEmpty ? '?' : nom, taille: 36),
+            Initiales(nom.isEmpty ? '?' : nom, taille: 32),
             const SizedBox(width: 10),
             Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(nom, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              Text(fonction, style: TextStyle(fontSize: 12, color: schema.onSurfaceVariant)),
+              Text(nom, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+              Text(fonction, style: TextStyle(fontSize: 12, color: gris)),
             ]),
-            const Icon(Icons.expand_more, size: 20),
+            const SizedBox(width: 6),
+            Icon(Icons.expand_more, size: 16, color: gris),
           ]),
         ),
       ]),

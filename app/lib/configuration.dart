@@ -141,13 +141,12 @@ class _RequeteState extends State<Requete> {
 // Éléments communs ------------------------------------------------------------
 
 class _Page extends StatelessWidget {
-  const _Page({required this.titre, required this.corps, this.ajouter, this.libelleAjouter, this.largeurMax = 960});
+  const _Page({required this.titre, required this.corps, this.ajouter, this.libelleAjouter});
 
   final String titre;
   final Widget corps;
   final VoidCallback? ajouter;
   final String? libelleAjouter;
-  final double largeurMax;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -157,7 +156,7 @@ class _Page extends StatelessWidget {
             : FloatingActionButton.extended(
                 onPressed: ajouter, icon: const Icon(Icons.add), label: Text(libelleAjouter ?? 'Ajouter')),
         body: Center(
-          child: ConstrainedBox(constraints: BoxConstraints(maxWidth: largeurMax), child: corps),
+          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 960), child: corps),
         ),
       );
 }

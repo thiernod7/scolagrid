@@ -231,8 +231,6 @@ class _ElevesScreenState extends State<ElevesScreen> {
       await FilePicker.saveFile(
         dialogTitle: 'Exporter la liste',
         fileName: '$nom.xlsx',
-        type: FileType.custom,
-        allowedExtensions: ['xlsx'],
         bytes: Uint8List.fromList(octets),
       );
       messager.showSnackBar(SnackBar(content: Text('${eleves.length} élève(s) exporté(s).')));

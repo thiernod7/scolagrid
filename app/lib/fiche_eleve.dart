@@ -348,7 +348,7 @@ Widget _rubrique(BuildContext context, String titre, {Widget? droite}) => Row(ch
                 letterSpacing: .6,
                 color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ),
-      if (droite != null) droite,
+      ?droite,
     ]);
 
 /// Un champ en lecture : libellé gris au-dessus, valeur dessous.

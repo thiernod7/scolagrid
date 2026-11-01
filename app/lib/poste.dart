@@ -301,10 +301,20 @@ class PostesScreen extends StatelessWidget {
   bool _gere(Map<String, Object?> p) =>
       p['site_id'] == null ? espace.fondateur : espace.gereSite(p['site_id'] as String);
 
+  Future<void> _basculer(BuildContext context, Map<String, Object?> p) async {
+    final bloquer = p['statut'] != 'bloque';
+    if (await _confirmer(
+        context,
+        bloquer
+            ? 'Bloquer le poste ${p['code']} (${p['nom']}) ? Il effacera ses données à sa prochaine connexion.'
+            : 'Débloquer le poste ${p['code']} ?')) {
+      await _modifier('postes', p['id'] as String, {'statut': bloquer ? 'bloque' : 'actif'});
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => _Page(
-        titre: "Postes de l'école",
-        corps: Requete(
+  Widget build(BuildContext context) => Scaffold(
+        body: Requete(
             '''SELECT p.*, s.nom AS site, pe.nom_complet AS par,
                  p.id = (SELECT poste_id FROM ce_poste) AS celui_ci
                FROM postes p
@@ -313,44 +323,67 @@ class PostesScreen extends StatelessWidget {
                WHERE p.organisation_id = ?
                ORDER BY p.numero''',
             parametres: [espace.orgId], builder: (context, postes) {
-          if (postes.isEmpty) return _vide('Aucun poste activé pour le moment.');
-          return ListView(padding: const EdgeInsets.all(16), children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text('Un poste perdu ou volé ? Bloquez-le : à sa prochaine connexion, '
-                  'il efface ses données. Sa lettre ne sera jamais réutilisée.'),
-            ),
-            for (final p in postes)
-              Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: p['statut'] == 'bloque' ? Theme.of(context).colorScheme.errorContainer : null,
-                    child: Text('${p['code']}'),
-                  ),
-                  title: Text('${p['nom']}${p['celui_ci'] == 1 ? ' (ce poste)' : ''}'),
-                  subtitle: Text([
-                    p['site'] ?? 'Tout le groupe',
-                    if (p['par'] != null) 'activé par ${p['par']}',
-                    p['statut'] == 'bloque' ? 'BLOQUÉ' : _depuis(p['derniere_synchro']),
-                  ].join(' · ')),
-                  trailing: _gere(p)
-                      ? TextButton(
-                          onPressed: () async {
-                            final bloquer = p['statut'] != 'bloque';
-                            if (await _confirmer(
-                                context,
-                                bloquer
-                                    ? 'Bloquer le poste ${p['code']} (${p['nom']}) ? Il effacera ses données à sa prochaine connexion.'
-                                    : 'Débloquer le poste ${p['code']} ?')) {
-                              await _modifier('postes', p['id'] as String, {'statut': bloquer ? 'bloque' : 'actif'});
-                            }
-                          },
-                          child: Text(p['statut'] == 'bloque' ? 'Débloquer' : 'Bloquer'),
-                        )
-                      : null,
+          final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+          final largeur = MediaQuery.sizeOf(context).width;
+          final telephone = largeur < 640;
+          final bloques = postes.where((p) => p['statut'] == 'bloque').length;
+          return Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1600),
+              child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
+                EnTetePage(
+                  titre: 'Postes',
+                  sousTitre: '${postes.length} poste(s)${bloques > 0 ? ' · $bloques bloqué(s)' : ''}',
                 ),
-              ),
-          ]);
+                const SizedBox(height: 8),
+                Text('Un poste perdu ou volé ? Bloquez-le : à sa prochaine connexion, il efface ses données. '
+                    'Sa lettre ne sera jamais réutilisée.', style: TextStyle(fontSize: 12, color: gris)),
+                const SizedBox(height: 12),
+                Tableau(
+                  vide: 'Aucun poste activé pour le moment.',
+                  colonnes: [
+                    const ColonneTableau('', largeur: 52),
+                    const ColonneTableau('Poste', flex: 3),
+                    if (!telephone) const ColonneTableau('Site', flex: 2),
+                    if (largeur >= 1024) const ColonneTableau('Activé par', flex: 2),
+                    if (!telephone) const ColonneTableau('Dernier contact', largeur: 170),
+                    const ColonneTableau('Statut', largeur: 104),
+                    const ColonneTableau('', largeur: 112, droite: true),
+                  ],
+                  lignes: [
+                    for (final p in postes)
+                      [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(color: Couleurs.doux(context), borderRadius: BorderRadius.circular(6)),
+                          child: Text('${p['code']}', style: styleMono.copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+                        ),
+                        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('${p['nom']}${p['celui_ci'] == 1 ? ' (ce poste)' : ''}',
+                              overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text([p['plateforme'], if (p['version_app'] != null) 'v${p['version_app']}'].whereType<String>().join(' · '),
+                              style: TextStyle(fontSize: 12, color: gris)),
+                        ]),
+                        if (!telephone) Text('${p['site'] ?? 'Tout le groupe'}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                        if (largeur >= 1024) Text('${p['par'] ?? '—'}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                        if (!telephone) Text(_depuis(p['derniere_synchro']), style: TextStyle(fontSize: 14, color: gris)),
+                        p['statut'] == 'bloque' ? const Etat('Bloqué', ton: Ton.retard) : const Etat('Actif', ton: Ton.regle),
+                        _gere(p)
+                            ? TextButton(
+                                style: TextButton.styleFrom(foregroundColor: p['statut'] == 'bloque' ? null : Couleurs.retard),
+                                onPressed: () => _basculer(context, p),
+                                child: Text(p['statut'] == 'bloque' ? 'Débloquer' : 'Bloquer'),
+                              )
+                            : const SizedBox(),
+                      ],
+                  ],
+                ),
+              ]),
+            ),
+          );
         }),
       );
 }
