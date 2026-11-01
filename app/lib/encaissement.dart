@@ -453,8 +453,8 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     });
   }
 
-  int get _total => _lignes.fold(0, (s, l) => s + l.total);
-  int get _totalTous => _recus.fold(0, (s, b) => s + b.lignes.fold(0, (x, l) => x + l.total));
+  int get _total => _lignes.fold<int>(0, (s, l) => s + l.total);
+  int get _totalTous => _recus.fold(0, (s, b) => s + b.lignes.fold<int>(0, (x, l) => x + l.total));
 
   void _secondMode() {
     final pris = _recus.map((b) => b.mode).toSet();
@@ -563,7 +563,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       infos[site] = Map.of(x);
     }
     if (!mounted) return;
-    final resume = recus.map((b) => '${gnf(b.lignes.fold(0, (s, l) => s + l.total))} (${modesPaiement[b.mode]})').join(' + ');
+    final resume = recus.map((b) => '${gnf(b.lignes.fold<int>(0, (s, l) => s + l.total))} (${modesPaiement[b.mode]})').join(' + ');
     if (!await _confirmer(context, 'Encaisser $resume de ${_payeur.text.trim()} ?')) return;
 
     setState(() => _envoi = true);
@@ -572,7 +572,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       final maintenant = _maintenant();
       await db.writeTransaction((tx) async {
         for (final b in recus) {
-          final total = b.lignes.fold(0, (s, l) => s + l.total);
+          final total = b.lignes.fold<int>(0, (s, l) => s + l.total);
           final site = b.lignes.firstWhere((l) => l.total > 0).inscription['site_id'] as String;
           final x = infos[site]!;
           final numero = numeroRecuSuivant(
@@ -1148,7 +1148,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                       Text('Reçu ${i + 1} · ${modesPaiement[_recus[i].mode]}',
                           style: TextStyle(fontSize: 14, fontWeight: i == _actif ? FontWeight.w500 : FontWeight.w400)),
                       const SizedBox(width: 8),
-                      Text(gnf(_recus[i].lignes.fold(0, (s, l) => s + l.total)), style: TextStyle(fontSize: 12, color: gris)),
+                      Text(gnf(_recus[i].lignes.fold<int>(0, (s, l) => s + l.total)), style: TextStyle(fontSize: 12, color: gris)),
                       if (i > 0)
                         InkWell(
                           borderRadius: BorderRadius.circular(4),
