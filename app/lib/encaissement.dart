@@ -295,6 +295,16 @@ class _Souscrire extends StatelessWidget {
 
 // Encaisser ---------------------------------------------------------------------
 
+/// Un reçu en préparation : un mode de paiement, sa référence, sa feuille et ses élèves.
+class _Brouillon {
+  _Brouillon(this.mode);
+
+  String mode;
+  final reference = TextEditingController();
+  final feuille = TextEditingController();
+  final lignes = <_LigneEleve>[];
+}
+
 class _LigneEleve {
   _LigneEleve(this.eleve, this.inscription, this.frais, {this.regleAnnuelle})
       : montants = {for (final f in frais) f.id: TextEditingController()},
@@ -327,12 +337,19 @@ class EncaisserScreen extends StatefulWidget {
 
 class _EncaisserScreenState extends State<EncaisserScreen> {
   final _payeur = TextEditingController();
-  final _reference = TextEditingController();
   final _carnet = TextEditingController();
-  final _feuille = TextEditingController();
-  String _mode = 'especes';
+  // Un reçu = un mode de paiement. « Second mode de paiement » ouvre un
+  // deuxième reçu pour la même famille (ex. une partie en espèces, le reste
+  // par Orange Money) : chacun a sa feuille, sa référence et ses montants.
+  final _recus = <_Brouillon>[_Brouillon('especes')];
+  int _actif = 0;
+  _Brouillon get _b => _recus[_actif];
+  String get _mode => _b.mode;
+  set _mode(String v) => _b.mode = v;
+  TextEditingController get _reference => _b.reference;
+  TextEditingController get _feuille => _b.feuille;
+  List<_LigneEleve> get _lignes => _b.lignes;
   DateTime _jourPaiement = DateTime.now();
-  final _lignes = <_LigneEleve>[];
   List<Map<String, Object?>> _freres = [];
   bool _envoi = false;
   final _cherche = TextEditingController();
@@ -437,88 +454,160 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
   }
 
   int get _total => _lignes.fold(0, (s, l) => s + l.total);
+  int get _totalTous => _recus.fold(0, (s, b) => s + b.lignes.fold(0, (x, l) => x + l.total));
+
+  void _secondMode() {
+    final pris = _recus.map((b) => b.mode).toSet();
+    final mode = modesPaiement.keys.firstWhere((m) => !pris.contains(m), orElse: () => 'orange_money');
+    final nouveau = _Brouillon(mode);
+    // Feuille suivante du carnet, et les mêmes élèves (montants à saisir).
+    String? derniere;
+    for (final b in _recus) {
+      if (b.feuille.text.trim().isNotEmpty) derniere = b.feuille.text.trim();
+    }
+    nouveau.feuille.text = derniere == null ? '' : (feuilleSuivante(derniere) ?? '');
+    for (final l in _b.lignes) {
+      nouveau.lignes.add(_LigneEleve(l.eleve, l.inscription, l.frais));
+    }
+    setState(() {
+      _recus.add(nouveau);
+      _actif = _recus.length - 1;
+    });
+  }
+
+  /// Ce que les autres reçus en préparation versent déjà sur ce frais.
+  int _prevuAilleurs(_LigneEleve l, String fraisId) {
+    var t = 0;
+    for (final b in _recus) {
+      if (identical(b, _b)) continue;
+      for (final x in b.lignes) {
+        if (x.inscription['id'] == l.inscription['id']) t += x.montant(fraisId);
+      }
+    }
+    return t;
+  }
+
+  /// Ce qui reste dû sur un frais, une fois déduit ce que prévoient les autres reçus.
+  int _dispo(_LigneEleve l, FraisDu f) => f.reste - _prevuAilleurs(l, f.id);
 
   Future<void> _valider() async {
     final messager = ScaffoldMessenger.of(context);
     void erreur(String m) => messager.showSnackBar(SnackBar(content: Text(m)));
     if (_nonClos.isNotEmpty) return erreur("Clôturez d'abord votre caisse du ${_dateLisible(_nonClos.first['jour'])}.");
-    if (_lignes.isEmpty) return erreur('Ajoutez au moins un élève.');
+    final recus = _recus.where((b) => b.lignes.any((l) => l.total > 0)).toList();
+    if (_recus.every((b) => b.lignes.isEmpty)) return erreur('Ajoutez au moins un élève.');
+    if (recus.isEmpty) return erreur('Aucun montant saisi.');
     if (_payeur.text.trim().length < 2) return erreur('Indiquez le nom de la personne qui paie.');
-    if (_mode != 'especes' && _reference.text.trim().isEmpty) {
-      return erreur('Saisissez la référence (n° de transaction, de chèque ou de virement).');
+    final numeroRecu = {for (var i = 0; i < _recus.length; i++) _recus[i]: i + 1};
+    String nom(_Brouillon b) => _recus.length > 1 ? 'Reçu ${numeroRecu[b]} (${modesPaiement[b.mode]}) : ' : '';
+    for (final b in recus) {
+      if (b.mode != 'especes' && b.reference.text.trim().isEmpty) {
+        return erreur('${nom(b)}saisissez la référence (n° de transaction, de chèque ou de virement).');
+      }
     }
-    for (final l in _lignes) {
-      for (final f in l.frais) {
-        if (l.montant(f.id) > f.reste) {
-          return erreur('${_nomEleve(l.eleve)} : ${f.libelle} dépasse le reste dû (${gnf(f.reste)}).');
-        }
-        if (l.annuel && f.type == 'scolarite' && l.montant(f.id) != f.reste) {
-          return erreur("${_nomEleve(l.eleve)} : la remise « année payée d'un coup » demande de payer toute la scolarité "
-              '(${gnf(f.reste)}).');
+    // Pour chaque élève et chaque frais : la somme des reçus ne dépasse pas le reste dû.
+    final prevu = <String, int>{};
+    final frais = <String, (FraisDu, _LigneEleve)>{};
+    for (final b in recus) {
+      for (final l in b.lignes) {
+        for (final f in l.frais) {
+          final k = '${l.inscription['id']}|${f.id}';
+          prevu[k] = (prevu[k] ?? 0) + l.montant(f.id);
+          frais[k] = (f, l);
         }
       }
     }
-    if (_total <= 0) return erreur('Aucun montant saisi.');
+    for (final e in prevu.entries) {
+      final (f, l) = frais[e.key]!;
+      if (e.value > f.reste) {
+        return erreur('${_nomEleve(l.eleve)} : ${f.libelle} dépasse le reste dû (${gnf(f.reste)}).');
+      }
+    }
+    for (final b in recus) {
+      for (final l in b.lignes.where((l) => l.annuel)) {
+        for (final f in l.frais.where((f) => f.type == 'scolarite')) {
+          if (prevu['${l.inscription['id']}|${f.id}'] != f.reste) {
+            return erreur("${_nomEleve(l.eleve)} : la remise « année payée d'un coup » demande de payer toute la scolarité "
+                '(${gnf(f.reste)}).');
+          }
+        }
+      }
+    }
     final o = widget.espace.orgId;
     final poste = await cePoste();
     if (poste == null) return erreur("Activez d'abord ce poste (accueil) : sa lettre entre dans le numéro du reçu.");
-    final site = _lignes.first.inscription['site_id'] as String;
-    final infos = await db.get(
-        '''SELECT o.code AS sigle, s.code AS code_site, a.libelle AS annee, a.id AS annee_id
-           FROM organisations o, sites s, annees_scolaires a
-           WHERE o.id = ? AND s.id = ? AND a.organisation_id = o.id AND a.en_cours = 1''',
-        [o, site]);
-    if (infos['sigle'] == null || infos['code_site'] == null) {
-      return erreur("Choisissez d'abord le sigle de l'école et le code du site (Paramètres).");
-    }
     final carnet = _carnet.text.trim().isEmpty ? null : _carnet.text.trim();
-    final feuille = _feuille.text.trim().isEmpty ? null : _feuille.text.trim();
-    if (feuille != null &&
-        await db.getOptional('SELECT 1 FROM encaissements WHERE carnet IS ? AND feuille = ?', [carnet, feuille]) != null) {
-      return erreur('La feuille $feuille de ce carnet a déjà été saisie.');
+    final feuilles = <String>{};
+    for (final b in recus) {
+      final feuille = b.feuille.text.trim();
+      if (feuille.isEmpty) continue;
+      if (!feuilles.add(feuille)) return erreur('Deux reçus portent la même feuille $feuille.');
+      if (await db.getOptional('SELECT 1 FROM encaissements WHERE carnet IS ? AND feuille = ?', [carnet, feuille]) != null) {
+        return erreur('La feuille $feuille de ce carnet a déjà été saisie.');
+      }
+    }
+    final infos = <String, Map<String, Object?>>{};
+    for (final b in recus) {
+      final site = b.lignes.firstWhere((l) => l.total > 0).inscription['site_id'] as String;
+      final x = await db.get(
+          '''SELECT o.code AS sigle, s.code AS code_site, a.libelle AS annee, a.id AS annee_id
+             FROM organisations o, sites s, annees_scolaires a
+             WHERE o.id = ? AND s.id = ? AND a.organisation_id = o.id AND a.en_cours = 1''',
+          [o, site]);
+      if (x['sigle'] == null || x['code_site'] == null) {
+        return erreur("Choisissez d'abord le sigle de l'école et le code du site (Paramètres).");
+      }
+      infos[site] = Map.of(x);
     }
     if (!mounted) return;
-    if (!await _confirmer(context, 'Encaisser ${gnf(_total)} (${modesPaiement[_mode]}) de ${_payeur.text.trim()} ?')) return;
+    final resume = recus.map((b) => '${gnf(b.lignes.fold(0, (s, l) => s + l.total))} (${modesPaiement[b.mode]})').join(' + ');
+    if (!await _confirmer(context, 'Encaisser $resume de ${_payeur.text.trim()} ?')) return;
 
     setState(() => _envoi = true);
-    late String id;
+    final ids = <String>[];
     try {
       final maintenant = _maintenant();
       await db.writeTransaction((tx) async {
-        final numero = numeroRecuSuivant(
-          sigle: infos['sigle'] as String,
-          codeSite: infos['code_site'] as String,
-          annee: infos['annee'] as String,
-          lettre: poste['code'] as String,
-          existants: (await tx.getAll('SELECT numero FROM encaissements WHERE poste_id = ?', [poste['poste_id']]))
-              .map((r) => r['numero'] as String),
-        );
-        id = (await tx.get('SELECT uuid() AS id'))['id'] as String;
-        await tx.execute(
-            '''INSERT INTO encaissements (id, organisation_id, site_id, annee_id, numero, carnet, feuille, payeur_nom, mode,
-                 reference, date_effective, total_gnf, confirmation, statut, impressions, poste_id, encaisse_par, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'valide', 0, ?, ?, ?, ?)''',
-            [
-              id, o, site, infos['annee_id'], numero, carnet, feuille, _payeur.text.trim(), _mode,
-              _reference.text.trim().isEmpty ? null : _reference.text.trim(), _date(_jourPaiement), _total,
-              _mode == 'cheque' || _mode == 'virement' ? 'en_attente' : 'confirme', poste['poste_id'], monId,
-              maintenant, maintenant,
-            ]);
-        for (final l in _lignes) {
-          if (l.annuel && l.regleAnnuelle != null) {
-            // La remise est attribuée avec le paiement, dans la même opération.
-            await tx.execute(
-                'INSERT INTO reductions_eleves (id, organisation_id, inscription_id, regle_id, actif, motif, accorde_par, created_at, updated_at) '
-                "VALUES (uuid(), ?, ?, ?, 1, 'Année payée en une fois', ?, ?, ?)",
-                [o, l.inscription['id'], l.regleAnnuelle!['id'], monId, maintenant, maintenant]);
-          }
-          for (final f in l.frais) {
-            final m = l.montant(f.id);
-            if (m <= 0) continue;
-            await tx.execute(
-                '''INSERT INTO lignes_encaissement (id, organisation_id, encaissement_id, inscription_id, eleve_id, frais_id,
-                     montant_gnf, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?)''',
-                [o, id, l.inscription['id'], l.eleve['id'], f.id, m, maintenant, maintenant]);
+        for (final b in recus) {
+          final total = b.lignes.fold(0, (s, l) => s + l.total);
+          final site = b.lignes.firstWhere((l) => l.total > 0).inscription['site_id'] as String;
+          final x = infos[site]!;
+          final numero = numeroRecuSuivant(
+            sigle: x['sigle'] as String,
+            codeSite: x['code_site'] as String,
+            annee: x['annee'] as String,
+            lettre: poste['code'] as String,
+            existants: (await tx.getAll('SELECT numero FROM encaissements WHERE poste_id = ?', [poste['poste_id']]))
+                .map((r) => r['numero'] as String),
+          );
+          final id = (await tx.get('SELECT uuid() AS id'))['id'] as String;
+          ids.add(id);
+          await tx.execute(
+              '''INSERT INTO encaissements (id, organisation_id, site_id, annee_id, numero, carnet, feuille, payeur_nom, mode,
+                   reference, date_effective, total_gnf, confirmation, statut, impressions, poste_id, encaisse_par, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'valide', 0, ?, ?, ?, ?)''',
+              [
+                id, o, site, x['annee_id'], numero, carnet, b.feuille.text.trim().isEmpty ? null : b.feuille.text.trim(),
+                _payeur.text.trim(), b.mode, b.reference.text.trim().isEmpty ? null : b.reference.text.trim(),
+                _date(_jourPaiement), total, b.mode == 'cheque' || b.mode == 'virement' ? 'en_attente' : 'confirme',
+                poste['poste_id'], monId, maintenant, maintenant,
+              ]);
+          for (final l in b.lignes) {
+            if (l.annuel && l.regleAnnuelle != null) {
+              // La remise est attribuée avec le paiement, dans la même opération.
+              await tx.execute(
+                  'INSERT INTO reductions_eleves (id, organisation_id, inscription_id, regle_id, actif, motif, accorde_par, created_at, updated_at) '
+                  "VALUES (uuid(), ?, ?, ?, 1, 'Année payée en une fois', ?, ?, ?)",
+                  [o, l.inscription['id'], l.regleAnnuelle!['id'], monId, maintenant, maintenant]);
+            }
+            for (final f in l.frais) {
+              final m = l.montant(f.id);
+              if (m <= 0) continue;
+              await tx.execute(
+                  '''INSERT INTO lignes_encaissement (id, organisation_id, encaissement_id, inscription_id, eleve_id, frais_id,
+                       montant_gnf, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  [o, id, l.inscription['id'], l.eleve['id'], f.id, m, maintenant, maintenant]);
+            }
           }
         }
       });
@@ -527,9 +616,13 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     }
     if (!mounted) return;
     final navigation = Navigator.of(context);
-    // Le reçu s'imprime tout de suite ; l'écran du reçu reste ouvert ensuite.
-    unawaited(_imprimerRecu(id));
-    navigation.pushReplacement(MaterialPageRoute(builder: (_) => RecuScreen(espace: widget.espace, encaissementId: id)));
+    // Les reçus s'impriment tout de suite, l'un après l'autre ; l'écran du premier reste ouvert.
+    unawaited(() async {
+      for (final id in ids) {
+        await _imprimerRecu(id);
+      }
+    }());
+    navigation.pushReplacement(MaterialPageRoute(builder: (_) => RecuScreen(espace: widget.espace, encaissementId: ids.first)));
   }
 
   @override
@@ -798,7 +891,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
 
     final aujourdhui = DateTime.now();
     Widget ligneEleve(_LigneEleve l) {
-      final reste = l.frais.fold(0, (s, f) => s + f.reste);
+      final reste = l.frais.fold(0, (s, f) => s + _dispo(l, f).clamp(0, f.reste));
       final freres = _freres.where((f) => f['payeur'] == l.eleve['payeur_id']).toList();
       return Container(
         padding: const EdgeInsets.all(12),
@@ -989,12 +1082,28 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
         for (final l in _lignes) ligneEleve(l),
         Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            const Spacer(),
-            Text('Total du reçu', style: TextStyle(fontSize: 14, color: gris)),
-            const SizedBox(width: 10),
-            Text(gnf(_total), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          ]),
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _recus.length >= modesPaiement.length ? null : _secondMode,
+                icon: const Icon(Icons.add, size: 16),
+                label: Text(_recus.length < 2 ? 'Second mode de paiement' : 'Autre mode de paiement'),
+              ),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                Row(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+                  Text('Total du reçu', style: TextStyle(fontSize: 14, color: gris)),
+                  const SizedBox(width: 10),
+                  Text(gnf(_total), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                ]),
+                if (_recus.length > 1)
+                  Text('Total versé (${_recus.length} reçus) : ${gnf(_totalTous)}', style: TextStyle(fontSize: 12, color: gris)),
+              ]),
+            ],
+          ),
         ),
       ]),
     );
@@ -1017,10 +1126,46 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       encaissePar: _moi ?? '',
     );
 
+    final onglets = _recus.length < 2
+        ? null
+        : Wrap(spacing: 8, runSpacing: 8, children: [
+            for (var i = 0; i < _recus.length; i++)
+              Material(
+                color: i == _actif ? schema.surface : Couleurs.doux(context),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  side: BorderSide(color: i == _actif ? schema.onSurface : schema.outlineVariant),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => setState(() => _actif = i),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(12, 6, i == 0 ? 12 : 4, 6),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text('Reçu ${i + 1} · ${modesPaiement[_recus[i].mode]}',
+                          style: TextStyle(fontSize: 14, fontWeight: i == _actif ? FontWeight.w500 : FontWeight.w400)),
+                      const SizedBox(width: 8),
+                      Text(gnf(_recus[i].lignes.fold(0, (s, l) => s + l.total)), style: TextStyle(fontSize: 12, color: gris)),
+                      if (i > 0)
+                        InkWell(
+                          borderRadius: BorderRadius.circular(4),
+                          onTap: () => setState(() {
+                            _recus.removeAt(i);
+                            _actif = 0;
+                          }),
+                          child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.close, size: 14, color: gris)),
+                        ),
+                    ]),
+                  ),
+                ),
+              ),
+          ]);
+
     final gauche = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (alerte != null) ...[alerte, const SizedBox(height: 12)],
       carteQui,
       const SizedBox(height: 12),
+      if (onglets != null) ...[onglets, const SizedBox(height: 12)],
       carteMode,
       const SizedBox(height: 12),
       carteLignes,
@@ -1070,16 +1215,18 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
 
   /// Répartit le montant saisi : inscription, puis scolarité tranche par tranche.
   void _repartir(_LigneEleve l) {
-    final m = int.tryParse(l.global.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-    final r = repartir(m, l.frais);
-    for (final f in l.frais) {
-      l.montants[f.id]!.text = r[f.id] == null ? '' : '${r[f.id]}';
+    var m = int.tryParse(l.global.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    final tries = [...l.frais]..sort((a, b) => ordreTypes.indexOf(a.type).compareTo(ordreTypes.indexOf(b.type)));
+    for (final f in tries) {
+      final part = m.clamp(0, _dispo(l, f).clamp(0, f.reste));
+      l.montants[f.id]!.text = part == 0 ? '' : '$part';
+      m -= part;
     }
   }
 
   /// Tout ce qui reste dû (sans les options, pour la remise annuelle).
   void _solder(_LigneEleve l, {bool sansOptions = false}) {
-    final reste = l.frais.where((f) => !sansOptions || f.type != 'optionnel').fold(0, (s, f) => s + f.reste);
+    final reste = l.frais.where((f) => !sansOptions || f.type != 'optionnel').fold(0, (s, f) => s + _dispo(l, f).clamp(0, f.reste));
     l.global.text = '$reste';
     _repartir(l);
   }
