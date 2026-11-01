@@ -488,7 +488,10 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
   }
 
   /// Ce qui reste dû sur un frais, une fois déduit ce que prévoient les autres reçus.
-  int _dispo(_LigneEleve l, FraisDu f) => f.reste - _prevuAilleurs(l, f.id);
+  int _dispo(_LigneEleve l, FraisDu f) {
+    final d = f.reste - _prevuAilleurs(l, f.id);
+    return d < 0 ? 0 : (d > f.reste ? f.reste : d);
+  }
 
   Future<void> _valider() async {
     final messager = ScaffoldMessenger.of(context);
@@ -639,7 +642,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       child: FilledButton.icon(
         onPressed: _envoi ? null : _valider,
         icon: const Icon(Icons.print_outlined, size: 16),
-        label: Text(_envoi ? 'Enregistrement…' : 'Enregistrer et imprimer'),
+        label: Text(_envoi ? 'Enregistrement…' : (_recus.length > 1 ? 'Enregistrer et imprimer les ${_recus.length} reçus' : 'Enregistrer et imprimer')),
       ),
     );
     BoxDecoration carte() => BoxDecoration(
@@ -891,7 +894,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
 
     final aujourdhui = DateTime.now();
     Widget ligneEleve(_LigneEleve l) {
-      final reste = l.frais.fold(0, (s, f) => s + _dispo(l, f).clamp(0, f.reste));
+      final reste = l.frais.fold(0, (s, f) => s + _dispo(l, f));
       final freres = _freres.where((f) => f['payeur'] == l.eleve['payeur_id']).toList();
       return Container(
         padding: const EdgeInsets.all(12),
@@ -1218,7 +1221,8 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     var m = int.tryParse(l.global.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
     final tries = [...l.frais]..sort((a, b) => ordreTypes.indexOf(a.type).compareTo(ordreTypes.indexOf(b.type)));
     for (final f in tries) {
-      final part = m.clamp(0, _dispo(l, f).clamp(0, f.reste));
+      final d = _dispo(l, f);
+      final part = m <= 0 ? 0 : (m < d ? m : d);
       l.montants[f.id]!.text = part == 0 ? '' : '$part';
       m -= part;
     }
@@ -1226,7 +1230,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
 
   /// Tout ce qui reste dû (sans les options, pour la remise annuelle).
   void _solder(_LigneEleve l, {bool sansOptions = false}) {
-    final reste = l.frais.where((f) => !sansOptions || f.type != 'optionnel').fold(0, (s, f) => s + _dispo(l, f).clamp(0, f.reste));
+    final reste = l.frais.where((f) => !sansOptions || f.type != 'optionnel').fold(0, (s, f) => s + _dispo(l, f));
     l.global.text = '$reste';
     _repartir(l);
   }
