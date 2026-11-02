@@ -14,12 +14,13 @@ def centre(corps, k):  # réduit un dessin autour du centre du carré
     return f'<g transform="translate(256 256) scale({k}) translate(-256 -256)">{corps}</g>'
 
 sources = {
+    # Icône de l'application en version claire (choisie) : fond blanc, dessin noir, drapeau vert.
     # Icône complète, carré plein (Android ancien format, masque web) : le système arrondit.
-    'carre-plein': svg(f'<rect width="512" height="512" fill="{N}"/>' + centre(g.ecole_icone(B), 0.92)),
+    'carre-plein': svg(f'<rect width="512" height="512" fill="{B}"/>' + centre(g.ecole_icone(N), 0.92)),
     # Icône aux coins arrondis (Windows, onglet du navigateur).
-    'carre-arrondi': svg(f'<rect width="512" height="512" rx="112" fill="{N}"/>' + g.ecole_icone(B)),
+    'carre-arrondi': svg(f'<rect width="512" height="512" rx="112" fill="{B}" stroke="#E5E5E5" stroke-width="6"/>' + g.ecole_icone(N)),
     # Avant-plan de l'icône adaptative Android : dessin seul, dans la zone sûre (66/108).
-    'avant-plan': svg(centre(g.ecole_icone(B), 0.70)),
+    'avant-plan': svg(centre(g.ecole_icone(N), 0.70)),
     # Dans l'app : icône du menu (thème clair / sombre) et logo de l'écran de bienvenue.
     'icone': svg(f'<rect width="512" height="512" rx="112" fill="{N}"/>' + g.ecole_icone(B)),
     'icone-sombre': svg(f'<rect width="512" height="512" rx="112" fill="{B}"/>' + g.ecole_icone(N)),
@@ -63,7 +64,7 @@ open(f'{res}/mipmap-anydpi-v26/ic_launcher.xml', 'w').write(
     '    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n</adaptive-icon>\n')
 os.makedirs(f'{res}/values', exist_ok=True)
 open(f'{res}/values/scolagrid_couleurs.xml', 'w').write(
-    '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="scolagrid_fond_icone">#0A0A0A</color>\n</resources>\n')
+    '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="scolagrid_fond_icone">#FFFFFF</color>\n</resources>\n')
 
 # Windows : un .ico à plusieurs tailles.
 from PIL import Image
