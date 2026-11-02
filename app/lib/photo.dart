@@ -81,12 +81,15 @@ final _cachePhotos = <String, (String, MemoryImage)>{};
 /// Photo de l'élève dans un rond, ou ses initiales s'il n'en a pas.
 /// [version] : date de mise à jour de la photo (null = pas de photo).
 class PhotoEleve extends StatefulWidget {
-  const PhotoEleve({super.key, required this.eleveId, required this.nom, this.version, this.taille = 40});
+  const PhotoEleve({super.key, required this.eleveId, required this.nom, this.version, this.taille = 40, this.carre = false});
 
   final String eleveId;
   final String nom;
   final String? version;
   final double taille;
+
+  /// Grande photo carrée (grille des élèves) au lieu d'un rond.
+  final bool carre;
 
   @override
   State<PhotoEleve> createState() => _PhotoEleveState();
@@ -130,9 +133,16 @@ class _PhotoEleveState extends State<PhotoEleve> {
   }
 
   @override
-  Widget build(BuildContext context) => _image == null
-      ? Initiales(widget.nom, taille: widget.taille)
-      : CircleAvatar(radius: widget.taille / 2, backgroundImage: _image);
+  Widget build(BuildContext context) {
+    if (widget.carre) {
+      return _image == null
+          ? Container(color: Couleurs.doux(context), alignment: Alignment.center, child: Initiales(widget.nom, taille: 64))
+          : Image(image: _image!, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
+    }
+    return _image == null
+        ? Initiales(widget.nom, taille: widget.taille)
+        : CircleAvatar(radius: widget.taille / 2, backgroundImage: _image);
+  }
 }
 
 /// Logo, signature et cachet de l'école, prêts pour les documents.

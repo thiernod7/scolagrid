@@ -128,9 +128,24 @@ class _ElevesScreenState extends State<ElevesScreen> {
   String? _ouvert;
   bool _peutInscrire = false;
 
+  /// Téléphone : élèves en liste, ou en grille de deux colonnes (grandes photos).
+  /// Le choix est gardé sur ce poste.
+  bool _grille = false;
+
+  Future<void> _basculerVue() async {
+    setState(() => _grille = !_grille);
+    await db.writeTransaction((tx) async {
+      await tx.execute("DELETE FROM preferences WHERE id = 'vue_eleves'");
+      await tx.execute("INSERT INTO preferences (id, valeur) VALUES ('vue_eleves', ?)", [_grille ? 'grille' : 'liste']);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
+    db.getOptional("SELECT valeur FROM preferences WHERE id = 'vue_eleves'").then((p) {
+      if (mounted && p?['valeur'] == 'grille') setState(() => _grille = true);
+    });
     _sitesOuJInscris(widget.espace.orgId).then((s) {
       if (mounted) setState(() => _peutInscrire = s.isNotEmpty);
     });
@@ -451,7 +466,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
     final nbFiltres = [_cycle, _classe, _statut].where((x) => x != null).length;
     final barreFiltres = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
       SizedBox(
-        width: telephone ? MediaQuery.sizeOf(context).width - 24 - 52 : (panneau ? 260 : 340),
+        width: telephone ? MediaQuery.sizeOf(context).width - 24 - 104 : (panneau ? 260 : 340),
         height: 36,
         child: TextField(
           controller: _recherche,
@@ -467,6 +482,17 @@ class _ElevesScreenState extends State<ElevesScreen> {
           ),
         ),
       ),
+      if (telephone)
+        SizedBox(
+          width: 44,
+          height: 36,
+          child: IconButton.outlined(
+            tooltip: _grille ? 'Afficher en liste' : 'Afficher en grille (grandes photos)',
+            padding: EdgeInsets.zero,
+            icon: Icon(_grille ? Icons.view_agenda_outlined : Icons.grid_view, size: 18),
+            onPressed: _basculerVue,
+          ),
+        ),
       if (telephone)
         SizedBox(
           width: 44,
@@ -561,6 +587,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
         quartier: !panneau && largeur >= 1536,
       ),
       telephone: telephone,
+      grille: _grille,
     );
 
     final liste = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -669,6 +696,7 @@ class _TableauEleves extends StatelessWidget {
     required this.onTrier,
     required this.colonnes,
     required this.telephone,
+    this.grille = false,
   });
 
   final Espace espace;
@@ -680,6 +708,7 @@ class _TableauEleves extends StatelessWidget {
   final ValueChanged<String> onTrier;
   final _Colonnes colonnes;
   final bool telephone;
+  final bool grille;
 
   Future<void> _action(BuildContext context, String action, Map<String, Object?> e) async {
     final id = e['id'] as String;
@@ -767,6 +796,55 @@ class _TableauEleves extends StatelessWidget {
             padding: const EdgeInsets.all(32),
             child: Text(vide, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
           ),
+        );
+      }
+      if (grille) {
+        // Deux élèves par ligne, grande photo carrée : pour reconnaître les visages.
+        return GridView.builder(
+          padding: const EdgeInsets.only(bottom: 88),
+          itemCount: eleves.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: .66,
+          ),
+          itemBuilder: (context, i) {
+            final e = eleves[i];
+            return Material(
+              color: schema.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: bordure)),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => onOuvrir(e['id'] as String),
+                onLongPress: () => _feuilleGestes(context, e),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  AspectRatio(
+                    aspectRatio: 1,
+                    child: Stack(fit: StackFit.expand, children: [
+                      PhotoEleve(eleveId: e['id'] as String, nom: _nomEleve(e), version: e['photo_maj'] as String?, carre: true),
+                      Positioned(top: 6, left: 6, child: _badgeStatut(e['statut'])),
+                      if (AlerteSante.concerne(e)) Positioned(top: 6, right: 6, child: AlerteSante(eleve: e)),
+                    ]),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(_nomEleve(e),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, height: 1.2)),
+                        const Spacer(),
+                        Text('${e['classe'] ?? 'Pas inscrit'}',
+                            maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                      ]),
+                    ),
+                  ),
+                ]),
+              ),
+            );
+          },
         );
       }
       return ListView.separated(
