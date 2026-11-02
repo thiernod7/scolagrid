@@ -7,6 +7,7 @@ const sorties = [
   ['scolagrid-logo-fond-sombre.svg', 1600, 'transparent'],
   ['scolagrid-cachet.svg', 1200, 'transparent'],
   ['scolagrid-cachet-encre.svg', 1200, 'transparent'],
+  ['scolagrid-cachet-plein.svg', 1200, 'transparent'],
 ];
 (async () => {
   const b = await chromium.launch();

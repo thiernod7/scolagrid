@@ -138,3 +138,25 @@ def cachet(coul, encre=False):
 ecrire('scolagrid-cachet.svg', cachet(BLEU))
 ecrire('scolagrid-cachet-encre.svg', cachet(BLEU, encre=True))
 print('ok')
+
+# 5. Cachet « plein », dans le style des cachets d'école guinéens : disque foncé,
+# inscription sur presque tout le tour, le nom en bas, deux étoiles, texte au centre.
+MARINE = '#22264A'
+def cachet_plein():
+    c = 300
+    blanc = '#FFFFFF'
+    corps = [f'<circle cx="{c}" cy="{c}" r="292" fill="{MARINE}"/>',
+             f'<g fill="none" stroke="{blanc}">',
+             f'<circle cx="{c}" cy="{c}" r="274" stroke-width="3"/>',
+             f'<circle cx="{c}" cy="{c}" r="190" stroke-width="3"/>',
+             '</g>',
+             f'<path d="{GRAS.arc("LOGICIEL DE GESTION SCOLAIRE · GUINÉE", 31, c, c, 222, 0, 2)}" fill="{blanc}"/>',
+             f'<path d="{GRAS.arc("SCOLAGRID", 40, c, c, 254, 180, 7, bas=True)}" fill="{blanc}"/>',
+             etoile(c + 232 * math.sin(math.radians(122)), c - 232 * math.cos(math.radians(122)), 12, blanc),
+             etoile(c + 232 * math.sin(math.radians(238)), c - 232 * math.cos(math.radians(238)), 12, blanc),
+             grille(c - 52, c - 112, 104, blanc, 'rgba(255,255,255,0.18)', VERT)]
+    for i, (ligne, taille) in enumerate([('LA', 30), ('DIRECTION', 34)]):
+        y = c + 40 + i * 40
+        corps.append(f'<path d="{GRAS.texte(ligne, taille, c - GRAS.largeur(ligne, taille, 1)/2, y, 1)}" fill="{blanc}"/>')
+    return svg(600, 600, '\n'.join(corps), 'Cachet ScolaGrid')
+ecrire('scolagrid-cachet-plein.svg', cachet_plein())
