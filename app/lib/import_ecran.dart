@@ -46,7 +46,9 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
         lignes = lireCsv(octets);
       } else {
         final classeur = xl.Excel.decodeBytes(octets);
-        final feuille = classeur.tables[classeur.tables.keys.first]!;
+        // Notre modèle range les élèves dans l'onglet « Élèves » ; sinon, le premier onglet.
+        final onglets = classeur.tables.keys;
+        final feuille = classeur.tables[onglets.firstWhere((k) => nomSimplifie(k) == 'ELEVES', orElse: () => onglets.first)]!;
         lignes = [for (final r in feuille.rows) [for (final c in r) _texteCellule(c)]];
       }
       final o = widget.espace.orgId;
@@ -77,8 +79,9 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
     }
   }
 
-  /// Le modèle à remplir, en CSV : s'ouvre dans Excel, LibreOffice ou Google Sheets.
-  /// Une ligne par classe de l'école (ou du modèle guinéen s'il n'y en a pas encore).
+  /// Le modèle à remplir, en Excel : listes déroulantes (classe, sexe, type, lien),
+  /// onglets « Aide » et « Classes ». Une ligne par classe de l'école (ou du modèle
+  /// guinéen s'il n'y en a pas encore).
   Future<void> _telechargerModele() async {
     final messager = ScaffoldMessenger.of(context);
     final sites = await _sitesOuJInscris(widget.espace.orgId);
@@ -89,13 +92,11 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
              WHERE c.organisation_id = ? AND c.fermee = 0 ORDER BY n.ordre, c.nom''', [widget.espace.orgId]))
         if (sites.containsKey(c['site_id'])) '${c['nom']}',
     ];
-    final modeleCsv = modeleCsvPour(classes.isEmpty ? classesModeleGuineen : classes);
     try {
-      // BOM UTF-8 : Excel affiche alors correctement les accents.
       await FilePicker.saveFile(
         dialogTitle: 'Enregistrer le modèle',
-        fileName: 'modele-import-eleves.csv',
-        bytes: Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode(modeleCsv)]),
+        fileName: 'modele-import-eleves.xlsx',
+        bytes: modeleExcelPour(classes.isEmpty ? classesModeleGuineen : classes),
       );
     } catch (_) {
       messager.showSnackBar(const SnackBar(content: Text("Impossible d'enregistrer le fichier sur cet appareil.")));
@@ -229,11 +230,11 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
             "LIEN · MATRICULE D'ÉTAT · QUARTIER",
             style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        const Text('Seuls NOM, PRÉNOMS et CLASSE sont obligatoires. Le modèle contient déjà une ligne par classe de '
-            "l'école : écrivez les élèves à côté et copiez la ligne autant de fois que nécessaire (les lignes sans nom "
-            'sont ignorées). « 7e A » ou « 7eme a » sont reconnus comme « 7ème A ». TYPE : Nouvelle, Réinscription '
-            '(par défaut) ou Transfert. Les élèves qui partagent le téléphone du parent sont reliés en fratrie. Les '
-            'matricules sont attribués par ScolaGrid.'),
+        const Text('Seuls NOM, PRÉNOMS et CLASSE sont obligatoires. Le plus simple : téléchargez le modèle Excel. '
+            'La classe, le sexe, le type et le lien se choisissent dans une liste déroulante, et l\'onglet « Aide » '
+            'explique chaque colonne avec un exemple. Il y a déjà une ligne par classe de l\'école : écrivez les élèves '
+            'dessus et copiez la ligne autant de fois que nécessaire (les lignes sans nom sont ignorées). Les élèves '
+            'qui partagent le téléphone du parent sont reliés en fratrie. Les matricules sont attribués par ScolaGrid.'),
         const SizedBox(height: 16),
         Wrap(spacing: 8, runSpacing: 8, children: [
           FilledButton.icon(
@@ -244,7 +245,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
           OutlinedButton.icon(
             onPressed: _telechargerModele,
             icon: const Icon(Icons.download_outlined),
-            label: const Text('Télécharger le modèle CSV'),
+            label: const Text('Télécharger le modèle Excel'),
           ),
         ]),
         if (_travail) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),

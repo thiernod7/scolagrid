@@ -1,5 +1,6 @@
 import 'dart:convert' show utf8;
 
+import 'package:excel/excel.dart' as xl;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolagrid/cloud.dart';
 import 'package:scolagrid/caisse.dart';
@@ -8,6 +9,7 @@ import 'package:scolagrid/import_eleves.dart';
 import 'package:scolagrid/matricule.dart';
 import 'package:scolagrid/configuration.dart' show decalerDate, empreintePin, gnf, lettresSuivantes, libelleSuivant, nomDeClasse, pinValide;
 import 'package:scolagrid/fonctions.dart';
+import 'package:scolagrid/modele_excel.dart';
 import 'package:scolagrid/modele_guineen.dart';
 import 'package:flutter/material.dart' show Brightness;
 import 'package:scolagrid/schema.dart';
@@ -364,6 +366,23 @@ void main() {
       expect(r.last.etat, EtatLigne.rejetee);
       expect(r.last.remarques.single, contains('classes possibles : 7ème A, 7ème B'));
       expect(cleClasse('1ère année'), '1 ANNEE');
+    });
+
+    test('Modèle Excel : onglets Élèves, Aide, Classes ; lignes sans élève ignorées', () {
+      final classes = {'CP1 A': 'cp1', '7ème A': 'c7a', 'Terminale SM A': 'tsm'};
+      final classeur = xl.Excel.decodeBytes(modeleExcelPour(classes.keys.toList()));
+      expect(classeur.tables.keys, ['Élèves', 'Aide', 'Classes']);
+      final lignes = [
+        for (final r in classeur.tables['Élèves']!.rows) [for (final c in r) c?.value?.toString()],
+      ];
+      expect(lignes.first, titresImport);
+      expect(lireEntete(lignes.first).length, colonnesImport.length);
+      expect([for (final l in lignes.skip(1)) l[5]], classes.keys);
+      expect(analyserImport(lignes: lignes, classes: classes, existants: const []), isEmpty);
+      lignes[2] = ['DIALLO', 'Awa', 'F', '15/03/2014', null, '7ème A', 'Nouvelle', null, '620000000', 'Mère', null, null];
+      final r = analyserImport(lignes: lignes, classes: classes, existants: const []);
+      expect(r.single.classeId, 'c7a');
+      expect(r.single.etat, EtatLigne.valide);
     });
   });
 }

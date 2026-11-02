@@ -22,6 +22,7 @@ import 'fonctions.dart';
 import 'graphiques.dart';
 import 'import_eleves.dart';
 import 'matricule.dart';
+import 'modele_excel.dart';
 import 'modele_guineen.dart';
 import 'recu_pdf.dart';
 import 'theme.dart';

@@ -1,13 +1,14 @@
 name: scolagrid
 description: Scolagrid, gestion scolaire hors ligne d'abord.
 publish_to: none
-version: 0.8.2+19
+version: 0.8.3+20
 
 environment:
   sdk: ^3.10.0
   flutter: ">=3.38.0"
 
 dependencies:
+  archive: ^3.6.1 # même version que celle du paquet excel
   crypto: ^3.0.6
   excel: ^4.0.6
   file_picker: ^13.3.0
