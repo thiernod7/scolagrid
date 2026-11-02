@@ -1,8 +1,85 @@
-/// Import d'élèves depuis un tableau (Excel) : lecture et contrôle, sans rien
-/// écrire. Rien n'est créé avant la confirmation de l'utilisateur.
+/// Import d'élèves depuis un tableau (Excel ou CSV) : lecture et contrôle, sans
+/// rien écrire. Rien n'est créé avant la confirmation de l'utilisateur.
 library;
 
+import 'dart:convert' show utf8;
+
 import 'matricule.dart';
+
+// Fichier CSV --------------------------------------------------------------------
+
+/// Caractères 0x80–0x9F de Windows-1252 (le « ANSI » d'Excel en français) ; le
+/// reste de la plage 0x00–0xFF est identique au Latin-1.
+const _cp1252 = [
+  0x20AC, 0x81, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x8D, 0x017D, 0x8F,
+  0x90, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x9D, 0x017E, 0x0178,
+];
+
+/// Texte d'un fichier CSV : UTF-8 (avec ou sans BOM), sinon Windows-1252.
+String texteCsv(List<int> octets) {
+  var o = octets;
+  if (o.length >= 3 && o[0] == 0xEF && o[1] == 0xBB && o[2] == 0xBF) o = o.sublist(3);
+  try {
+    return utf8.decode(o);
+  } on FormatException {
+    return String.fromCharCodes([for (final b in o) b >= 0x80 && b <= 0x9F ? _cp1252[b - 0x80] : b]);
+  }
+}
+
+/// Lignes d'un CSV : séparateur deviné (point-virgule, virgule ou tabulation,
+/// d'après la ligne d'en-tête), guillemets et retours à la ligne dans une cellule.
+List<List<String?>> lireCsv(List<int> octets) {
+  final t = texteCsv(octets);
+  final premiere = t.split(RegExp(r'\r?\n')).firstWhere((l) => l.trim().isNotEmpty, orElse: () => '');
+  int compte(String c) => premiere.split(c).length - 1;
+  final sep = [';', ',', '\t'].reduce((a, b) => compte(b) > compte(a) ? b : a);
+  final lignes = <List<String?>>[];
+  var ligne = <String?>[];
+  final cellule = StringBuffer();
+  var guillemets = false;
+  void finCellule() {
+    final v = cellule.toString().trim();
+    ligne.add(v.isEmpty ? null : v);
+    cellule.clear();
+  }
+
+  void finLigne() {
+    finCellule();
+    if (ligne.any((c) => c != null)) lignes.add(ligne);
+    ligne = <String?>[];
+  }
+
+  for (var i = 0; i < t.length; i++) {
+    final c = t[i];
+    if (guillemets) {
+      if (c == '"') {
+        if (i + 1 < t.length && t[i + 1] == '"') {
+          cellule.write('"');
+          i++;
+        } else {
+          guillemets = false;
+        }
+      } else {
+        cellule.write(c);
+      }
+    } else if (c == '"') {
+      guillemets = true;
+    } else if (c == sep) {
+      finCellule();
+    } else if (c == '\n') {
+      finLigne();
+    } else if (c != '\r') {
+      cellule.write(c);
+    }
+  }
+  if (cellule.isNotEmpty || ligne.isNotEmpty) finLigne();
+  return lignes;
+}
+
+/// Modèle à remplir, en CSV (séparateur point-virgule, comme Excel en français).
+const modeleCsv = 'NOM;PRÉNOMS;SEXE;DATE DE NAISSANCE;LIEU DE NAISSANCE;CLASSE;TYPE;PARENT;TÉLÉPHONE;LIEN;'
+    "MATRICULE D'ÉTAT;QUARTIER\r\n"
+    'DIALLO;Mamadou Aliou;M;15/03/2014;Conakry;7ème A;Réinscription;Diallo Ibrahima;620123456;Père;;Ratoma\r\n';
 
 /// Colonnes reconnues (l'en-tête du fichier peut varier un peu).
 const colonnesImport = {

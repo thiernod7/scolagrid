@@ -1,7 +1,7 @@
 part of 'configuration.dart';
 
 /// Reprise des élèves d'une école qui adopte Scolagrid, depuis un fichier
-/// Excel : dépôt, contrôle, puis validation. Rien n'est écrit avant.
+/// Excel ou CSV : dépôt, contrôle, puis validation. Rien n'est écrit avant.
 
 String? _texteCellule(xl.Data? d) {
   final v = d?.value;
@@ -33,16 +33,22 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
   Map<String, Map<String, Object?>> _classesParId = {};
 
   Future<void> _choisir() async {
-    final choix = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx']);
+    final choix = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx', 'csv']);
     if (choix.isEmpty) return;
     setState(() {
       _travail = true;
       _message = null;
     });
     try {
-      final classeur = xl.Excel.decodeBytes(await choix.single.readAsBytes());
-      final feuille = classeur.tables[classeur.tables.keys.first]!;
-      final lignes = [for (final r in feuille.rows) [for (final c in r) _texteCellule(c)]];
+      final octets = await choix.single.readAsBytes();
+      final List<List<String?>> lignes;
+      if (choix.single.name.toLowerCase().endsWith('.csv')) {
+        lignes = lireCsv(octets);
+      } else {
+        final classeur = xl.Excel.decodeBytes(octets);
+        final feuille = classeur.tables[classeur.tables.keys.first]!;
+        lignes = [for (final r in feuille.rows) [for (final c in r) _texteCellule(c)]];
+      }
       final o = widget.espace.orgId;
       final sites = await _sitesOuJInscris(o);
       final classes = (await db.getAll(
@@ -65,9 +71,24 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
         if (resultat.isEmpty) _message = 'Aucune ligne lue. La première ligne doit contenir les titres des colonnes.';
       });
     } catch (e) {
-      setState(() => _message = 'Fichier illisible. Enregistrez-le au format Excel (.xlsx) et réessayez.');
+      setState(() => _message = 'Fichier illisible. Enregistrez-le au format Excel (.xlsx) ou CSV et réessayez.');
     } finally {
       if (mounted) setState(() => _travail = false);
+    }
+  }
+
+  /// Le modèle à remplir, en CSV : s'ouvre dans Excel, LibreOffice ou Google Sheets.
+  Future<void> _telechargerModele() async {
+    final messager = ScaffoldMessenger.of(context);
+    try {
+      // BOM UTF-8 : Excel affiche alors correctement les accents.
+      await FilePicker.saveFile(
+        dialogTitle: 'Enregistrer le modèle',
+        fileName: 'modele-import-eleves.csv',
+        bytes: Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode(modeleCsv)]),
+      );
+    } catch (_) {
+      messager.showSnackBar(const SnackBar(content: Text("Impossible d'enregistrer le fichier sur cet appareil.")));
     }
   }
 
@@ -191,7 +212,8 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
     return _Page(
       titre: 'Importer des élèves',
       corps: ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('Reprenez vos élèves depuis un fichier Excel (.xlsx). La première ligne contient les titres des colonnes :'),
+        const Text('Reprenez vos élèves depuis un fichier Excel (.xlsx) ou CSV (séparé par des points-virgules ou des '
+            'virgules). La première ligne contient les titres des colonnes :'),
         const SizedBox(height: 8),
         const Text('NOM · PRÉNOMS · SEXE · DATE DE NAISSANCE · LIEU DE NAISSANCE · CLASSE · TYPE · PARENT · TÉLÉPHONE · '
             "LIEN · MATRICULE D'ÉTAT · QUARTIER",
@@ -201,11 +223,18 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
             "Scolagrid (ex. 7ème A). TYPE : Nouvelle, Réinscription (par défaut) ou Transfert. Les élèves qui partagent le "
             'téléphone du parent sont reliés en fratrie. Les matricules sont attribués par Scolagrid.'),
         const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: _travail ? null : _choisir,
-          icon: const Icon(Icons.upload_file),
-          label: Text(_fichier == null ? 'Choisir le fichier Excel' : 'Choisir un autre fichier'),
-        ),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.icon(
+            onPressed: _travail ? null : _choisir,
+            icon: const Icon(Icons.upload_file),
+            label: Text(_fichier == null ? 'Choisir le fichier (Excel ou CSV)' : 'Choisir un autre fichier'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _telechargerModele,
+            icon: const Icon(Icons.download_outlined),
+            label: const Text('Télécharger le modèle CSV'),
+          ),
+        ]),
         if (_travail) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
         if (_message != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(_message!)),
         if (l != null && l.isNotEmpty) ...[

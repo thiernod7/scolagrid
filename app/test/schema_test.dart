@@ -1,3 +1,5 @@
+import 'dart:convert' show utf8;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scolagrid/cloud.dart';
 import 'package:scolagrid/caisse.dart';
@@ -332,5 +334,33 @@ void main() {
     expect(t.first.part, closeTo(44.44, .01));
     final e = echeancesDuCalendrier(total: 900000, calendrier: t);
     expect(e.map((x) => x.montant), [400000, 300000, 200000]);
+  });
+  group('Import CSV', () {
+    test('Excel en français : points-virgules et accents en ANSI (Windows-1252)', () {
+      // En-tête PRÉNOMS (É = 0xC9) et « Aïssatou » (ï = 0xEF), en Windows-1252.
+      final octets = [
+        ...'NOM;PR'.codeUnits, 0xC9, ...'NOMS;SEXE;CLASSE\r\n'.codeUnits,
+        ...'DIALLO;A'.codeUnits, 0xEF, ...'ssatou;F;CE2 A\r\n'.codeUnits,
+      ];
+      final l = lireCsv(octets);
+      expect(l.first, ['NOM', 'PRÉNOMS', 'SEXE', 'CLASSE']);
+      expect(l[1], ['DIALLO', 'Aïssatou', 'F', 'CE2 A']);
+    });
+
+    test('UTF-8 avec BOM, virgules, guillemets et retour à la ligne dans une cellule', () {
+      const texte = 'NOM,PRÉNOMS,CLASSE,QUARTIER\n"BAH","Mamadou ""Bobo""",7ème A,"Kaloum,\nrue 5"\n\n';
+      final l = lireCsv([0xEF, 0xBB, 0xBF, ...utf8.encode(texte)]);
+      expect(l.length, 2);
+      expect(l[1], ['BAH', 'Mamadou "Bobo"', '7ème A', 'Kaloum,\nrue 5']);
+    });
+
+    test("Le modèle CSV est relu et reconnu par l'analyse", () {
+      final l = lireCsv(utf8.encode(modeleCsv));
+      final r = analyserImport(lignes: l, classes: {nomSimplifie('7ème A'): 'c1'}, existants: const []);
+      expect(r.single.etat, EtatLigne.valide);
+      expect(r.single.nom, 'DIALLO');
+      expect(r.single.naissance, DateTime(2014, 3, 15));
+      expect(r.single.lien, 'pere');
+    });
   });
 }
