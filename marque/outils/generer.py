@@ -85,7 +85,7 @@ def ecrire(nom, contenu):
     open(f'{SORTIE}/{nom}', 'w').write(contenu)
 
 # 1. Symbole (icône d'application) : carré arrondi noir, S blanc, case verte.
-ecrire('scolagrid-symbole.svg', svg(512, 512,
+ecrire('scolagrid-symbole-grille.svg', svg(512, 512,
     f'<rect width="512" height="512" rx="112" fill="{ENCRE}"/>\n' + grille(96, 96, 320, '#FFFFFF', 'rgba(255,255,255,0.13)', VERT),
     'ScolaGrid'))
 
@@ -101,8 +101,8 @@ def logo(fond_sombre):
     corps.append(f'<path d="{GRAS.texte("Grid", taille, x2, base, -2)}" fill="{"#A3A3A3" if fond_sombre else GRIS}"/>')
     l = int(x2 + GRAS.largeur('Grid', taille, -2) + 8)
     return svg(l, h, '\n'.join(corps), 'ScolaGrid')
-ecrire('scolagrid-logo.svg', logo(False))
-ecrire('scolagrid-logo-fond-sombre.svg', logo(True))
+ecrire('scolagrid-logo-grille.svg', logo(False))
+ecrire('scolagrid-logo-grille-fond-sombre.svg', logo(True))
 
 # 4. Cachet : anneaux, « SCOLAGRID » en haut, « GESTION SCOLAIRE » en bas, symbole au centre.
 def etoile(cx, cy, r, coul):
@@ -161,3 +161,59 @@ def cachet_plein():
         corps.append(f'<path d="{GRAS.texte(ligne, taille, c - GRAS.largeur(ligne, taille, 1)/2, y, 1)}" fill="{bleu}"/>')
     return svg(600, 600, '\n'.join(corps), 'Cachet ScolaGrid')
 ecrire('scolagrid-cachet-plein.svg', cachet_plein())
+
+
+# 6. Symbole principal : une maman tient la main de sa fille, qui porte son
+# cartable (vert) ; de profil, elles marchent vers l'école, légèrement inclinées.
+def scene(c, vert):
+    """Maman (foulard, robe) tenant la main de sa fille (cartable), de profil, marchant vers la droite."""
+    return f'''
+<g transform="rotate(-6 256 300) translate(-14 0)" fill="{c}" stroke="{c}" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="translate(120 0)">
+  <!-- Maman -->
+  <path stroke="none" d="M184 92 C176 62 214 50 236 66 C252 78 248 98 238 104 L188 106 Z"/>
+  <circle stroke="none" cx="172" cy="88" r="14"/>
+  <circle stroke="none" cx="216" cy="118" r="30"/>
+  <path stroke="none" d="M243 116 L254 126 L242 130 Z"/>
+  <rect stroke="none" x="204" y="140" width="20" height="22" rx="6"/>
+  <path stroke="none" d="M194 160 C206 152 226 152 238 160 C248 210 262 290 266 352 L160 352 C168 290 182 210 194 160 Z"/>
+  <path fill="none" stroke-width="18" d="M214 176 C196 214 176 256 152 284"/>
+  <path fill="none" stroke-width="17" d="M226 350 L252 434"/>
+  <path fill="none" stroke-width="17" d="M192 350 L170 434"/>
+  <path fill="none" stroke-width="13" d="M252 436 L272 436"/>
+  <path fill="none" stroke-width="13" d="M170 436 L188 436"/>
+  </g>
+  <g transform="translate(-125 0)">
+  <!-- Fille -->
+  <circle stroke="none" cx="334" cy="238" r="25"/>
+  <circle stroke="none" cx="312" cy="222" r="11"/>
+  <circle stroke="none" cx="306" cy="242" r="9"/>
+  <path stroke="none" d="M357 236 L366 244 L356 247 Z"/>
+  <rect stroke="none" x="325" y="258" width="16" height="16" rx="5"/>
+  <path stroke="none" d="M318 270 C328 264 344 264 352 270 L360 330 C362 344 362 352 364 360 L306 360 C308 346 310 330 312 314 Z"/>
+  <path fill="none" stroke-width="13" d="M340 286 C358 300 376 296 394 286"/>
+  <path fill="none" stroke-width="13" d="M323 358 L314 432"/>
+  <path fill="none" stroke-width="13" d="M347 358 L362 430"/>
+  <path fill="none" stroke-width="10" d="M314 434 L330 434"/>
+  <path fill="none" stroke-width="10" d="M362 432 L377 430"/>
+  <!-- Cartable -->
+  <rect stroke="none" fill="{vert}" x="288" y="272" width="30" height="50" rx="9"/>
+  <path fill="none" stroke="{vert}" stroke-width="5" d="M300 274 C304 262 316 262 322 270"/>
+  </g>
+</g>'''
+
+
+ecrire('scolagrid-symbole.svg', svg(512, 512, f'<rect width="512" height="512" rx="112" fill="{ENCRE}"/>' + scene('#FFFFFF', VERT), 'ScolaGrid'))
+
+def logo_famille(fond_sombre):
+    h = 200; m = 200
+    fond, trait = ('#FFFFFF', ENCRE) if fond_sombre else (ENCRE, '#FFFFFF')
+    corps = [f'<g transform="scale({m/512})"><rect width="512" height="512" rx="112" fill="{fond}"/>{scene(trait, VERT)}</g>']
+    taille = 132; base = 148; x = m + 44
+    corps.append(f'<path d="{GRAS.texte("Scola", taille, x, base, -2)}" fill="{"#FFFFFF" if fond_sombre else ENCRE}"/>')
+    x2 = x + GRAS.largeur('Scola', taille, -2) - 2
+    corps.append(f'<path d="{GRAS.texte("Grid", taille, x2, base, -2)}" fill="{"#A3A3A3" if fond_sombre else GRIS}"/>')
+    l = int(x2 + GRAS.largeur('Grid', taille, -2) + 8)
+    return svg(l, h, '\n'.join(corps), 'ScolaGrid')
+ecrire('scolagrid-logo.svg', logo_famille(False))
+ecrire('scolagrid-logo-fond-sombre.svg', logo_famille(True))

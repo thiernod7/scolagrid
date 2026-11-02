@@ -1,7 +1,10 @@
 # Marque ScolaGrid
 
-- `scolagrid-symbole` : le symbole seul (icône d'application) — un « S » dessiné
-  dans une grille de 5 × 5 cases, la première case en vert.
+- `scolagrid-symbole` : le symbole seul (icône d'application) — une maman tient la
+  main de sa fille, qui porte son cartable (vert) ; de profil, elles marchent vers
+  l'école, légèrement inclinées.
+- `scolagrid-symbole-grille`, `scolagrid-logo-grille…` : la première proposition (un « S »
+  dessiné dans une grille de 5 × 5 cases), gardée en réserve ; le cachet l'utilise encore.
 - `scolagrid-logo` : symbole + nom, pour fond clair ; `scolagrid-logo-fond-sombre` pour fond sombre.
 - `scolagrid-cachet` : cachet rond, encre bleue, net (documents numériques) ;
   `scolagrid-cachet-encre` : même cachet avec un effet d'encre (aperçus, présentations) ;

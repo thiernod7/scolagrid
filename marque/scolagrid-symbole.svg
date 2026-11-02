@@ -1,29 +1,37 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
 <title>ScolaGrid</title>
 <rect width="512" height="512" rx="112" fill="#0A0A0A"/>
-<rect x="96.00" y="96.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="162.67" y="96.00" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="229.33" y="96.00" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="296.00" y="96.00" width="53.33" height="53.33" rx="11.73" fill="#1A8C50"/>
-<rect x="362.67" y="96.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="96.00" y="162.67" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="162.67" y="162.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="229.33" y="162.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="296.00" y="162.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="362.67" y="162.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="96.00" y="229.33" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="162.67" y="229.33" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="229.33" y="229.33" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="296.00" y="229.33" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="362.67" y="229.33" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="96.00" y="296.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="162.67" y="296.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="229.33" y="296.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="296.00" y="296.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="362.67" y="296.00" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="96.00" y="362.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
-<rect x="162.67" y="362.67" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="229.33" y="362.67" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="296.00" y="362.67" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
-<rect x="362.67" y="362.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<g transform="rotate(-6 256 300) translate(-14 0)" fill="#FFFFFF" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="translate(120 0)">
+  <!-- Maman -->
+  <path stroke="none" d="M184 92 C176 62 214 50 236 66 C252 78 248 98 238 104 L188 106 Z"/>
+  <circle stroke="none" cx="172" cy="88" r="14"/>
+  <circle stroke="none" cx="216" cy="118" r="30"/>
+  <path stroke="none" d="M243 116 L254 126 L242 130 Z"/>
+  <rect stroke="none" x="204" y="140" width="20" height="22" rx="6"/>
+  <path stroke="none" d="M194 160 C206 152 226 152 238 160 C248 210 262 290 266 352 L160 352 C168 290 182 210 194 160 Z"/>
+  <path fill="none" stroke-width="18" d="M214 176 C196 214 176 256 152 284"/>
+  <path fill="none" stroke-width="17" d="M226 350 L252 434"/>
+  <path fill="none" stroke-width="17" d="M192 350 L170 434"/>
+  <path fill="none" stroke-width="13" d="M252 436 L272 436"/>
+  <path fill="none" stroke-width="13" d="M170 436 L188 436"/>
+  </g>
+  <g transform="translate(-125 0)">
+  <!-- Fille -->
+  <circle stroke="none" cx="334" cy="238" r="25"/>
+  <circle stroke="none" cx="312" cy="222" r="11"/>
+  <circle stroke="none" cx="306" cy="242" r="9"/>
+  <path stroke="none" d="M357 236 L366 244 L356 247 Z"/>
+  <rect stroke="none" x="325" y="258" width="16" height="16" rx="5"/>
+  <path stroke="none" d="M318 270 C328 264 344 264 352 270 L360 330 C362 344 362 352 364 360 L306 360 C308 346 310 330 312 314 Z"/>
+  <path fill="none" stroke-width="13" d="M340 286 C358 300 376 296 394 286"/>
+  <path fill="none" stroke-width="13" d="M323 358 L314 432"/>
+  <path fill="none" stroke-width="13" d="M347 358 L362 430"/>
+  <path fill="none" stroke-width="10" d="M314 434 L330 434"/>
+  <path fill="none" stroke-width="10" d="M362 432 L377 430"/>
+  <!-- Cartable -->
+  <rect stroke="none" fill="#1A8C50" x="288" y="272" width="30" height="50" rx="9"/>
+  <path fill="none" stroke="#1A8C50" stroke-width="5" d="M300 274 C304 262 316 262 322 270"/>
+  </g>
+</g>
 </svg>
