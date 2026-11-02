@@ -715,9 +715,12 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
             codeSite: x['code_site'] as String,
             annee: x['annee'] as String,
             lettre: poste['code'] as String,
-            existants: (await tx.getAll('SELECT numero FROM encaissements WHERE poste_id = ?', [poste['poste_id']]))
-                .map((r) => r['numero'] as String),
+            existants: [
+              ...(await tx.getAll('SELECT numero FROM encaissements WHERE poste_id = ?', [poste['poste_id']])).map((r) => r['numero'] as String),
+              ...await derniersNumeros(tx, 'recu:${x['code_site']}:${x['annee']}'),
+            ],
           );
+          await noterNumero(tx, 'recu:${x['code_site']}:${x['annee']}', numero);
           final id = (await tx.get('SELECT uuid() AS id'))['id'] as String;
           ids.add(id);
           await tx.execute(

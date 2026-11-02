@@ -103,9 +103,23 @@ Future<void> demarrerSynchro(PowerSyncDatabase db) async {
   await db.connect(connector: SupabaseConnector());
 }
 
-/// Déconnecte la personne et efface les données de ce poste.
-Future<void> deconnecter(PowerSyncDatabase db) async {
+/// Déconnecte la personne et efface ses données de l'appareil (elles restent
+/// sur le serveur). Le poste appartient à l'appareil : il garde sa lettre et
+/// ses derniers numéros, pour le compte suivant de la même école — sauf s'il a
+/// été bloqué ([garderPoste] faux). [effacerPin] : code PIN oublié.
+Future<void> deconnecter(PowerSyncDatabase db, {bool garderPoste = true, bool effacerPin = false}) async {
+  final poste = garderPoste ? [for (final r in await db.getAll('SELECT * FROM ce_poste')) Map<String, Object?>.from(r)] : <Map<String, Object?>>[];
+  final compteurs =
+      garderPoste ? [for (final r in await db.getAll('SELECT * FROM compteurs_poste')) Map<String, Object?>.from(r)] : <Map<String, Object?>>[];
   await db.disconnectAndClear();
+  for (final p in poste) {
+    await db.execute(
+        'INSERT INTO ce_poste (id, poste_id, organisation_id, code, nom, pin_empreinte, pin_sel, echecs) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
+        [p['id'], p['poste_id'], p['organisation_id'], p['code'], p['nom'], effacerPin ? null : p['pin_empreinte'], effacerPin ? null : p['pin_sel']]);
+  }
+  for (final c in compteurs) {
+    await db.execute('INSERT INTO compteurs_poste (id, valeur) VALUES (?, ?)', [c['id'], c['valeur']]);
+  }
   try {
     await Supabase.instance.client.auth.signOut();
   } catch (_) {

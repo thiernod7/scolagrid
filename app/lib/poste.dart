@@ -10,6 +10,45 @@ const versionApp = '0.6.0';
 /// Ce poste, tel qu'enregistré localement (table locale, jamais synchronisée).
 Future<Map<String, Object?>?> cePoste() => db.getOptional('SELECT * FROM ce_poste LIMIT 1');
 
+/// Derniers numéros pris par ce poste pour une série (reçus d'un site et d'une
+/// année, matricules d'un préfixe) : ajoutés à ceux de la base pour continuer
+/// la série, même si la synchro n'a pas encore tout ramené.
+Future<List<String>> derniersNumeros(dynamic tx, String cle) async =>
+    [for (final r in await tx.getAll('SELECT valeur FROM compteurs_poste WHERE id = ?', [cle])) r['valeur'] as String];
+
+Future<void> noterNumero(dynamic tx, String cle, String valeur) async {
+  await tx.execute('DELETE FROM compteurs_poste WHERE id = ?', [cle]);
+  await tx.execute('INSERT INTO compteurs_poste (id, valeur) VALUES (?, ?)', [cle, valeur]);
+}
+
+/// Choisir (ou rechoisir) le code PIN de ce poste. Vrai s'il est enregistré.
+Future<bool> definirPinPoste(BuildContext context) async {
+  final a = TextEditingController();
+  final b = TextEditingController();
+  final ok = await _formulaire(context, 'Code PIN de ce poste', (_) => [
+        const Text("Il rouvre l'app après un verrouillage, même sans internet. Ne le donnez qu'aux personnes qui utilisent cet appareil."),
+        TextField(
+            controller: a,
+            autofocus: true,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            decoration: _champ('Code PIN (4 à 6 chiffres)')),
+        TextField(controller: b, obscureText: true, keyboardType: TextInputType.number, maxLength: 6, decoration: _champ('Confirmer')),
+      ]);
+  if (!ok) return false;
+  if (!pinValide(a.text) || a.text != b.text) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Code PIN invalide (4 à 6 chiffres) ou les deux codes sont différents.')));
+    }
+    return false;
+  }
+  final sel = _nouveauSel();
+  await db.execute('UPDATE ce_poste SET pin_empreinte = ?, pin_sel = ?, echecs = 0, attendre_jusqu = NULL', [empreintePin(a.text, sel), sel]);
+  return true;
+}
+
 const messagePosteEnAttente =
     'Ce poste attend la validation de la direction : il peut consulter, mais pas inscrire ni encaisser.';
 
@@ -246,10 +285,10 @@ class _PinScreenState extends State<_PinScreen> {
     final ok = await _confirmer(
         context,
         'Pour choisir un nouveau code, il faut vous reconnecter par SMS (avec internet). '
-        'Les données de ce poste seront effacées${enAttente > 0 ? ', dont $enAttente changement(s) pas encore envoyé(s)' : ''}. '
-        'Le poste devra être activé de nouveau.');
+        'Vos données seront effacées de l\'appareil${enAttente > 0 ? ', dont $enAttente changement(s) pas encore envoyé(s)' : ''} ; '
+        'elles restent sur le serveur. Le poste garde sa lettre ; vous choisirez un nouveau code avec « Verrouiller ».');
     if (!ok) return;
-    await deconnecter(db);
+    await deconnecter(db, effacerPin: true);
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => widget.sortie), (_) => false);
   }

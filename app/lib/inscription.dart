@@ -756,7 +756,9 @@ class _InscrireScreenState extends State<InscrireScreen> {
               annee: '${_annee!['libelle']}',
               lettre: poste['code'] as String);
           final existants = await tx.getAll('SELECT matricule FROM eleves WHERE matricule LIKE ?', ['$prefixe%']);
-          final matricule = matriculeSuivant(prefixe, existants.map((m) => m['matricule'] as String));
+          final matricule = matriculeSuivant(
+              prefixe, [...existants.map((m) => m['matricule'] as String), ...await derniersNumeros(tx, 'mat:$prefixe')]);
+          await noterNumero(tx, 'mat:$prefixe', matricule);
           eleveId = (await tx.get('SELECT uuid() AS id'))['id'] as String;
           await tx.execute(
               '''INSERT INTO eleves (id, organisation_id, matricule, matricule_etat, site_origine_id, site_id, nom, prenoms,

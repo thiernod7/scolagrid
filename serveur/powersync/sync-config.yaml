@@ -71,7 +71,8 @@ streams:
       - SELECT * FROM droits_personnel WHERE personnel_id IN (SELECT id FROM personnel WHERE site_id IN sites_diriges)
 
   # Postes de travail (étape 4). Chaque poste reçoit sa propre ligne (pour
-  # savoir s'il est bloqué) ; le fondateur et les directeurs, ceux de leur périmètre.
+  # savoir s'il est bloqué), ainsi que qui travaille sur son site (poste partagé) ;
+  # le fondateur et les directeurs, ceux de leur périmètre.
   postes:
     auto_subscribe: true
     priority: 1
@@ -79,8 +80,13 @@ streams:
       orgs_fondees: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'fondateur'
       orgs_dirigees: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'directeur' AND site_id IS NULL
       sites_diriges: SELECT site_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role = 'directeur'
+      # Poste partagé : qui travaille sur un site voit ses postes (bloqué ou non).
+      mes_sites: SELECT site_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND site_id IS NOT NULL
+      orgs_tous_sites: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND site_id IS NULL
     queries:
       - SELECT * FROM postes WHERE user_id = auth.user_id()
+      - SELECT * FROM postes WHERE site_id IN mes_sites
+      - SELECT * FROM postes WHERE organisation_id IN orgs_tous_sites AND site_id IS NOT NULL
       - SELECT * FROM postes WHERE organisation_id IN orgs_fondees
       - SELECT * FROM postes WHERE organisation_id IN orgs_dirigees AND site_id IS NOT NULL
       - SELECT * FROM postes WHERE site_id IN sites_diriges

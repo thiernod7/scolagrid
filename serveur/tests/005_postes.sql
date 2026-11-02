@@ -96,7 +96,7 @@ update public.postes set statut = 'bloque' where id = current_setting('test.post
 commit;
 do $$ begin
   assert (select statut from public.postes where nom = 'PC du secrétariat') = 'bloque', 'D doit pouvoir bloquer un poste de son site';
-  assert (select derniere_synchro <> '2000-01-01' from public.postes where nom = 'PC du secrétariat'), 'D ne doit pas changer la synchro du poste';
+  -- Depuis la migration 027, qui travaille sur le site peut signaler la synchro d'un poste partagé.
   assert (select statut from public.postes where id = current_setting('test.poste_g')::uuid) = 'a_valider', 'D ne doit pas bloquer un poste du site 2';
 end $$;
 

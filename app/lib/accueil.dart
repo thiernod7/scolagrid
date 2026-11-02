@@ -86,6 +86,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
           'WHERE r.user_id = ? AND r.actif = 1 ORDER BY o.created_at LIMIT 1', parameters: [moi]).listen((r) {
         setState(() => _organisation = r.isEmpty ? null : r.first);
         _majDroits();
+        // Appareil repris par quelqu'un d'une autre école : son poste ne vaut pas ici.
+        if (r.isNotEmpty) unawaited(_posteDUneAutreEcole(r.first['id'] as String));
       }))
       ..add(db.watch('SELECT s.* FROM sites s JOIN rattachements r ON r.organisation_id = s.organisation_id '
           'WHERE r.user_id = ? AND r.actif = 1 GROUP BY s.id ORDER BY s.created_at', parameters: [moi]).listen((r) {
@@ -140,7 +142,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
   Future<void> _posteBloque() async {
     if (_effacement) return;
     _effacement = true;
-    await deconnecter(db);
+    await deconnecter(db, garderPoste: false);
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
         MaterialPageRoute(
@@ -233,21 +235,67 @@ class _AccueilScreenState extends State<AccueilScreen> {
     _majEnAttente();
   }
 
+  Future<void> _posteDUneAutreEcole(String orgId) async {
+    final p = await db.getOptional('SELECT organisation_id FROM ce_poste');
+    if (p != null && p['organisation_id'] != orgId) {
+      await db.writeTransaction((tx) async {
+        await tx.execute('DELETE FROM ce_poste');
+        await tx.execute('DELETE FROM compteurs_poste');
+      });
+    }
+  }
+
+  /// Verrouiller : les données restent, l'app se rouvre avec le code PIN du
+  /// poste, même sans internet. C'est le geste de tous les jours.
+  Future<void> _verrouiller() async {
+    final p = await cePoste();
+    if (!mounted) return;
+    if (p == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Activez d'abord ce poste (« À faire ») : le verrou utilise son code PIN.")));
+      return;
+    }
+    if (p['pin_empreinte'] == null && !await definirPinPoste(context)) return;
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const PorteDuPoste(accueil: AccueilScreen(), sortie: BienvenueScreen())), (_) => false);
+  }
+
   Future<void> _seDeconnecter() async {
-    final ok = await showDialog<bool>(
+    final horsLigne = !_statut.connected;
+    final choix = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Se déconnecter ?'),
-        content: Text(_enAttente > 0
-            ? 'Attention : $_enAttente changement(s) pas encore envoyé(s) seront perdus.'
-            : 'Les données de ce poste seront effacées. Elles restent sur le serveur.'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text("Vos données seront effacées de l'appareil (elles restent sur le serveur). "
+              'Le poste garde sa lettre pour la personne suivante.'),
+          if (_enAttente > 0) ...[
+            const SizedBox(height: 8),
+            Text('Attention : $_enAttente changement(s) pas encore envoyé(s) seront perdus.',
+                style: const TextStyle(color: Couleurs.retard)),
+          ],
+          if (horsLigne) ...[
+            const SizedBox(height: 8),
+            const Text("Pas d'internet : vous ne pourrez pas vous reconnecter avant le retour du réseau.",
+                style: TextStyle(color: Couleurs.retard, fontWeight: FontWeight.w600)),
+          ],
+          const SizedBox(height: 8),
+          const Text('Pour une pause, verrouillez plutôt : vous rouvrirez avec le code PIN, même sans internet.'),
+        ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Se déconnecter')),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+          OutlinedButton(onPressed: () => Navigator.pop(context, 'verrou'), child: const Text('Verrouiller plutôt')),
+          FilledButton(
+            style: horsLigne ? FilledButton.styleFrom(backgroundColor: Couleurs.retard) : null,
+            onPressed: () => Navigator.pop(context, 'sortir'),
+            child: const Text('Se déconnecter'),
+          ),
         ],
       ),
     );
-    if (ok != true) return;
+    if (choix == 'verrou') return _verrouiller();
+    if (choix != 'sortir') return;
     await deconnecter(db);
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true)
@@ -352,6 +400,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   nom: _nom ?? '',
                   fonction: fonctions[_rattachement?['role']] ?? '',
                   seDeconnecter: _seDeconnecter,
+                  verrouiller: _verrouiller,
                 ),
                 Expanded(child: corps),
               ]),
@@ -374,6 +423,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                     padding: const EdgeInsets.only(bottom: 16),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       const BoutonTheme(),
+                      IconButton(tooltip: 'Verrouiller', onPressed: _verrouiller, icon: const Icon(Icons.lock_outline)),
                       IconButton(tooltip: 'Se déconnecter', onPressed: _seDeconnecter, icon: const Icon(Icons.logout)),
                     ]),
                   ),
@@ -421,6 +471,15 @@ class _AccueilScreenState extends State<AccueilScreen> {
                     onTap: () {
                       BoutonTheme.basculer(context);
                       Navigator.pop(context);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.lock_outline),
+                    title: const Text('Verrouiller'),
+                    subtitle: const Text('Rouvrir avec le code PIN, même sans internet'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _verrouiller();
                     },
                   ),
                   ListTile(
@@ -643,6 +702,7 @@ class _EnTete extends StatelessWidget {
     required this.nom,
     required this.fonction,
     required this.seDeconnecter,
+    required this.verrouiller,
   });
 
   final TextEditingController recherche;
@@ -651,6 +711,7 @@ class _EnTete extends StatelessWidget {
   final String nom;
   final String fonction;
   final VoidCallback seDeconnecter;
+  final VoidCallback verrouiller;
 
   @override
   Widget build(BuildContext context) {
@@ -689,10 +750,11 @@ class _EnTete extends StatelessWidget {
         Container(width: 1, height: 24, margin: const EdgeInsets.symmetric(horizontal: 12), color: schema.outlineVariant),
         PopupMenuButton<String>(
           tooltip: 'Mon compte',
-          onSelected: (v) {
-            if (v == 'sortir') seDeconnecter();
-          },
-          itemBuilder: (_) => const [PopupMenuItem(value: 'sortir', child: Text('Se déconnecter'))],
+          onSelected: (v) => v == 'verrou' ? verrouiller() : seDeconnecter(),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'verrou', child: Text('Verrouiller')),
+            PopupMenuItem(value: 'sortir', child: Text('Se déconnecter')),
+          ],
           child: Row(children: [
             Initiales(nom.isEmpty ? '?' : nom, taille: 32),
             const SizedBox(width: 10),

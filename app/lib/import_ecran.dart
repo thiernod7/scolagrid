@@ -112,9 +112,11 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
               lettre: poste['code'] as String);
           final deja = matricules[prefixe] ??= [
             for (final m in await tx.getAll('SELECT matricule FROM eleves WHERE matricule LIKE ?', ['$prefixe%'])) m['matricule'] as String,
+            ...await derniersNumeros(tx, 'mat:$prefixe'),
           ];
           final matricule = matriculeSuivant(prefixe, deja);
           deja.add(matricule);
+          await noterNumero(tx, 'mat:$prefixe', matricule);
           final eleveId = (await tx.get('SELECT uuid() AS id'))['id'] as String;
           await tx.execute(
               '''INSERT INTO eleves (id, organisation_id, matricule, matricule_etat, site_origine_id, site_id, nom, prenoms, sexe,

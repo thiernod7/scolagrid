@@ -527,6 +527,11 @@ const schema = Schema([
     Column.text('device'),
     Column.text('created_at'),
   ]),
+  // Derniers numéros pris par ce poste (reçus, matricules), gardés à la
+  // déconnexion : la série continue même avant la fin de la synchro.
+  Table.localOnly('compteurs_poste', [
+    Column.text('valeur'),
+  ]),
   // Changements que le serveur a refusés : montrés à l'école, jamais envoyés.
   Table.localOnly('refus_serveur', [
     Column.text('quand'),
