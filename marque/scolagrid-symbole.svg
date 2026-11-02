@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<title>ScolaGrid</title>
+<rect width="512" height="512" rx="112" fill="#0A0A0A"/>
+<rect x="96.00" y="96.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="162.67" y="96.00" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="229.33" y="96.00" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="296.00" y="96.00" width="53.33" height="53.33" rx="11.73" fill="#1A8C50"/>
+<rect x="362.67" y="96.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="96.00" y="162.67" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="162.67" y="162.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="229.33" y="162.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="296.00" y="162.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="362.67" y="162.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="96.00" y="229.33" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="162.67" y="229.33" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="229.33" y="229.33" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="296.00" y="229.33" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="362.67" y="229.33" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="96.00" y="296.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="162.67" y="296.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="229.33" y="296.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="296.00" y="296.00" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="362.67" y="296.00" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="96.00" y="362.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+<rect x="162.67" y="362.67" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="229.33" y="362.67" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="296.00" y="362.67" width="53.33" height="53.33" rx="11.73" fill="#FFFFFF"/>
+<rect x="362.67" y="362.67" width="53.33" height="53.33" rx="11.73" fill="rgba(255,255,255,0.13)"/>
+</svg>
