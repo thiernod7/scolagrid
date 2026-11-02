@@ -330,3 +330,25 @@ def cachet_plein_logo():
         corps.append(f'<path d="{GRAS.texte(ligne, taille, c - GRAS.largeur(ligne, taille, 1)/2, y, 1)}" fill="{bleu}"/>')
     return svg(600, 600, '\n'.join(corps), 'Cachet ScolaGrid')
 ecrire('scolagrid-cachet-plein.svg', cachet_plein_logo())
+
+
+# 10. Cachet principal avec le logo validé (fond clair : toit, drapeau, S, « ScolaGrid »).
+def cachet_plein_valide():
+    c = 300
+    bleu = BLEU_CACHET
+    k = 0.50
+    corps = [f'<circle cx="{c}" cy="{c}" r="292" fill="#FFFFFF"/>',
+             f'<g fill="none" stroke="{bleu}">',
+             f'<circle cx="{c}" cy="{c}" r="288" stroke-width="8"/>',
+             f'<circle cx="{c}" cy="{c}" r="272" stroke-width="3"/>',
+             f'<circle cx="{c}" cy="{c}" r="190" stroke-width="3"/>',
+             '</g>',
+             f'<path d="{GRAS.arc("LOGICIEL DE GESTION SCOLAIRE · GUINÉE", 31, c, c, 222, 0, 2)}" fill="{bleu}"/>',
+             f'<path d="{GRAS.arc("SCOLAGRID", 40, c, c, 254, 180, 7, bas=True)}" fill="{bleu}"/>',
+             etoile(c + 232 * math.sin(math.radians(122)), c - 232 * math.cos(math.radians(122)), 12, bleu),
+             etoile(c + 232 * math.sin(math.radians(238)), c - 232 * math.cos(math.radians(238)), 12, bleu),
+             f'<g transform="translate({c - 256 * k:.2f} {c - 162 - 52 * k:.2f}) scale({k})">{ecole_nom(bleu, "#6F8FD3")}</g>']
+    ligne = 'LA DIRECTION'
+    corps.append(f'<path d="{GRAS.texte(ligne, 24, c - GRAS.largeur(ligne, 24, 2)/2, c + 96, 2)}" fill="{bleu}"/>')
+    return svg(600, 600, '\n'.join(corps), 'Cachet ScolaGrid')
+ecrire('scolagrid-cachet-plein.svg', cachet_plein_valide())
