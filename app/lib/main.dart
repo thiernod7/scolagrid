@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 
 import 'accueil.dart';
 import 'base.dart';
@@ -63,9 +64,23 @@ class ScolagridApp extends StatelessWidget {
       theme: themeScolagrid(Brightness.light),
       darkTheme: themeScolagrid(Brightness.dark),
       // Bandeau visible sur les versions branchées sur l'environnement d'essai.
-      builder: (context, child) => environnement == 'essai'
-          ? Banner(message: 'ESSAI', location: BannerLocation.topEnd, child: child!)
-          : child!,
+      // Android 15 dessine l'app sous la barre d'état : on garde une marge en
+      // haut, à la couleur du fond, et des icônes lisibles (clair ou sombre).
+      // Le bas est laissé aux barres de navigation, qui gèrent leur propre marge.
+      builder: (context, child) {
+        final theme = Theme.of(context);
+        final sombre = theme.brightness == Brightness.dark;
+        Widget page = AnnotatedRegion<SystemUiOverlayStyle>(
+          value: (sombre ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+              .copyWith(statusBarColor: Colors.transparent),
+          child: ColoredBox(
+            color: theme.scaffoldBackgroundColor,
+            child: SafeArea(bottom: false, child: child!),
+          ),
+        );
+        if (environnement == 'essai') page = Banner(message: 'ESSAI', location: BannerLocation.topEnd, child: page);
+        return page;
+      },
       home: !cloudConfigured
           ? const _SansServeur()
           : estConnecte
