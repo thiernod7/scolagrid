@@ -1317,8 +1317,35 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
       carteLignes,
     ]);
 
+    // Téléphone : total et bouton toujours visibles en bas de l'écran.
+    final barreTelephone = Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(color: schema.surface, border: Border(top: BorderSide(color: schema.outlineVariant))),
+      child: SafeArea(
+        top: false,
+        child: Row(children: [
+          Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_recus.length > 1 ? 'Total versé (${_recus.length} reçus)' : 'Total du reçu', style: TextStyle(fontSize: 11, color: gris)),
+            Text(gnf(_recus.length > 1 ? _totalTous : _total), style: styleMono.copyWith(fontSize: 15, fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SizedBox(
+              height: 44,
+              child: FilledButton.icon(
+                onPressed: _envoi ? null : _valider,
+                icon: const Icon(Icons.print_outlined, size: 16),
+                label: Text(_envoi ? 'Enregistrement…' : 'Encaisser et imprimer'),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+
     return Scaffold(
       appBar: Navigator.of(context).canPop() ? AppBar(toolbarHeight: 44) : null,
+      bottomNavigationBar: telephone ? barreTelephone : null,
       body: LayoutBuilder(builder: (context, c) {
         final large = c.maxWidth >= 1000;
         return Align(
@@ -1348,8 +1375,10 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                   ])
                 else ...[
                   gauche,
-                  const SizedBox(height: 12),
-                  bouton,
+                  if (!telephone) ...[
+                    const SizedBox(height: 12),
+                    bouton,
+                  ],
                 ],
               ]),
             ),

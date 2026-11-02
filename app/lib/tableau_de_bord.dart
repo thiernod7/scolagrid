@@ -481,7 +481,39 @@ class _TableauDeBordState extends State<TableauDeBord> {
     final seuil = recouvrement >= cible ? NiveauSeuil.bon : (recouvrement >= cible - 10 ? NiveauSeuil.vigilance : NiveauSeuil.alerte);
     double? variation(int a, int? b) => b == null || b == 0 ? (b == 0 && a == 0 ? 0 : null) : (a - b) * 100 / b;
 
-    final enTete = Wrap(
+    // Téléphone : titre et période, le choix de période, puis les deux gestes côte à côte.
+    final enTeteTelephone = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('${widget.organisation['nom']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+      Text('$_libellePeriode${m.annee == null ? '' : ' · ${m.annee}'}', style: TextStyle(fontSize: 13, color: gris)),
+      if (widget.voitFinances) ...[
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Segments<Periode>(
+            valeur: _periode,
+            choix: const {Periode.mois: 'Mois', Periode.trimestre: 'Trimestre', Periode.annee: 'Année'},
+            onChanged: (p) => setState(() => _periode = p),
+          ),
+        ),
+      ],
+      if (widget.peutInscrire || widget.peutEncaisser) ...[
+        const SizedBox(height: 10),
+        Row(children: [
+          if (widget.peutInscrire)
+            Expanded(
+              child: FilledButton.icon(
+                  onPressed: widget.inscrire, icon: const Icon(Icons.person_add_alt, size: 16), label: const Text('Inscrire')),
+            ),
+          if (widget.peutInscrire && widget.peutEncaisser) const SizedBox(width: 8),
+          if (widget.peutEncaisser)
+            Expanded(
+              child: OutlinedButton.icon(
+                  onPressed: widget.encaisser, icon: const Icon(Icons.point_of_sale_outlined, size: 16), label: const Text('Encaisser')),
+            ),
+        ]),
+      ],
+    ]);
+    final enTete = telephone ? enTeteTelephone : Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: 12,

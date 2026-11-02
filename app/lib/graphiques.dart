@@ -58,7 +58,8 @@ class GrilleCartes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) {
-        final n = math.min(colonnesMax, c.maxWidth >= 1100 ? 4 : (c.maxWidth >= 560 ? 2 : 1));
+        // Téléphone (dès 320 px) : deux cartes par ligne, plus compactes.
+        final n = math.min(colonnesMax, c.maxWidth >= 1100 ? 4 : (c.maxWidth >= 320 ? 2 : 1));
         const espace = 12.0;
         final col = (c.maxWidth - espace * (n - 1)) / n;
         return Wrap(spacing: espace, runSpacing: espace, children: [
@@ -122,11 +123,16 @@ class CarteKpi extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, c) => _carte(context, c.maxWidth < 260));
+  }
+
+  /// [serre] : carte étroite (deux par ligne sur téléphone) — marges et chiffres plus petits.
+  Widget _carte(BuildContext context, bool serre) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
     final titreTexte = Text(titre,
         style: TextStyle(
-          fontSize: 14,
+          fontSize: serre ? 12 : 14,
           fontWeight: FontWeight.w500,
           color: gris,
           decoration: aide != null ? TextDecoration.underline : null,
@@ -140,7 +146,7 @@ class CarteKpi extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(serre ? 12 : 16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(child: aide != null ? Tooltip(message: aide!, child: titreTexte) : titreTexte),
@@ -160,7 +166,7 @@ class CarteKpi extends StatelessWidget {
               fit: BoxFit.scaleDown,
               child: Text(valeur,
                   style: TextStyle(
-                    fontSize: vedette ? 36 : 30,
+                    fontSize: serre ? (vedette ? 28 : 22) : (vedette ? 36 : 30),
                     height: 1.2,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -.5,
