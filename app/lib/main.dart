@@ -59,7 +59,7 @@ class ScolagridApp extends StatelessWidget {
       valueListenable: modeTheme,
       builder: (context, mode, _) => MaterialApp(
       themeMode: mode,
-      title: 'Scolagrid',
+      title: 'ScolaGrid',
       debugShowCheckedModeBanner: false,
       theme: themeScolagrid(Brightness.light),
       darkTheme: themeScolagrid(Brightness.dark),

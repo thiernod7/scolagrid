@@ -71,6 +71,13 @@ jobs:
           channel: stable
           cache: true
       - run: flutter create --platforms=windows,android --org com.scolagrid --project-name scolagrid . && rm -f test/widget_test.dart
+      # Icône et nom ScolaGrid (au lieu de ceux de Flutter), générés par marque/outils/icones_app.py.
+      - name: Icône et nom ScolaGrid (Windows)
+        shell: bash
+        run: |
+          cp plateformes/windows/app_icon.ico windows/runner/resources/app_icon.ico
+          sed -i 's/L"scolagrid"/L"ScolaGrid"/' windows/runner/main.cpp
+          sed -i 's/"scolagrid"/"ScolaGrid"/g' windows/runner/Runner.rc
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
@@ -110,6 +117,12 @@ jobs:
       - run: flutter create --platforms=windows,android --org com.scolagrid --project-name scolagrid . && rm -f test/widget_test.dart
       # Android exige une autorisation explicite pour accéder à internet.
       - run: sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' android/app/src/main/AndroidManifest.xml
+      # Icône ScolaGrid (adaptative : fond noir, dessin blanc) et nom affiché sous l'icône.
+      - name: Icône et nom ScolaGrid (Android)
+        run: |
+          cp -r plateformes/android/. android/app/src/main/res/
+          sed -i 's/android:label="scolagrid"/android:label="ScolaGrid"/' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:label="ScolaGrid"' android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
       - name: Vérifier que l'app connaît son serveur
         run: '[ -n "$DART_DEFINES$DART_DEFINES_ESSAI" ] || { echo "Aucune adresse de serveur : compilation arrêtée"; exit 1; }'
@@ -191,7 +204,11 @@ jobs:
       - name: Fichiers web de PowerSync (SQLite dans le navigateur)
         run: dart run powersync:setup_web
       - name: Titre et langue de la page
-        run: sed -i 's|<html>|<html lang="fr">|; s|<title>[^<]*</title>|<title>Scolagrid</title>|' web/index.html
+        run: sed -i 's|<html>|<html lang="fr">|; s|<title>[^<]*</title>|<title>ScolaGrid</title>|; s|content="scolagrid"|content="ScolaGrid"|g' web/index.html
+      - name: Icônes et nom ScolaGrid (web)
+        run: |
+          cp -r plateformes/web/. web/
+          sed -i 's/"scolagrid"/"ScolaGrid"/g; s/#0175C2/#0A0A0A/g' web/manifest.json
       - name: Vérifier que l'app connaît son serveur
         run: '[ -n "$DART_DEFINES$DART_DEFINES_ESSAI" ] || { echo "Aucune adresse de serveur : compilation arrêtée"; exit 1; }'
       - run: flutter build web --release $DART_DEFINES $DART_DEFINES_ESSAI

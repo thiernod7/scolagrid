@@ -532,13 +532,14 @@ class _Logo extends StatelessWidget {
 
   final double taille;
 
+  /// Le logo ScolaGrid : carré noir en thème clair, carré blanc en thème sombre.
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => Image.asset(
+        Theme.of(context).brightness == Brightness.dark ? 'assets/marque/icone-sombre.png' : 'assets/marque/icone.png',
         width: taille,
         height: taille,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(taille * 0.22)),
-        child: Icon(Icons.account_balance_outlined, size: taille * 0.5, color: Theme.of(context).colorScheme.onPrimary),
+        filterQuality: FilterQuality.medium,
+        semanticLabel: 'ScolaGrid',
       );
 }
 

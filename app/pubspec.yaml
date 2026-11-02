@@ -1,7 +1,7 @@
 name: scolagrid
 description: Scolagrid, gestion scolaire hors ligne d'abord.
 publish_to: none
-version: 0.7.7+14
+version: 0.7.8+15
 
 environment:
   sdk: ^3.10.0
@@ -29,6 +29,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # Logo ScolaGrid (menu, écran de bienvenue), généré par marque/outils/icones_app.py.
+  assets:
+    - assets/marque/
   # Polices intégrées (limitées aux caractères latins) : l'app reste belle sans internet.
   fonts:
     - family: Inter
