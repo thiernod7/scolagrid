@@ -554,21 +554,58 @@ class _ClassesScreenState extends State<ClassesScreen> {
                 '${places > 0 ? ' · $places place(s) libre(s)' : ''}',
                 style: TextStyle(fontSize: 13, color: gris)),
             const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-              MenuCompact<String>(
-                largeur: 180,
-                valeur: niveaux.containsKey(_niveau) ? _niveau : null,
-                tous: 'Tous les niveaux',
-                choix: niveaux,
-                onChanged: (v) => setState(() => _niveau = v),
-              ),
-              if (nbFermees > 0)
-                FilterChip(
-                  label: Text('Refermées ($nbFermees)'),
-                  selected: _fermees,
-                  onSelected: (v) => setState(() => _fermees = v),
+            if (MediaQuery.sizeOf(context).width < 640)
+              Row(children: [
+                Expanded(
+                  child: Text(niveaux[_niveau] ?? 'Tous les niveaux',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                 ),
-            ]),
+                BoutonFiltres(
+                  actifs: (niveaux.containsKey(_niveau) ? 1 : 0) + (_fermees ? 1 : 0),
+                  reinitialiser: () => setState(() {
+                    _niveau = null;
+                    _fermees = false;
+                  }),
+                  menus: (largeurMenu, rafraichir) => [
+                    MenuCompact<String>(
+                      largeur: largeurMenu,
+                      valeur: niveaux.containsKey(_niveau) ? _niveau : null,
+                      tous: 'Tous les niveaux',
+                      choix: niveaux,
+                      onChanged: (v) {
+                        setState(() => _niveau = v);
+                        rafraichir();
+                      },
+                    ),
+                    if (nbFermees > 0)
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text('Voir les classes refermées ($nbFermees)'),
+                        value: _fermees,
+                        onChanged: (v) {
+                          setState(() => _fermees = v);
+                          rafraichir();
+                        },
+                      ),
+                  ],
+                ),
+              ])
+            else
+              Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                MenuCompact<String>(
+                  largeur: 180,
+                  valeur: niveaux.containsKey(_niveau) ? _niveau : null,
+                  tous: 'Tous les niveaux',
+                  choix: niveaux,
+                  onChanged: (v) => setState(() => _niveau = v),
+                ),
+                if (nbFermees > 0)
+                  FilterChip(
+                    label: Text('Refermées ($nbFermees)'),
+                    selected: _fermees,
+                    onSelected: (v) => setState(() => _fermees = v),
+                  ),
+              ]),
             const SizedBox(height: 10),
             Tableau(
               colonnes: [

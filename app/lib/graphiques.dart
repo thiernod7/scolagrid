@@ -590,6 +590,62 @@ class MenuCompact<T> extends StatelessWidget {
   }
 }
 
+/// Téléphone : un bouton « Filtres » (avec le nombre de filtres actifs) qui
+/// ouvre les menus dans un panneau en bas de l'écran, comme la page Élèves.
+/// [menus] reçoit la largeur à donner aux menus et une fonction qui rafraîchit
+/// le panneau après un choix.
+class BoutonFiltres extends StatelessWidget {
+  const BoutonFiltres({super.key, required this.actifs, required this.menus, this.reinitialiser});
+
+  final int actifs;
+  final List<Widget> Function(double largeur, VoidCallback rafraichir) menus;
+  final VoidCallback? reinitialiser;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 44,
+        height: 36,
+        child: Badge(
+          isLabelVisible: actifs > 0,
+          label: Text('$actifs'),
+          child: IconButton.outlined(
+            tooltip: 'Filtres',
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.tune, size: 18),
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              showDragHandle: true,
+              isScrollControlled: true,
+              builder: (context) => StatefulBuilder(
+                builder: (context, maj) => SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      const Text('Filtres', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 12),
+                      for (final m in menus(double.infinity, () => maj(() {}))) ...[m, const SizedBox(height: 10)],
+                      Row(children: [
+                        if (reinitialiser != null)
+                          TextButton(
+                            onPressed: () {
+                              reinitialiser!();
+                              maj(() {});
+                            },
+                            child: const Text('Réinitialiser'),
+                          ),
+                        const Spacer(),
+                        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Voir les résultats')),
+                      ]),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
 /// Sélecteur en « pilule » (Mois / Trimestre / Année).
 class Segments<T> extends StatelessWidget {
   const Segments({super.key, required this.valeur, required this.choix, required this.onChanged});

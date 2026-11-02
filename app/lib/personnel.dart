@@ -146,7 +146,7 @@ class _ListePersonnelState extends State<_ListePersonnel> {
           const SizedBox(height: 12),
           Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             SizedBox(
-              width: telephone ? double.infinity : 340,
+              width: telephone ? MediaQuery.sizeOf(context).width - 24 - 52 : 340,
               height: 36,
               child: TextField(
                 controller: _q,
@@ -162,13 +162,31 @@ class _ListePersonnelState extends State<_ListePersonnel> {
                 ),
               ),
             ),
-            MenuCompact<String>(
-              largeur: 200,
-              valeur: _fonction,
-              tous: 'Toutes les fonctions',
-              choix: {for (final f in presentes) f: fonctions[f] ?? f},
-              onChanged: (v) => setState(() => _fonction = v),
-            ),
+            if (telephone)
+              BoutonFiltres(
+                actifs: _fonction == null ? 0 : 1,
+                reinitialiser: () => setState(() => _fonction = null),
+                menus: (largeurMenu, rafraichir) => [
+                  MenuCompact<String>(
+                    largeur: largeurMenu,
+                    valeur: _fonction,
+                    tous: 'Toutes les fonctions',
+                    choix: {for (final f in presentes) f: fonctions[f] ?? f},
+                    onChanged: (v) {
+                      setState(() => _fonction = v);
+                      rafraichir();
+                    },
+                  ),
+                ],
+              )
+            else
+              MenuCompact<String>(
+                largeur: 200,
+                valeur: _fonction,
+                tous: 'Toutes les fonctions',
+                choix: {for (final f in presentes) f: fonctions[f] ?? f},
+                onChanged: (v) => setState(() => _fonction = v),
+              ),
           ]),
           const SizedBox(height: 8),
           Text("Tout le personnel a une fiche, même sans utiliser Scolagrid. Invitez ceux qui utiliseront l'app.",

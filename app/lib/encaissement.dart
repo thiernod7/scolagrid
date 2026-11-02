@@ -1746,6 +1746,29 @@ class _CaisseScreenState extends State<CaisseScreen> {
       ],
     );
 
+    // Encaisseur et mode : côte à côte sur grand écran, dans « Filtres » sur téléphone.
+    List<Widget> menusJournal(double largeur, VoidCallback rafraichir) => [
+          MenuCompact<String>(
+            largeur: largeur > 0 ? largeur : 200,
+            valeur: _encaisseur,
+            tous: 'Tous les encaisseurs',
+            choix: {for (final e in encaisseurs) e: e},
+            onChanged: (v) {
+              setState(() => _encaisseur = v);
+              rafraichir();
+            },
+          ),
+          MenuCompact<String>(
+            largeur: largeur > 0 ? largeur : 180,
+            valeur: _modeFiltre,
+            tous: 'Tous les modes',
+            choix: modesPaiement,
+            onChanged: (v) {
+              setState(() => _modeFiltre = v);
+              rafraichir();
+            },
+          ),
+        ];
     final filtres = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
       Container(
         height: 36,
@@ -1779,21 +1802,18 @@ class _CaisseScreenState extends State<CaisseScreen> {
           ),
         ]),
       ),
-      MenuCompact<String>(
-        largeur: 200,
-        valeur: _encaisseur,
-        tous: 'Tous les encaisseurs',
-        choix: {for (final e in encaisseurs) e: e},
-        onChanged: (v) => setState(() => _encaisseur = v),
-      ),
-      MenuCompact<String>(
-        largeur: 180,
-        valeur: _modeFiltre,
-        tous: 'Tous les modes',
-        choix: modesPaiement,
-        onChanged: (v) => setState(() => _modeFiltre = v),
-      ),
-      if (_encaisseur != null || _modeFiltre != null)
+      if (telephone)
+        BoutonFiltres(
+          actifs: [_encaisseur, _modeFiltre].where((x) => x != null).length,
+          menus: menusJournal,
+          reinitialiser: () => setState(() {
+            _encaisseur = null;
+            _modeFiltre = null;
+          }),
+        )
+      else
+        ...menusJournal(0, () {}),
+      if (!telephone && (_encaisseur != null || _modeFiltre != null))
         TextButton.icon(
           style: TextButton.styleFrom(foregroundColor: gris),
           onPressed: () => setState(() {
