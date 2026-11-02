@@ -5,7 +5,7 @@
 - `scolagrid-logo` : symbole + nom, pour fond clair ; `scolagrid-logo-fond-sombre` pour fond sombre.
 - `scolagrid-cachet` : cachet rond, encre bleue, net (documents numériques) ;
   `scolagrid-cachet-encre` : même cachet avec un effet d'encre (aperçus, présentations) ;
-  `scolagrid-cachet-plein` : cachet plein bleu, textes blancs, dans le style des
+  `scolagrid-cachet-plein` : cachet sur fond blanc, textes et cercles bleus, dans le style des
   cachets d'école guinéens (inscription sur le pourtour, nom en bas, deux étoiles).
 - `apercu.png` : planche de toutes les versions.
 
