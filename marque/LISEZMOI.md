@@ -6,7 +6,7 @@
 - `scolagrid-icone` : le même symbole sans le nom, plus grand, pour l'icône d'application
   (le nom serait illisible en petit).
 - En réserve : `…-famille` (une maman et sa fille en route vers l'école) et `…-grille`
-  (un « S » dessiné dans une grille de 5 × 5 cases ; le cachet l'utilise encore).
+  (un « S » dessiné dans une grille de 5 × 5 cases).
 - `propositions/` : les pistes étudiées et les améliorations possibles.
 - `scolagrid-logo` : symbole + nom, pour fond clair ; `scolagrid-logo-fond-sombre` pour fond sombre.
 - `scolagrid-cachet` : cachet rond, encre bleue, net (documents numériques) ;

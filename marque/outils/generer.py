@@ -279,3 +279,54 @@ def logo_v1(fond_sombre):
     return svg(l, h, '\n'.join(corps), 'ScolaGrid')
 ecrire('scolagrid-logo.svg', logo_v1(False))
 ecrire('scolagrid-logo-fond-sombre.svg', logo_v1(True))
+
+
+# 9. Cachets avec le logo retenu au centre (toit, drapeau, S) à la place de la grille.
+def logo_cachet(c, coul, drapeau, k=0.36, haut=136):
+    return (f'<g transform="translate({c - 256 * k:.2f} {c - haut - 66 * k:.2f}) scale({k})">'
+            + ecole(coul).replace(f'fill="{VERT}"', f'fill="{drapeau}"') + '</g>')
+
+def cachet_logo(coul, encre=False):
+    c = 300
+    corps = [f'<g fill="none" stroke="{coul}">',
+             f'<circle cx="{c}" cy="{c}" r="282" stroke-width="12"/>',
+             f'<circle cx="{c}" cy="{c}" r="262" stroke-width="3"/>',
+             f'<circle cx="{c}" cy="{c}" r="176" stroke-width="3"/>',
+             '</g>',
+             f'<path d="{GRAS.arc("SCOLAGRID", 56, c, c, 200, 0, 9)}" fill="{coul}"/>',
+             f'<path d="{GRAS.arc("GESTION SCOLAIRE", 33, c, c, 232, 180, 4, bas=True)}" fill="{coul}"/>',
+             etoile(c - 219, c, 13, coul), etoile(c + 219, c, 13, coul),
+             logo_cachet(c, coul, coul, k=0.38, haut=126),
+             f'<path d="{GRAS.texte("DEPUIS 2026", 22, c - GRAS.largeur("DEPUIS 2026", 22, 3)/2, c + 102, 3)}" fill="{coul}"/>']
+    contenu = '\n'.join(corps)
+    if encre:
+        defs = ('<defs><filter id="encre" x="-5%" y="-5%" width="110%" height="110%">'
+                '<feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="bruit"/>'
+                '<feDisplacementMap in="SourceGraphic" in2="bruit" scale="2" result="bouge"/>'
+                '<feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="3" result="taches"/>'
+                '<feColorMatrix in="taches" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.1 1.55" result="masque"/>'
+                '<feComposite in="bouge" in2="masque" operator="in"/></filter></defs>')
+        contenu = defs + '<g filter="url(#encre)" opacity="0.92" transform="rotate(-6 300 300)">' + contenu + '</g>'
+    return svg(600, 600, contenu, 'Cachet ScolaGrid')
+ecrire('scolagrid-cachet.svg', cachet_logo(BLEU))
+ecrire('scolagrid-cachet-encre.svg', cachet_logo(BLEU, encre=True))
+
+def cachet_plein_logo():
+    c = 300
+    bleu = BLEU_CACHET
+    corps = [f'<circle cx="{c}" cy="{c}" r="292" fill="#FFFFFF"/>',
+             f'<g fill="none" stroke="{bleu}">',
+             f'<circle cx="{c}" cy="{c}" r="288" stroke-width="8"/>',
+             f'<circle cx="{c}" cy="{c}" r="272" stroke-width="3"/>',
+             f'<circle cx="{c}" cy="{c}" r="190" stroke-width="3"/>',
+             '</g>',
+             f'<path d="{GRAS.arc("LOGICIEL DE GESTION SCOLAIRE · GUINÉE", 31, c, c, 222, 0, 2)}" fill="{bleu}"/>',
+             f'<path d="{GRAS.arc("SCOLAGRID", 40, c, c, 254, 180, 7, bas=True)}" fill="{bleu}"/>',
+             etoile(c + 232 * math.sin(math.radians(122)), c - 232 * math.cos(math.radians(122)), 12, bleu),
+             etoile(c + 232 * math.sin(math.radians(238)), c - 232 * math.cos(math.radians(238)), 12, bleu),
+             logo_cachet(c, bleu, VERT, k=0.36, haut=140)]
+    for i, (ligne, taille) in enumerate([('LA', 30), ('DIRECTION', 34)]):
+        y = c + 40 + i * 40
+        corps.append(f'<path d="{GRAS.texte(ligne, taille, c - GRAS.largeur(ligne, taille, 1)/2, y, 1)}" fill="{bleu}"/>')
+    return svg(600, 600, '\n'.join(corps), 'Cachet ScolaGrid')
+ecrire('scolagrid-cachet-plein.svg', cachet_plein_logo())
