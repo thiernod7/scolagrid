@@ -241,3 +241,41 @@ def logo_ecole(fond_sombre):
     return svg(l, h, '\n'.join(corps), 'ScolaGrid')
 ecrire('scolagrid-logo.svg', logo_ecole(False))
 ecrire('scolagrid-logo-fond-sombre.svg', logo_ecole(True))
+
+# 8. Version retenue (piste 1, « plus grand, plus serré ») : sans le nom pour
+# l'icône d'application, avec « ScolaGrid » sous le S pour les grands formats.
+def ecole_icone(trait):
+    return (f'<g transform="translate(256 278) scale(1.16) translate(-256 -278)">'
+            f'<path d="M118 238 L256 124 L394 238" fill="none" stroke="{trait}" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>'
+            f'<path d="M256 126 L256 66" stroke="{trait}" stroke-width="10" stroke-linecap="round"/>'
+            f'<path d="M258 68 L312 84 L258 100 Z" fill="{VERT}"/>'
+            f'<path d="{GRAS.glyphe("S", 236, 256 - GRAS.avance("S", 236) / 2, 410)}" fill="{trait}"/></g>')
+
+def ecole_nom(trait, gris):
+    taille = 66
+    l = GRAS.largeur('ScolaGrid', taille, -1); x = 256 - l / 2
+    x2 = x + GRAS.largeur('Scola', taille, -1) - 1
+    return (f'<path d="M140 198 L256 102 L372 198" fill="none" stroke="{trait}" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>'
+            f'<path d="M256 104 L256 52" stroke="{trait}" stroke-width="9" stroke-linecap="round"/>'
+            f'<path d="M258 54 L304 68 L258 82 Z" fill="{VERT}"/>'
+            f'<path d="{GRAS.glyphe("S", 200, 256 - GRAS.avance("S", 200) / 2, 362)}" fill="{trait}"/>'
+            f'<path d="{GRAS.texte("Scola", taille, x, 452, -1)}" fill="{trait}"/>'
+            f'<path d="{GRAS.texte("Grid", taille, x2, 452, -1)}" fill="{gris}"/>')
+
+carre = f'<rect width="512" height="512" rx="112" fill="{ENCRE}"/>'
+ecrire('scolagrid-icone.svg', svg(512, 512, carre + ecole_icone('#FFFFFF'), 'ScolaGrid'))
+ecrire('scolagrid-symbole.svg', svg(512, 512, carre + ecole_nom('#FFFFFF', '#A3A3A3'), 'ScolaGrid'))
+ecrire('scolagrid-symbole-fond-clair.svg', svg(512, 512, ecole_nom(ENCRE, GRIS), 'ScolaGrid'))
+
+def logo_v1(fond_sombre):
+    h = 200; m = 200
+    fond, trait = ('#FFFFFF', ENCRE) if fond_sombre else (ENCRE, '#FFFFFF')
+    corps = [f'<g transform="scale({m/512})"><rect width="512" height="512" rx="112" fill="{fond}"/>{ecole_icone(trait)}</g>']
+    taille = 132; base = 148; x = m + 44
+    corps.append(f'<path d="{GRAS.texte("Scola", taille, x, base, -2)}" fill="{"#FFFFFF" if fond_sombre else ENCRE}"/>')
+    x2 = x + GRAS.largeur('Scola', taille, -2) - 2
+    corps.append(f'<path d="{GRAS.texte("Grid", taille, x2, base, -2)}" fill="{"#A3A3A3" if fond_sombre else GRIS}"/>')
+    l = int(x2 + GRAS.largeur('Grid', taille, -2) + 8)
+    return svg(l, h, '\n'.join(corps), 'ScolaGrid')
+ecrire('scolagrid-logo.svg', logo_v1(False))
+ecrire('scolagrid-logo-fond-sombre.svg', logo_v1(True))

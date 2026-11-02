@@ -3,6 +3,8 @@ const fs = require('fs');
 const dir = process.argv[2];
 const sorties = [
   ['scolagrid-symbole.svg', 1024, 'transparent'],
+  ['scolagrid-icone.svg', 1024, 'transparent'],
+  ['scolagrid-symbole-fond-clair.svg', 1024, 'transparent'],
   ['scolagrid-symbole-grille.svg', 1024, 'transparent'],
   ['scolagrid-symbole-famille.svg', 1024, 'transparent'],
   ['scolagrid-logo-famille.svg', 1600, 'transparent'],

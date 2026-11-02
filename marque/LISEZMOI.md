@@ -1,7 +1,10 @@
 # Marque ScolaGrid
 
-- `scolagrid-symbole` : le symbole retenu (icône d'application) — un toit d'école, un
-  petit drapeau vert au sommet, et le « S » de ScolaGrid dessous.
+- `scolagrid-symbole` : le symbole retenu — un toit d'école, un petit drapeau vert au
+  sommet, le « S » dessous et « ScolaGrid » en bas (grands formats : documents, affiches,
+  écran de démarrage) ; `scolagrid-symbole-fond-clair` : le même, sans carré, pour fond clair.
+- `scolagrid-icone` : le même symbole sans le nom, plus grand, pour l'icône d'application
+  (le nom serait illisible en petit).
 - En réserve : `…-famille` (une maman et sa fille en route vers l'école) et `…-grille`
   (un « S » dessiné dans une grille de 5 × 5 cases ; le cachet l'utilise encore).
 - `propositions/` : les pistes étudiées et les améliorations possibles.
