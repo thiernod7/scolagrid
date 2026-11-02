@@ -113,27 +113,53 @@ jobs:
       - run: flutter pub get
       - name: Vérifier que l'app connaît son serveur
         run: '[ -n "$DART_DEFINES$DART_DEFINES_ESSAI" ] || { echo "Aucune adresse de serveur : compilation arrêtée"; exit 1; }'
-      - run: flutter build apk --release $DART_DEFINES $DART_DEFINES_ESSAI
-      # Signature avec la clé fixe de Scolagrid (créée une fois par le workflow
-      # « Android - créer la clé de signature ») : sans elle, chaque version a une
-      # clé différente et Android refuse la mise à jour (« application non installée »).
-      - name: Signer avec la clé de Scolagrid
+      # Signature avec la clé fixe de Scolagrid, faite par Gradle pendant la
+      # compilation (comme le prévoit Flutter) : sans elle, chaque version a une
+      # clé différente et Android refuse la mise à jour.
+      - name: Préparer la signature
         env:
           SECRET: ${{ secrets.ANDROID_CLE_SECRET }}
         run: |
-          apk=build/app/outputs/flutter-apk/app-release.apk
           if [ ! -f signature/scolagrid.jks.enc ] || [ -z "$SECRET" ]; then
-            echo "::warning::Pas de clé de signature fixe : cet APK ne s'installera pas par-dessus une version précédente. Lancez le workflow « Android - créer la clé de signature »."
+            echo "::warning::Pas de clé de signature fixe : APK signé avec une clé jetable."
             exit 0
           fi
-          cle=$(mktemp -d)/scolagrid.jks
+          cle="$RUNNER_TEMP/scolagrid.jks"
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 250000 -in signature/scolagrid.jks.enc -out "$cle" -pass env:SECRET
+          echo "SCOLAGRID_KEYSTORE=$cle" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          import pathlib, sys
+          p = pathlib.Path("android/app/build.gradle.kts")
+          s = p.read_text()
+          ancien = 'signingConfig = signingConfigs.getByName("debug")'
+          if ancien not in s or "buildTypes {" not in s:
+              sys.exit("build.gradle.kts inattendu : signature impossible")
+          bloc = """signingConfigs {
+                  create("scolagrid") {
+                      storeFile = file(System.getenv("SCOLAGRID_KEYSTORE"))
+                      storePassword = System.getenv("ANDROID_CLE_SECRET")
+                      keyAlias = "scolagrid"
+                      keyPassword = System.getenv("ANDROID_CLE_SECRET")
+                  }
+              }
+
+              buildTypes {"""
+          s = s.replace("buildTypes {", bloc, 1).replace(ancien, 'signingConfig = signingConfigs.getByName("scolagrid")')
+          p.write_text(s)
+          print("Signature Scolagrid branchée dans Gradle")
+          PY
+      - run: flutter build apk --release $DART_DEFINES $DART_DEFINES_ESSAI
+        env:
+          ANDROID_CLE_SECRET: ${{ secrets.ANDROID_CLE_SECRET }}
+      # Avant de publier : signature valide, et bibliothèques alignées sur 16 Ko
+      # (exigé par certains téléphones Android 15), sinon on s'arrête ici.
+      - name: Vérifier l'APK
+        run: |
+          apk=build/app/outputs/flutter-apk/app-release.apk
+          rm -f "$RUNNER_TEMP/scolagrid.jks"
           outils=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$outils/apksigner" sign --ks "$cle" --ks-key-alias scolagrid --ks-pass env:SECRET --key-pass env:SECRET \
-            --out "$apk.signe" "$apk"
-          mv "$apk.signe" "$apk"
-          rm -f "$cle"
-          "$outils/apksigner" verify --print-certs "$apk" | grep -m1 "SHA-256"
+          "$outils/apksigner" verify --verbose --print-certs "$apk" | grep -E "Verified using|certificate SHA-256" | head -6
+          "$outils/zipalign" -c -P 16 4 "$apk" && echo "Alignement 16 Ko : correct"
       - uses: actions/upload-artifact@v4
         with:
           name: scolagrid-android-${{ needs.config.outputs.environnement }}
