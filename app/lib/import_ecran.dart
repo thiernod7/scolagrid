@@ -58,7 +58,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
       final existants = await db.getAll('SELECT nom, prenoms, date_naissance FROM eleves WHERE organisation_id = ?', [o]);
       final resultat = analyserImport(
         lignes: lignes,
-        classes: {for (final c in classes) nomSimplifie('${c['nom']}'): c['id'] as String},
+        classes: {for (final c in classes) '${c['nom']}': c['id'] as String},
         existants: [
           for (final e in existants)
             (nom: '${e['nom']}', prenoms: '${e['prenoms']}', naissance: DateTime.tryParse('${e['date_naissance']}')),
@@ -78,8 +78,18 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
   }
 
   /// Le modèle à remplir, en CSV : s'ouvre dans Excel, LibreOffice ou Google Sheets.
+  /// Une ligne par classe de l'école (ou du modèle guinéen s'il n'y en a pas encore).
   Future<void> _telechargerModele() async {
     final messager = ScaffoldMessenger.of(context);
+    final sites = await _sitesOuJInscris(widget.espace.orgId);
+    final classes = [
+      for (final c in await db.getAll(
+          '''SELECT c.nom, c.site_id FROM classes c JOIN niveaux n ON n.id = c.niveau_id
+             JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1
+             WHERE c.organisation_id = ? AND c.fermee = 0 ORDER BY n.ordre, c.nom''', [widget.espace.orgId]))
+        if (sites.containsKey(c['site_id'])) '${c['nom']}',
+    ];
+    final modeleCsv = modeleCsvPour(classes.isEmpty ? classesModeleGuineen : classes);
     try {
       // BOM UTF-8 : Excel affiche alors correctement les accents.
       await FilePicker.saveFile(
@@ -219,9 +229,11 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
             "LIEN · MATRICULE D'ÉTAT · QUARTIER",
             style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        const Text('Seuls NOM, PRÉNOMS et CLASSE sont obligatoires. La classe doit porter exactement le nom créé dans '
-            "Scolagrid (ex. 7ème A). TYPE : Nouvelle, Réinscription (par défaut) ou Transfert. Les élèves qui partagent le "
-            'téléphone du parent sont reliés en fratrie. Les matricules sont attribués par Scolagrid.'),
+        const Text('Seuls NOM, PRÉNOMS et CLASSE sont obligatoires. Le modèle contient déjà une ligne par classe de '
+            "l'école : écrivez les élèves à côté et copiez la ligne autant de fois que nécessaire (les lignes sans nom "
+            'sont ignorées). « 7e A » ou « 7eme a » sont reconnus comme « 7ème A ». TYPE : Nouvelle, Réinscription '
+            '(par défaut) ou Transfert. Les élèves qui partagent le téléphone du parent sont reliés en fratrie. Les '
+            'matricules sont attribués par ScolaGrid.'),
         const SizedBox(height: 16),
         Wrap(spacing: 8, runSpacing: 8, children: [
           FilledButton.icon(

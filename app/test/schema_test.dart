@@ -354,13 +354,16 @@ void main() {
       expect(l[1], ['BAH', 'Mamadou "Bobo"', '7ème A', 'Kaloum,\nrue 5']);
     });
 
-    test("Le modèle CSV est relu et reconnu par l'analyse", () {
-      final l = lireCsv(utf8.encode(modeleCsv));
-      final r = analyserImport(lignes: l, classes: {nomSimplifie('7ème A'): 'c1'}, existants: const []);
-      expect(r.single.etat, EtatLigne.valide);
-      expect(r.single.nom, 'DIALLO');
-      expect(r.single.naissance, DateTime(2014, 3, 15));
-      expect(r.single.lien, 'pere');
+    test("Modèle de l'école : lignes sans élève ignorées, classes reconnues avec tolérance", () {
+      final classes = {'7ème A': 'c7a', '7ème B': 'c7b', 'CM2 A': 'ccm2', 'CE2 E': 'ce2e'};
+      final modele = lireCsv(utf8.encode(modeleCsvPour(classes.keys.toList())));
+      expect(analyserImport(lignes: modele, classes: classes, existants: const []), isEmpty);
+      const rempli = 'NOM;PRÉNOMS;CLASSE\nDIALLO;Awa;7e a\nBAH;Ali;7eme B\nSOW;Fanta;CM2\nBARRY;Ousmane;CE2 E\nCAMARA;Saran;7ème C\n';
+      final r = analyserImport(lignes: lireCsv(utf8.encode(rempli)), classes: classes, existants: const []);
+      expect(r.map((x) => x.classeId), ['c7a', 'c7b', 'ccm2', 'ce2e', null]);
+      expect(r.last.etat, EtatLigne.rejetee);
+      expect(r.last.remarques.single, contains('classes possibles : 7ème A, 7ème B'));
+      expect(cleClasse('1ère année'), '1 ANNEE');
     });
   });
 }

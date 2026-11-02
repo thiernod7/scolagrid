@@ -76,10 +76,27 @@ List<List<String?>> lireCsv(List<int> octets) {
   return lignes;
 }
 
-/// Modèle à remplir, en CSV (séparateur point-virgule, comme Excel en français).
-const modeleCsv = 'NOM;PRÉNOMS;SEXE;DATE DE NAISSANCE;LIEU DE NAISSANCE;CLASSE;TYPE;PARENT;TÉLÉPHONE;LIEN;'
-    "MATRICULE D'ÉTAT;QUARTIER\r\n"
-    'DIALLO;Mamadou Aliou;M;15/03/2014;Conakry;7ème A;Réinscription;Diallo Ibrahima;620123456;Père;;Ratoma\r\n';
+const _enteteCsv = "NOM;PRÉNOMS;SEXE;DATE DE NAISSANCE;LIEU DE NAISSANCE;CLASSE;TYPE;PARENT;TÉLÉPHONE;LIEN;MATRICULE D'ÉTAT;QUARTIER";
+
+/// Classes du modèle guinéen, pour un modèle sans classes encore créées.
+const classesModeleGuineen = [
+  'Petite section', 'Moyenne section', 'Grande section', 'CP1', 'CP2', 'CE1', 'CE2', 'CM1', 'CM2',
+  '7ème', '8ème', '9ème', '10ème', '11ème', '12ème', 'Terminale',
+];
+
+/// Modèle à remplir, en CSV (séparateur point-virgule, comme Excel en français) :
+/// une ligne par classe de l'école, la colonne CLASSE déjà remplie. On écrit les
+/// élèves à côté, en copiant la ligne autant de fois que nécessaire ; les lignes
+/// laissées sans nom sont ignorées à l'import.
+String modeleCsvPour(List<String> classes) =>
+    '$_enteteCsv\r\n${[for (final c in classes) ';;;;;${c.replaceAll(';', ' ')};;;;;;'].join('\r\n')}\r\n';
+
+/// Clé tolérante d'une classe : « 7ème A », « 7e A », « 7eme a », « 7 ème A » → « 7 A ».
+String cleClasse(String s) => nomSimplifie(s)
+    // « 7E », « 7EME », « 7 EME » → « 7 » ; mais « CE2 E » (groupe E) reste tel quel.
+    .replaceAllMapped(RegExp(r'(\d+)(?:IEME|EME|ERE|RE|E|\s(?:IEME|EME|ERE))\b'), (m) => m[1]!)
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
 
 /// Colonnes reconnues (l'en-tête du fichier peut varier un peu).
 const colonnesImport = {
@@ -173,12 +190,30 @@ Map<String, int> lireEntete(List<String?> entete) {
 /// doublons probables (avec un élève existant ou une autre ligne du fichier).
 List<LigneImport> analyserImport({
   required List<List<String?>> lignes,
-  required Map<String, String> classes, // nom simplifié de la classe → id
+  required Map<String, String> classes, // nom de la classe dans ScolaGrid → id
   required List<({String nom, String prenoms, DateTime? naissance})> existants,
 }) {
   if (lignes.isEmpty) return [];
   final cols = lireEntete(lignes.first);
   final r = <LigneImport>[];
+  // Classes reconnues avec tolérance ; « CM2 » suffit s'il n'y a qu'une classe de CM2.
+  final parCle = <String, String>{for (final e in classes.entries) cleClasse(e.key): e.value};
+  String? trouverClasse(String? v) {
+    if (v == null) return null;
+    final k = cleClasse(v);
+    final exacte = parCle[k];
+    if (exacte != null) return exacte;
+    final debut = parCle.entries.where((e) => e.key.startsWith('$k ')).toList();
+    return debut.length == 1 ? debut.single.value : null;
+  }
+
+  String possibles(String v) {
+    final k = cleClasse(v).split(' ').first;
+    final proches = classes.keys.where((c) => cleClasse(c).split(' ').first == k).toList();
+    final liste = proches.isNotEmpty ? proches : classes.keys.take(12).toList();
+    return liste.isEmpty ? '' : ' — classes possibles : ${liste.join(', ')}${proches.isEmpty && classes.length > 12 ? '…' : ''}';
+  }
+
   for (var i = 1; i < lignes.length; i++) {
     final brut = lignes[i];
     final valeurs = {
@@ -186,20 +221,26 @@ List<LigneImport> analyserImport({
         if (c.value < brut.length && (brut[c.value] ?? '').trim().isNotEmpty) c.key: brut[c.value]!.trim(),
     };
     if (valeurs.isEmpty) continue; // ligne vide
+    // Ligne du modèle restée sans élève (seulement la classe, le type) : ignorée.
+    if (!valeurs.containsKey('nom') && !valeurs.containsKey('prenoms') && valeurs.keys.every((k) => k == 'classe' || k == 'type')) {
+      continue;
+    }
     final l = LigneImport(i + 1, valeurs);
     l.naissance = lireDate(valeurs['naissance']);
     l.sexe = _sexe(valeurs['sexe']);
     l.lien = _lien(valeurs['lien']);
     final type = nomSimplifie(valeurs['type'] ?? '');
     l.type = type.startsWith('NOUV') ? 'nouvelle' : (type.startsWith('TRANS') ? 'transfert' : 'reinscription');
-    l.classeId = classes[nomSimplifie(valeurs['classe'] ?? '')];
+    l.classeId = trouverClasse(valeurs['classe']);
 
     if (l.nom.isEmpty || l.prenoms.isEmpty) {
       l.etat = EtatLigne.rejetee;
       l.remarques.add('nom ou prénoms manquant');
     } else if (l.classeId == null) {
       l.etat = EtatLigne.rejetee;
-      l.remarques.add(valeurs['classe'] == null ? 'classe manquante' : 'classe inconnue : « ${valeurs['classe']} »');
+      l.remarques.add(valeurs['classe'] == null
+          ? 'classe manquante'
+          : 'classe inconnue : « ${valeurs['classe']} »${possibles(valeurs['classe']!)}');
     } else {
       if (valeurs['naissance'] != null && l.naissance == null) l.remarques.add('date illisible : « ${valeurs['naissance']} »');
       if (l.naissance == null) l.remarques.add('date de naissance à compléter');
