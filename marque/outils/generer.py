@@ -141,7 +141,7 @@ print('ok')
 
 # 5. Cachet « plein », dans le style des cachets d'école guinéens : disque foncé,
 # inscription sur presque tout le tour, le nom en bas, deux étoiles, texte au centre.
-MARINE = '#22264A'
+MARINE = '#1E50B4'
 def cachet_plein():
     c = 300
     blanc = '#FFFFFF'
