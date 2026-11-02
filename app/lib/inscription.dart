@@ -31,6 +31,8 @@ const piecesStandard = [
   PieceDossier('vaccination', 'Carnet de vaccination', cycles: {'maternelle', 'primaire'}),
   PieceDossier('bulletin', 'Bulletin précédent', admissions: {'transfert', 'reinscription'}),
   PieceDossier('certificat_scolarite', 'Certificat de scolarité', admissions: {'transfert'}),
+  PieceDossier('cee', 'Relevé ou attestation du CEE', admissions: {'nouvelle', 'transfert'}, cycles: {'college'}),
+  PieceDossier('bepc', 'Relevé ou attestation du BEPC', admissions: {'nouvelle', 'transfert'}, cycles: {'lycee'}),
   PieceDossier('residence', 'Certificat de résidence'),
 ];
 
@@ -1225,12 +1227,15 @@ class _InscrireScreenState extends State<InscrireScreen> {
   }
 
   Widget _sectionPieces(BuildContext context) => _Section(
-        numero: 3,
+        numero: 4,
         titre: 'Pièces du dossier',
         complet: _piecesOk,
         sousTitre: '${_piecesConcernees.where((p) => _pieces.contains(p.code)).length}/${_piecesConcernees.length}'
             '${_piecesConcernees.any((p) => p.obligatoire) ? ' · * obligatoire' : ' · facultatives'}',
         enfants: [
+          if (_classe == null)
+            Text("Choisissez d'abord la classe : la liste s'adapte au cycle (carnet de vaccination au primaire, "
+                'BEPC au lycée…).', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           _Grille(colonnes: 3, largeurMin: 180, espacement: 0, enfants: [
             for (final p in _piecesConcernees)
               CheckboxListTile(
@@ -1345,7 +1350,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
     final pleine = c != null && c['capacite'] != null && ((c['effectif'] as int?) ?? 0) >= (c['capacite'] as int);
     final niveau = _niveau ?? c?['niveau_id'] as String?;
     return _Section(
-      numero: 4,
+      numero: 3,
       titre: 'Classe',
       complet: _classeOk,
       sousTitre: 'Année ${_annee!['libelle']}',
@@ -1440,7 +1445,67 @@ class _InscrireScreenState extends State<InscrireScreen> {
   }
 
   /// Colonne de droite : l'élève, l'avancement, le résumé et les boutons.
-  Widget _recapitulatif(BuildContext context) {
+  /// Les boutons d'enregistrement (récapitulatif, ou barre du bas sur téléphone).
+  List<Widget> _boutons({bool compact = false}) {
+    final libelleCreer = _reinscription ? 'Réinscrire' : 'Créer';
+    final inactif = _envoi || _classes.isEmpty;
+    if (!_peutEncaisser) {
+      return [
+        FilledButton.icon(
+          onPressed: inactif ? null : () => _enregistrer(encaisser: false),
+          icon: const Icon(Icons.how_to_reg),
+          label: Text(_envoi ? 'Enregistrement…' : (_reinscription ? 'Réinscrire' : "Créer l'inscription")),
+        ),
+      ];
+    }
+    return [
+      FilledButton.icon(
+        onPressed: inactif ? null : () => _enregistrer(encaisser: true),
+        icon: const Icon(Icons.point_of_sale),
+        label: Text(_envoi ? 'Enregistrement…' : '$libelleCreer et encaisser'),
+      ),
+      if (!compact) ...[
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: inactif ? null : () => _enregistrer(encaisser: false),
+          child: Text('$libelleCreer, payer plus tard'),
+        ),
+      ],
+    ];
+  }
+
+  /// Téléphone : total et enregistrement toujours visibles en bas de l'écran.
+  Widget _barreTelephone(BuildContext context) {
+    final schema = Theme.of(context).colorScheme;
+    final libelleCreer = _reinscription ? 'Réinscrire' : 'Créer';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(color: schema.surface, border: Border(top: BorderSide(color: schema.outlineVariant))),
+      child: SafeArea(
+        top: false,
+        child: Row(children: [
+          Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Total année', style: TextStyle(fontSize: 11, color: schema.onSurfaceVariant)),
+            Text(_classe == null ? '—' : gnf(_totalAnnee), style: styleMono.copyWith(fontSize: 15, fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(width: 12),
+          Expanded(child: _boutons(compact: true).first),
+          if (_peutEncaisser)
+            PopupMenuButton<String>(
+              tooltip: "Autres façons d'enregistrer",
+              icon: const Icon(Icons.more_vert),
+              enabled: !(_envoi || _classes.isEmpty),
+              onSelected: (_) => _enregistrer(encaisser: false),
+              itemBuilder: (_) => [PopupMenuItem(value: 'plus_tard', child: Text('$libelleCreer, payer plus tard'))],
+            )
+          else
+            const SizedBox(width: 8),
+        ]),
+      ),
+    );
+  }
+
+  Widget _recapitulatif(BuildContext context, {bool boutons = true}) {
     final texte = Theme.of(context).textTheme;
     final c = _classeChoisie;
     String? tuteur, payeur;
@@ -1460,7 +1525,6 @@ class _InscrireScreenState extends State<InscrireScreen> {
           ]),
         );
     final naissance = _existant != null ? _existant!['date_naissance'] : (_naissance == null ? null : _date(_naissance!));
-    final libelleCreer = _reinscription ? 'Réinscrire' : 'Créer';
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -1474,8 +1538,8 @@ class _InscrireScreenState extends State<InscrireScreen> {
           const Divider(height: 24),
           etape(1, 'Identité', _identiteOk),
           etape(2, 'Contacts', _contactsOk),
-          etape(3, 'Pièces du dossier', _piecesOk),
-          etape(4, 'Classe', _classeOk),
+          etape(3, 'Classe', _classeOk),
+          etape(4, 'Pièces du dossier', _piecesOk),
           etape(5, 'Frais', _fraisOk),
           const Divider(height: 24),
           cle('Naissance', naissance == null ? null : _dateLisible(naissance)),
@@ -1493,24 +1557,10 @@ class _InscrireScreenState extends State<InscrireScreen> {
             Expanded(child: Text('Total année', style: texte.titleSmall)),
             Text(_classe == null ? '—' : gnf(_totalAnnee), style: styleMono.copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
           ]),
-          const SizedBox(height: 16),
-          if (_peutEncaisser) ...[
-            FilledButton.icon(
-              onPressed: _envoi || _classes.isEmpty ? null : () => _enregistrer(encaisser: true),
-              icon: const Icon(Icons.point_of_sale),
-              label: Text(_envoi ? 'Enregistrement…' : '$libelleCreer et encaisser'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: _envoi || _classes.isEmpty ? null : () => _enregistrer(encaisser: false),
-              child: Text('$libelleCreer, payer plus tard'),
-            ),
-          ] else
-            FilledButton.icon(
-              onPressed: _envoi || _classes.isEmpty ? null : () => _enregistrer(encaisser: false),
-              icon: const Icon(Icons.how_to_reg),
-              label: Text(_envoi ? 'Enregistrement…' : (_reinscription ? 'Réinscrire' : "Créer l'inscription")),
-            ),
+          if (boutons) ...[
+            const SizedBox(height: 16),
+            ..._boutons(),
+          ],
         ]),
       ),
     );
@@ -1525,11 +1575,12 @@ class _InscrireScreenState extends State<InscrireScreen> {
     if (!_choisi) return _Page(titre: 'Inscrire un élève', corps: _etapeRecherche(context));
 
     final texte = Theme.of(context).textTheme;
+    final telephone = MediaQuery.sizeOf(context).width < 640;
     final sections = [
       _sectionIdentite(context),
       _sectionContacts(context),
-      _sectionPieces(context),
       _sectionClasse(context),
+      _sectionPieces(context),
       _sectionFrais(context),
     ];
     return Scaffold(
@@ -1538,17 +1589,24 @@ class _InscrireScreenState extends State<InscrireScreen> {
           Text(_libelleType),
           Text('effet au ${_dateLisible(_date(_dateEffective))}', style: texte.bodySmall),
         ]),
-        actions: [
-          if (!_reinscription)
-            TextButton.icon(
-              onPressed: () => setState(() => _choisi = false),
-              icon: const Icon(Icons.search, size: 18),
-              label: const Text('Recherche'),
-            ),
-          TextButton.icon(onPressed: _abandonner, icon: const Icon(Icons.close, size: 18), label: const Text('Abandonner')),
-          const SizedBox(width: 8),
-        ],
+        actions: telephone
+            ? [
+                if (!_reinscription)
+                  IconButton(tooltip: 'Recherche', onPressed: () => setState(() => _choisi = false), icon: const Icon(Icons.search)),
+                IconButton(tooltip: 'Abandonner', onPressed: _abandonner, icon: const Icon(Icons.close)),
+              ]
+            : [
+                if (!_reinscription)
+                  TextButton.icon(
+                    onPressed: () => setState(() => _choisi = false),
+                    icon: const Icon(Icons.search, size: 18),
+                    label: const Text('Recherche'),
+                  ),
+                TextButton.icon(onPressed: _abandonner, icon: const Icon(Icons.close, size: 18), label: const Text('Abandonner')),
+                const SizedBox(width: 8),
+              ],
       ),
+      bottomNavigationBar: telephone ? _barreTelephone(context) : null,
       body: Form(
         key: _form,
         child: LayoutBuilder(builder: (context, c) {
@@ -1577,7 +1635,9 @@ class _InscrireScreenState extends State<InscrireScreen> {
           }
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 32),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...sections, _recapitulatif(context)]),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [...sections, _recapitulatif(context, boutons: !telephone)]),
           );
         }),
       ),
