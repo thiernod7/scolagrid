@@ -4,6 +4,9 @@ const dir = process.argv[2];
 const sorties = [
   ['scolagrid-symbole.svg', 1024, 'transparent'],
   ['scolagrid-symbole-grille.svg', 1024, 'transparent'],
+  ['scolagrid-symbole-famille.svg', 1024, 'transparent'],
+  ['scolagrid-logo-famille.svg', 1600, 'transparent'],
+  ['scolagrid-logo-famille-fond-sombre.svg', 1600, 'transparent'],
   ['scolagrid-logo-grille.svg', 1600, 'transparent'],
   ['scolagrid-logo-grille-fond-sombre.svg', 1600, 'transparent'],
   ['scolagrid-logo.svg', 1600, 'transparent'],

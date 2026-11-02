@@ -203,7 +203,7 @@ def scene(c, vert):
 </g>'''
 
 
-ecrire('scolagrid-symbole.svg', svg(512, 512, f'<rect width="512" height="512" rx="112" fill="{ENCRE}"/>' + scene('#FFFFFF', VERT), 'ScolaGrid'))
+ecrire('scolagrid-symbole-famille.svg', svg(512, 512, f'<rect width="512" height="512" rx="112" fill="{ENCRE}"/>' + scene('#FFFFFF', VERT), 'ScolaGrid'))
 
 def logo_famille(fond_sombre):
     h = 200; m = 200
@@ -215,5 +215,29 @@ def logo_famille(fond_sombre):
     corps.append(f'<path d="{GRAS.texte("Grid", taille, x2, base, -2)}" fill="{"#A3A3A3" if fond_sombre else GRIS}"/>')
     l = int(x2 + GRAS.largeur('Grid', taille, -2) + 8)
     return svg(l, h, '\n'.join(corps), 'ScolaGrid')
-ecrire('scolagrid-logo.svg', logo_famille(False))
-ecrire('scolagrid-logo-fond-sombre.svg', logo_famille(True))
+ecrire('scolagrid-logo-famille.svg', logo_famille(False))
+ecrire('scolagrid-logo-famille-fond-sombre.svg', logo_famille(True))
+
+
+# 7. Symbole retenu : l'école — un toit, le drapeau vert au sommet, le « S » de ScolaGrid.
+def ecole(trait):
+    return (f'<path d="M128 236 L256 130 L384 236" fill="none" stroke="{trait}" stroke-width="34" '
+            f'stroke-linecap="round" stroke-linejoin="round"/>'
+            f'<path d="M256 132 L256 66" stroke="{trait}" stroke-width="10" stroke-linecap="round"/>'
+            f'<path d="M258 68 L312 84 L258 100 Z" fill="{VERT}"/>'
+            f'<path d="{GRAS.glyphe("S", 250, 256 - GRAS.avance("S", 250) / 2, 432)}" fill="{trait}"/>')
+
+ecrire('scolagrid-symbole.svg', svg(512, 512, f'<rect width="512" height="512" rx="112" fill="{ENCRE}"/>' + ecole('#FFFFFF'), 'ScolaGrid'))
+
+def logo_ecole(fond_sombre):
+    h = 200; m = 200
+    fond, trait = ('#FFFFFF', ENCRE) if fond_sombre else (ENCRE, '#FFFFFF')
+    corps = [f'<g transform="scale({m/512})"><rect width="512" height="512" rx="112" fill="{fond}"/>{ecole(trait)}</g>']
+    taille = 132; base = 148; x = m + 44
+    corps.append(f'<path d="{GRAS.texte("Scola", taille, x, base, -2)}" fill="{"#FFFFFF" if fond_sombre else ENCRE}"/>')
+    x2 = x + GRAS.largeur('Scola', taille, -2) - 2
+    corps.append(f'<path d="{GRAS.texte("Grid", taille, x2, base, -2)}" fill="{"#A3A3A3" if fond_sombre else GRIS}"/>')
+    l = int(x2 + GRAS.largeur('Grid', taille, -2) + 8)
+    return svg(l, h, '\n'.join(corps), 'ScolaGrid')
+ecrire('scolagrid-logo.svg', logo_ecole(False))
+ecrire('scolagrid-logo-fond-sombre.svg', logo_ecole(True))
