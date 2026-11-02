@@ -34,6 +34,7 @@ part 'frais.dart';
 part 'identite.dart';
 part 'import_ecran.dart';
 part 'inscription.dart';
+part 'mise_en_route.dart';
 part 'personnel.dart';
 part 'photo.dart';
 part 'poste.dart';
@@ -269,6 +270,8 @@ class _Reglage {
 }
 
 final _reglages = <_Reglage>[
+  _Reglage('demarrage', 'Mise en route', "Les étapes pour démarrer, puis l'import des élèves", Icons.flag_outlined, 'Démarrage',
+      (e) => MiseEnRouteScreen(espace: e)),
   _Reglage('ecole', "L'école", 'Logo, contacts, responsable, documents', Icons.apartment_outlined, 'Établissement',
       (e) => IdentiteEcoleScreen(espace: e)),
   _Reglage('regles', 'Règles générales', 'Documents si arriérés, seuil, redoublements', Icons.rule_outlined, 'Établissement',
@@ -311,7 +314,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   /// Qui voit quelle rubrique : la direction voit tout ; la direction des
   /// études voit la scolarité ; la comptabilité voit l'argent.
   bool _voit(String cle) => switch (cle) {
-        'ecole' || 'regles' || 'pieces' => _e.gestionnaire,
+        'demarrage' || 'ecole' || 'regles' || 'pieces' => _e.gestionnaire,
         'annee' || 'niveaux' || 'matieres' || 'classes' => _e.gestionnaire || _e.gereMatieres,
         'frais' || 'reductions' || 'remboursements' => _e.gestionnaire || _e.voitFinances,
         _ => false,
@@ -319,7 +322,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
   /// Qui peut modifier (le serveur applique les mêmes règles).
   bool _modifie(String cle) => switch (cle) {
-        'ecole' || 'classes' || 'frais' => _e.gestionnaire,
+        'demarrage' || 'ecole' || 'classes' || 'frais' => _e.gestionnaire,
         'matieres' => _e.gereMatieres,
         'annee' || 'niveaux' || 'reductions' || 'remboursements' || 'regles' || 'pieces' => _e.fondateur,
         _ => false,
@@ -336,6 +339,10 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   Map<String, (bool, String)> _etat(Map<String, Object?> r) {
     int n(String c) => r[c] as int? ?? 0;
     return {
+      'demarrage': (
+        n('eleves') > 0,
+        n('eleves') > 0 ? '${n('eleves')} élève(s) dans ScolaGrid' : "Les réglages dans l'ordre, puis les élèves",
+      ),
       'ecole': (
         r['sigle'] != null && n('sites_sans_code') == 0 && r['responsable'] != null,
         r['sigle'] == null
@@ -368,8 +375,9 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
            (SELECT code FROM organisations WHERE id = ?) AS sigle,
            (SELECT nom FROM organisations WHERE id = ?) AS ecole,
            (SELECT count(*) FROM sites WHERE organisation_id = ? AND code IS NULL) AS sites_sans_code,
-           (SELECT responsable_nom FROM organisations WHERE id = ?) AS responsable''',
-      parametres: [o, o, o, o, o, o, o, o, o, o],
+           (SELECT responsable_nom FROM organisations WHERE id = ?) AS responsable,
+           (SELECT count(*) FROM eleves WHERE organisation_id = ?) AS eleves''',
+      parametres: [o, o, o, o, o, o, o, o, o, o, o],
       builder: (context, l) {
         final r = l.first;
         final etat = _etat(r);

@@ -383,18 +383,21 @@ class _ElevesScreenState extends State<ElevesScreen> {
       if (classe != null)
         OutlinedButton.icon(
             onPressed: _imprimerListe, icon: const Icon(Icons.print_outlined, size: 16), label: const Text('Imprimer la liste')),
-      if (!telephone)
-        OutlinedButton.icon(
-          onPressed: eleves.isEmpty ? null : () => _exporter(eleves, 'eleves-${classe?['nom'] ?? 'liste'}'.replaceAll(' ', '-')),
-          icon: const Icon(Icons.download_outlined, size: 16),
-          label: const Text('Exporter'),
-        ),
-      if (_peutInscrire && !telephone)
-        OutlinedButton.icon(
-          onPressed: () =>
-              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImportElevesScreen(espace: widget.espace))),
-          icon: const Icon(Icons.upload_file_outlined, size: 16),
-          label: const Text('Importer'),
+      // Importer et exporter : des gestes rares, rangés dans « ⋯ ».
+      if (_peutInscrire || !telephone)
+        PopupMenuButton<String>(
+          tooltip: "Importer, exporter",
+          icon: const Icon(Icons.more_horiz),
+          onSelected: (v) => v == 'importer'
+              ? Navigator.of(context).push(MaterialPageRoute(builder: (_) => ImportElevesScreen(espace: widget.espace)))
+              : _exporter(eleves, 'eleves-${classe?['nom'] ?? 'liste'}'.replaceAll(' ', '-')),
+          itemBuilder: (_) => [
+            if (_peutInscrire)
+              const PopupMenuItem(value: 'importer', child: _ItemMenu(Icons.upload_file_outlined, 'Importer (Excel ou CSV)')),
+            if (!telephone)
+              PopupMenuItem(
+                  value: 'exporter', enabled: eleves.isNotEmpty, child: const _ItemMenu(Icons.download_outlined, 'Exporter en Excel')),
+          ],
         ),
       if (_peutInscrire)
         FilledButton.icon(
