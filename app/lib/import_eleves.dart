@@ -254,6 +254,9 @@ List<LigneImport> analyserImport({
     }
     final l = LigneImport(i + 1, valeurs);
     l.naissance = lireDate(valeurs['naissance']);
+    // Le serveur refuse une naissance avant 1980 ; une date future est une erreur de saisie.
+    final dateImpossible = l.naissance != null && (l.naissance!.isBefore(DateTime(1980, 1, 2)) || l.naissance!.isAfter(DateTime.now()));
+    if (dateImpossible) l.naissance = null;
     l.sexe = _sexe(valeurs['sexe']);
     l.lien = _lien(valeurs['lien']);
     final type = nomSimplifie(valeurs['type'] ?? '');
@@ -269,7 +272,11 @@ List<LigneImport> analyserImport({
           ? 'classe manquante'
           : 'classe inconnue : « ${valeurs['classe']} »${possibles(valeurs['classe']!)}');
     } else {
-      if (valeurs['naissance'] != null && l.naissance == null) l.remarques.add('date illisible : « ${valeurs['naissance']} »');
+      if (valeurs['naissance'] != null && l.naissance == null) {
+        l.remarques.add(dateImpossible
+            ? 'date impossible : « ${valeurs['naissance']} » (ignorée, à corriger sur la fiche)'
+            : 'date illisible : « ${valeurs['naissance']} »');
+      }
       if (l.naissance == null) l.remarques.add('date de naissance à compléter');
       if (l.telephone == null) l.remarques.add('téléphone du parent à compléter');
       if (l.sexe == null) l.remarques.add('sexe à compléter');

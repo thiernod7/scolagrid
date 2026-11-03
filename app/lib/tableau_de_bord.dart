@@ -422,7 +422,11 @@ class _TableauDeBordState extends State<TableauDeBord> {
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                title: Text('${_tablesLisibles[r['table_nom']] ?? r['table_nom']} · ${_dateLisible(r['quand'])}'),
+                title: Text([
+                  _tablesLisibles[r['table_nom']] ?? r['table_nom'],
+                  if (r['qui'] != null) r['qui'],
+                  _dateLisible(r['quand']),
+                ].join(' · ')),
                 subtitle: Text('${r['message'] ?? ''} (${r['code'] ?? ''})'),
               ),
           ]),

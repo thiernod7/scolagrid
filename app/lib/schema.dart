@@ -544,6 +544,7 @@ const schema = Schema([
     Column.text('ligne_id'),
     Column.text('code'),
     Column.text('message'),
+    Column.text('qui'), // l'élève concerné, pour le retrouver
   ]),
   // Réglages propres à ce poste (mode clair ou sombre…), jamais synchronisés.
   Table.localOnly('preferences', [

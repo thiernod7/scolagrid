@@ -379,6 +379,13 @@ void main() {
       expect(cleClasse('1ère année'), '1 ANNEE');
       expect(['Tle SM A', '13ème année SM A', 'Term SM A'].map(cleClasse).toSet(), {'TERMINALE SM A'});
       expect(cleClasse('CP 1 A'), 'CP1 A');
+      // Date impossible (le serveur refuse avant 1980) : ignorée, la ligne reste importable.
+      final vieux = analyserImport(
+          lignes: lireCsv(utf8.encode('NOM;PRÉNOMS;CLASSE;DATE DE NAISSANCE\nBAH;Ali;7ème A;06/07/1905\n')),
+          classes: classes, existants: const []);
+      expect(vieux.single.naissance, isNull);
+      expect(vieux.single.etat, EtatLigne.incomplete);
+      expect(vieux.single.remarques.first, startsWith('date impossible'));
       expect(nomPersonne(' Mamadou  Saliou ', 'diallo'), 'Mamadou Saliou DIALLO');
       expect(nomPersonne('Fatoumata', ''), 'Fatoumata');
       expect(cleClasse('PS'), 'PETITE SECTION');

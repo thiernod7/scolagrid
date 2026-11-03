@@ -10,6 +10,18 @@ const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 const powersyncUrl = String.fromEnvironment('POWERSYNC_URL');
 const environnement = String.fromEnvironment('SCOLAGRID_ENV', defaultValue: 'prod');
 
+/// Un refus du serveur, en mots simples pour l'école.
+String messageRefus(String? code, String message) {
+  if (message.contains('date_naissance_check')) {
+    return "Date de naissance impossible (avant 1980) : corrigez-la dans le fichier et refaites cet élève.";
+  }
+  if (code == '23503' && message.contains('eleve_id')) return "L'élève lié a lui-même été refusé : voir sa ligne « Élève ».";
+  if (code == '23505') return 'Existe déjà (doublon) : le changement est ignoré.';
+  if (code == '42501') return "Vous n'avez pas le droit de faire ce changement.";
+  if (code == '23514') return 'Valeur refusée par une règle de ScolaGrid : $message';
+  return message;
+}
+
 bool get cloudConfigured =>
     supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty && powersyncUrl.isNotEmpty;
 
@@ -184,6 +196,22 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     return copie;
   }
 
+  /// L'élève concerné par une ligne refusée (la ligne est encore sur le poste à ce moment).
+  static Future<String?> _quiEstConcerne(PowerSyncDatabase base, String? table, Object? ligne) async {
+    if (table == null || ligne == null || !RegExp(r'^[a-z_]+$').hasMatch(table)) return null;
+    try {
+      final eleve = table == 'eleves'
+          ? '$ligne'
+          : (await base.getOptional('SELECT eleve_id FROM $table WHERE id = ?', ['$ligne']))?['eleve_id'];
+      if (eleve == null) return null;
+      final e = await base.getOptional('SELECT nom, prenoms, date_naissance FROM eleves WHERE id = ?', [eleve]);
+      if (e == null) return null;
+      return '${e['nom']} ${e['prenoms']}${e['date_naissance'] == null ? '' : ' (né(e) le ${e['date_naissance']})'}';
+    } catch (_) {
+      return null; // table sans élève
+    }
+  }
+
   /// Exécute une écriture ; un refus définitif est abandonné (signalé dans la
   /// console) sans bloquer le reste de la file. Une erreur réseau remonte :
   /// PowerSync réessaiera toute la transaction (les écritures sont rejouables).
@@ -198,8 +226,9 @@ class SupabaseConnector extends PowerSyncBackendConnector {
       // Gardé sur le poste pour que l'école le voie (tableau de bord, « À faire »).
       if (noter && base != null) {
         await base.execute(
-            'INSERT INTO refus_serveur (id, quand, table_nom, ligne_id, code, message) VALUES (uuid(), ?, ?, ?, ?, ?)',
-            [DateTime.now().toUtc().toIso8601String(), table, ligne == null ? null : '$ligne', e.code, e.message]);
+            'INSERT INTO refus_serveur (id, quand, table_nom, ligne_id, code, message, qui) VALUES (uuid(), ?, ?, ?, ?, ?, ?)',
+            [DateTime.now().toUtc().toIso8601String(), table, ligne == null ? null : '$ligne', e.code,
+              messageRefus(e.code, e.message), await _quiEstConcerne(base, table, ligne)]);
       }
       return false;
     }
