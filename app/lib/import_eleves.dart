@@ -76,7 +76,7 @@ List<List<String?>> lireCsv(List<int> octets) {
   return lignes;
 }
 
-const _enteteCsv = "NOM;PRÉNOMS;SEXE;DATE DE NAISSANCE;LIEU DE NAISSANCE;CLASSE;TYPE;PARENT;TÉLÉPHONE;LIEN;MATRICULE D'ÉTAT;QUARTIER";
+const _enteteCsv = "NOM;PRÉNOMS;SEXE;DATE DE NAISSANCE;LIEU DE NAISSANCE;CLASSE;TYPE;PRÉNOM(S) DU PARENT;NOM DU PARENT;TÉLÉPHONE;LIEN;MATRICULE D'ÉTAT;QUARTIER";
 
 /// Classes du modèle guinéen, pour un modèle sans classes encore créées.
 const classesModeleGuineen = [
@@ -113,7 +113,10 @@ const colonnesImport = {
   'lieu': ['LIEU DE NAISSANCE', 'LIEU NAISSANCE', 'NE A'],
   'classe': ['CLASSE'],
   'type': ['TYPE', 'ADMISSION', 'TYPE D ADMISSION'],
-  'parent': ['PARENT', 'TUTEUR', 'NOM DU PARENT', 'NOM DU TUTEUR', 'PARENT TUTEUR'],
+  // Parent en une seule case (ancien registre), ou prénom(s) et nom séparés (notre modèle).
+  'parent': ['PARENT', 'TUTEUR', 'NOM DU TUTEUR', 'PARENT TUTEUR', 'NOM COMPLET DU PARENT'],
+  'parent_prenoms': ['PRENOM S DU PARENT', 'PRENOMS DU PARENT', 'PRENOM DU PARENT', 'PRENOMS PARENT', 'PRENOM PARENT'],
+  'parent_nom': ['NOM DU PARENT', 'NOM PARENT'],
   'telephone': ['TELEPHONE', 'TEL', 'CONTACT', 'TELEPHONE PARENT', 'TEL PARENT', 'TELEPHONE DU PARENT'],
   'lien': ['LIEN', 'LIEN DE PARENTE', 'PARENTE'],
   'matricule_etat': ['MATRICULE ETAT', 'MATRICULE D ETAT', 'MATRICULE NATIONAL'],
@@ -141,6 +144,18 @@ class LigneImport {
 
   String get nom => (valeurs['nom'] ?? '').trim().toUpperCase();
   String get prenoms => (valeurs['prenoms'] ?? '').trim();
+  /// Le parent : prénom(s) et nom séparés si le fichier les donne, sinon un nom complet
+  /// (« NOM DU PARENT » seul, ou une colonne PARENT). Null si rien n'est écrit.
+  ({String complet, String? prenoms, String? nom})? get parent {
+    final p = valeurs['parent_prenoms']?.trim();
+    final n = valeurs['parent_nom']?.trim();
+    if (p != null && p.isNotEmpty && n != null && n.isNotEmpty) {
+      return (complet: nomPersonne(p, n), prenoms: p, nom: n.toUpperCase());
+    }
+    final seul = valeurs['parent'] ?? n ?? p;
+    return seul == null || seul.trim().length < 2 ? null : (complet: seul.trim(), prenoms: null, nom: null);
+  }
+
   String? get telephone {
     final t = (valeurs['telephone'] ?? '').replaceAll(RegExp(r'[^0-9+]'), '');
     return t.length < 8 ? null : t;

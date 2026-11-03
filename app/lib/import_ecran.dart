@@ -267,14 +267,15 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
                 poste['poste_id'], monId, maintenant, maintenant,
               ]);
           final tel = l.telephone == null ? null : numeroInternational(l.telephone!);
-          final nomParent = l.valeurs['parent'] ?? (tel == null ? null : 'Parent de ${l.prenoms}');
-          if (nomParent != null && nomParent.trim().length >= 2) {
+          final parent = l.parent ?? (tel == null ? null : (complet: 'Parent de ${l.prenoms}', prenoms: null, nom: null));
+          if (parent != null) {
             var contactId = tel == null ? null : contacts[tel];
             if (contactId == null) {
               contactId = (await tx.get('SELECT uuid() AS id'))['id'] as String;
               await tx.execute(
-                  'INSERT INTO contacts (id, organisation_id, nom_complet, telephone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-                  [contactId, o, nomParent.trim(), tel, maintenant, maintenant]);
+                  'INSERT INTO contacts (id, organisation_id, nom_complet, prenoms, nom, telephone, created_at, updated_at) '
+                  'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                  [contactId, o, parent.complet, parent.prenoms, parent.nom, tel, maintenant, maintenant]);
               if (tel != null) contacts[tel] = contactId;
             }
             await tx.execute(
@@ -377,7 +378,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
         const Text('Reprenez vos élèves depuis un fichier Excel (.xlsx) ou CSV (séparé par des points-virgules ou des '
             'virgules). La première ligne contient les titres des colonnes :'),
         const SizedBox(height: 8),
-        const Text('NOM · PRÉNOMS · SEXE · DATE DE NAISSANCE · LIEU DE NAISSANCE · CLASSE · TYPE · PARENT · TÉLÉPHONE · '
+        const Text('NOM · PRÉNOMS · SEXE · DATE DE NAISSANCE · LIEU DE NAISSANCE · CLASSE · TYPE · PRÉNOM(S) DU PARENT · NOM DU PARENT · TÉLÉPHONE · '
             "LIEN · MATRICULE D'ÉTAT · ANCIEN MATRICULE · QUARTIER",
             style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),

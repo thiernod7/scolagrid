@@ -27,11 +27,12 @@ const _aussiCompris = {
 };
 
 const titresImport = [
-  'NOM', 'PRÉNOMS', 'SEXE', 'DATE DE NAISSANCE', 'LIEU DE NAISSANCE', 'CLASSE', 'TYPE', 'PARENT', 'TÉLÉPHONE', 'LIEN',
+  'NOM', 'PRÉNOMS', 'SEXE', 'DATE DE NAISSANCE', 'LIEU DE NAISSANCE', 'CLASSE', 'TYPE', 'PRÉNOM(S) DU PARENT', 'NOM DU PARENT',
+  'TÉLÉPHONE', 'LIEN',
   "MATRICULE D'ÉTAT", 'ANCIEN MATRICULE', 'QUARTIER',
 ];
 
-const _largeurs = [18, 24, 8, 20, 20, 22, 16, 24, 18, 16, 20, 20, 20];
+const _largeurs = [18, 24, 8, 20, 20, 22, 16, 24, 18, 18, 16, 20, 20, 20];
 
 /// Nombre de lignes couvertes par les listes déroulantes.
 const _lignesMax = 3000;
@@ -102,15 +103,17 @@ Uint8List modeleExcelPour(List<String> classes, {List<NiveauGuide> niveauxEcole 
     liste('C', '"M,F"', 'Sexe', 'M (garçon) ou F (fille).', 'Choisissez M ou F.'),
     liste('G', '"Nouvelle,Réinscription,Transfert"', 'Type', 'Vide = Réinscription.',
         'Choisissez Nouvelle, Réinscription ou Transfert.'),
-    liste('J', '"Père,Mère,Oncle,Tante,Grand-parent,Frère ou sœur,Tuteur"', 'Lien', 'Lien du parent avec l\'élève. Vide = Tuteur.',
+    liste('K', '"Père,Mère,Oncle,Tante,Grand-parent,Frère ou sœur,Tuteur"', 'Lien', 'Lien du parent avec l\'élève. Vide = Tuteur.',
         'Choisissez dans la liste.'),
     conseil('D', 'Date de naissance', 'Jour/mois/année, par exemple 15/03/2014.'),
-    conseil('I', 'Téléphone', 'Numéro du parent, par exemple 620 00 00 00.'),
-    conseil('L', 'Ancien matricule', "Celui de votre ancien registre, s'il existe. ScolaGrid attribue le sien et garde celui-ci."),
+    conseil('H', 'Prénom(s) du parent', 'Prénom(s) du parent ou du tuteur, par exemple Fatoumata.'),
+    conseil('I', 'Nom du parent', 'Nom de famille du parent, par exemple BAH.'),
+    conseil('J', 'Téléphone', 'Numéro du parent, par exemple 620 00 00 00.'),
+    conseil('M', 'Ancien matricule', "Celui de votre ancien registre, s'il existe. ScolaGrid attribue le sien et garde celui-ci."),
   ];
   final feuilleEleves = feuille(
     vue: figee.replaceFirst('%A%', ' tabSelected="1"'),
-    colonnes: largeurs(_largeurs, styles: {8: 2, 10: 2, 11: 2}),
+    colonnes: largeurs(_largeurs, styles: {9: 2, 11: 2, 12: 2}),
     donnees: eleves.toString(),
     fin: '<dataValidations count="${validations.length}">${validations.join()}</dataValidations>',
   );
@@ -134,7 +137,8 @@ Uint8List modeleExcelPour(List<String> classes, {List<NiveauGuide> niveauxEcole 
     ['LIEU DE NAISSANCE', 'Non', 'Ville ou préfecture.', 'Labé'],
     ['CLASSE', 'Oui', "Dans la liste. Une autre classe s'écrit comme dans l'onglet « Guide des classes » : niveau, série (lycée), lettre.", '%CLASSE%'],
     ['TYPE', 'Non', 'Nouvelle, Réinscription ou Transfert. Vide = Réinscription.', 'Réinscription'],
-    ['PARENT', 'Non', 'Nom du parent ou du tuteur.', 'Fatoumata BAH'],
+    ['PRÉNOM(S) DU PARENT', 'Non', 'Prénom(s) du parent ou du tuteur.', 'Fatoumata'],
+    ['NOM DU PARENT', 'Non', 'Nom de famille du parent (mis en majuscules). Un ancien fichier avec une seule colonne PARENT est aussi accepté.', 'BAH'],
     ['TÉLÉPHONE', 'Non', 'Numéro du parent. Les élèves avec le même numéro sont reliés en frères et sœurs.', '620 00 00 00'],
     ['LIEN', 'Non', 'Père, Mère, Oncle… dans la liste. Vide = Tuteur.', 'Mère'],
     ["MATRICULE D'ÉTAT", 'Non', 'Matricule national (CEE, BEPC…) s\'il existe.', ''],

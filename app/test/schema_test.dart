@@ -412,14 +412,20 @@ void main() {
         for (final r in classeur.tables['Élèves']!.rows) [for (final c in r) c?.value?.toString()],
       ];
       expect(lignes.first, titresImport);
-      expect(lireEntete(lignes.first).length, colonnesImport.length);
+      expect(lireEntete(lignes.first).keys.toSet(), colonnesImport.keys.toSet().difference({'parent'}));
       expect([for (final l in lignes.skip(1)) l[5]], classes.keys);
       expect(analyserImport(lignes: lignes, classes: classes, existants: const []), isEmpty);
-      lignes[2] = ['DIALLO', 'Awa', 'F', '15/03/2014', null, '7ème A', 'Nouvelle', null, '620000000', 'Mère', null, '2023-145', null];
+      lignes[2] = ['DIALLO', 'Awa', 'F', '15/03/2014', null, '7ème A', 'Nouvelle', 'Fatoumata', 'bah', '620000000', 'Mère', null, '2023-145', null];
       final r = analyserImport(lignes: lignes, classes: classes, existants: const []);
       expect(r.single.classeId, 'c7a');
       expect(r.single.etat, EtatLigne.valide);
       expect(r.single.valeurs['ancien_matricule'], '2023-145');
+      expect(r.single.parent, (complet: 'Fatoumata BAH', prenoms: 'Fatoumata', nom: 'BAH'));
+      expect(r.single.lien, 'mere');
+      // Ancien registre : une seule colonne PARENT.
+      final ancien = analyserImport(
+          lignes: lireCsv(utf8.encode('NOM;PRÉNOMS;CLASSE;PARENT\nBAH;Ali;7ème A;Mariama SOW\n')), classes: classes, existants: const []);
+      expect(ancien.single.parent, (complet: 'Mariama SOW', prenoms: null, nom: null));
       // Un élève déjà dans ScolaGrid avec ce même ancien matricule : doublon probable.
       final d = analyserImport(lignes: lignes, classes: classes, existants: const [], anciensMatricules: {'2023-145': 'DIALLO Aïssatou'});
       expect(d.single.etat, EtatLigne.doublon);
