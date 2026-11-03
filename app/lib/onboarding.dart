@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show AuthException, Post
 import 'accueil.dart';
 import 'base.dart';
 import 'cloud.dart';
+import 'matricule.dart' show nomPersonne;
 
 /// Mise en page commune des écrans d'onboarding : étroite et centrée,
 /// lisible sur téléphone comme sur un PC de direction.
@@ -246,6 +247,7 @@ class CreerEspaceScreen extends StatefulWidget {
 
 class _CreerEspaceScreenState extends State<CreerEspaceScreen> {
   final _form = GlobalKey<FormState>();
+  final _prenoms = TextEditingController();
   final _nom = TextEditingController();
   final _groupe = TextEditingController();
   final _ville = TextEditingController();
@@ -255,6 +257,7 @@ class _CreerEspaceScreenState extends State<CreerEspaceScreen> {
 
   String? _requis(String? v) =>
       (v == null || v.trim().length < 2) ? 'Au moins 2 caractères' : null;
+  String? _rempli(String? v) => (v == null || v.trim().isEmpty) ? 'À remplir' : null;
 
   Future<void> _creer() async {
     if (!_form.currentState!.validate()) return;
@@ -264,7 +267,9 @@ class _CreerEspaceScreenState extends State<CreerEspaceScreen> {
     });
     try {
       await creerEspaceEcole(
-        nomComplet: _nom.text.trim(),
+        nomComplet: nomPersonne(_prenoms.text, _nom.text),
+        prenoms: _prenoms.text.trim(),
+        nom: _nom.text.trim().toUpperCase(),
         nomGroupe: _groupe.text.trim(),
         ville: _ville.text.trim(),
         nomSite: _site.text.trim(),
@@ -280,12 +285,12 @@ class _CreerEspaceScreenState extends State<CreerEspaceScreen> {
     }
   }
 
-  Widget _champ(TextEditingController c, String label, {String? aide}) => Padding(
+  Widget _champ(TextEditingController c, String label, {String? aide, bool court = false, bool majuscules = false}) => Padding(
         padding: const EdgeInsets.only(bottom: 14),
         child: TextFormField(
           controller: c,
-          validator: _requis,
-          textCapitalization: TextCapitalization.words,
+          validator: court ? _rempli : _requis,
+          textCapitalization: majuscules ? TextCapitalization.characters : TextCapitalization.words,
           decoration: InputDecoration(
               labelText: label, helperText: aide, border: const OutlineInputBorder()),
         ),
@@ -300,7 +305,8 @@ class _CreerEspaceScreenState extends State<CreerEspaceScreen> {
         Form(
           key: _form,
           child: Column(children: [
-            _champ(_nom, 'Votre nom complet'),
+            _champ(_prenoms, 'Votre prénom (ou vos prénoms)', court: true),
+            _champ(_nom, 'Votre nom', court: true, majuscules: true),
             _champ(_groupe, 'Nom du groupe scolaire', aide: 'Par exemple : Groupe scolaire Les Palmiers'),
             _champ(_ville, 'Ville', aide: 'Conakry, Kindia, Labé, Kankan…'),
             _champ(_site, 'Nom du premier site', aide: "Vous ajouterez les autres sites ensuite"),

@@ -49,6 +49,8 @@ Future<bool> aDejaUnEspace() async {
 /// et le rattachement « fondateur ». Nécessite le réseau.
 Future<String> creerEspaceEcole({
   required String nomComplet,
+  String? prenoms,
+  String? nom,
   required String nomGroupe,
   required String ville,
   required String nomSite,
@@ -58,6 +60,8 @@ Future<String> creerEspaceEcole({
     'ville': ville,
     'nom_site': nomSite,
     'nom_complet': nomComplet,
+    if (prenoms != null) 'prenoms': prenoms,
+    if (nom != null) 'nom': nom,
   });
   return id as String;
 }

@@ -20,6 +20,12 @@ String matriculeSuivant(String prefixe, Iterable<String> existants) {
 }
 
 /// Nom simplifié pour comparer : majuscules, sans accents, sans ponctuation.
+/// Nom affiché d'une personne (personnel, parent) : « Mamadou Saliou DIALLO ».
+String nomPersonne(String prenoms, String nom) =>
+    [prenoms.trim().replaceAll(RegExp(r'\s+'), ' '), nom.trim().replaceAll(RegExp(r'\s+'), ' ').toUpperCase()]
+        .where((x) => x.isNotEmpty)
+        .join(' ');
+
 String nomSimplifie(String s) {
   const de = 'ÀÁÂÃÄÅàáâãäåÇçÈÉÊËèéêëÌÍÎÏìíîïÑñÒÓÔÕÖòóôõöÙÚÛÜùúûüÝýÿ';
   const vers = 'AAAAAAaaaaaaCcEEEEeeeeIIIIiiiiNnOOOOOoooooUUUUuuuuYyy';

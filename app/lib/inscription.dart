@@ -60,6 +60,8 @@ class _Parent {
   _Parent({
     this.contactId,
     required this.nom,
+    this.prenoms,
+    this.nomFamille,
     this.telephone,
     required this.lien,
     this.profession,
@@ -69,7 +71,11 @@ class _Parent {
   });
 
   final String? contactId;
+
+  /// Nom affiché (« Fatoumata BAH ») ; prénom(s) et nom séparés pour un nouveau contact.
   final String nom;
+  final String? prenoms;
+  final String? nomFamille;
   final String? telephone;
   final String lien;
   final String? profession;
@@ -450,6 +456,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
 
   Future<void> _ajouterParent() async {
     final tel = TextEditingController();
+    final prenoms = TextEditingController();
     final nom = TextEditingController();
     final profession = TextEditingController();
     final adresse = TextEditingController(text: _quartier.text.trim());
@@ -469,7 +476,8 @@ class _InscrireScreenState extends State<InscrireScreen> {
               maj(() {
                 connu = c;
                 if (c != null) {
-                  nom.text = '${c['nom_complet']}';
+                  prenoms.text = '${c['prenoms'] ?? ''}';
+                  nom.text = '${c['nom'] ?? c['nom_complet']}';
                   profession.text = '${c['profession'] ?? ''}';
                   adresse.text = '${c['adresse'] ?? ''}';
                 }
@@ -479,11 +487,16 @@ class _InscrireScreenState extends State<InscrireScreen> {
           if (connu != null)
             Text('Parent déjà connu : ${connu!['nom_complet']}. Les enfants seront reliés (fratrie).',
                 style: const TextStyle(color: Couleurs.regle)),
-          TextField(
-              controller: nom,
-              enabled: connu == null,
-              textCapitalization: TextCapitalization.words,
-              decoration: _champ('Nom complet')),
+          if (connu == null) ...[
+            TextField(
+                controller: prenoms,
+                textCapitalization: TextCapitalization.words,
+                decoration: _champ('Prénom(s)')),
+            TextField(
+                controller: nom,
+                textCapitalization: TextCapitalization.characters,
+                decoration: _champ('Nom')),
+          ],
           _liste('Type de contact', lien, liensFamille, (v) => maj(() => lien = v)),
           TextField(
               controller: profession,
@@ -495,11 +508,19 @@ class _InscrireScreenState extends State<InscrireScreen> {
               enabled: connu == null,
               decoration: _champ('Adresse', aide: 'Facultatif')),
         ]);
-    if (!ok || nom.text.trim().length < 2) return;
+    if (!ok) return;
+    if (connu == null && (prenoms.text.trim().isEmpty || nom.text.trim().isEmpty)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Le prénom et le nom du contact sont demandés.')));
+      }
+      return;
+    }
     String? val(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
     setState(() => _parents.add(_Parent(
           contactId: connu?['id'] as String?,
-          nom: nom.text.trim(),
+          nom: connu != null ? '${connu!['nom_complet']}' : nomPersonne(prenoms.text, nom.text),
+          prenoms: connu != null ? null : prenoms.text.trim(),
+          nomFamille: connu != null ? null : nom.text.trim().toUpperCase(),
           telephone: tel.text.trim().isEmpty ? null : numeroInternational(tel.text),
           lien: lien,
           profession: val(profession),
@@ -789,9 +810,9 @@ class _InscrireScreenState extends State<InscrireScreen> {
             if (contactId == null) {
               contactId = (await tx.get('SELECT uuid() AS id'))['id'] as String;
               await tx.execute(
-                  'INSERT INTO contacts (id, organisation_id, nom_complet, telephone, profession, adresse, created_at, updated_at) '
-                  'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                  [contactId, o, p.nom, p.telephone, p.profession, p.adresse, maintenant, maintenant]);
+                  'INSERT INTO contacts (id, organisation_id, nom_complet, prenoms, nom, telephone, profession, adresse, '
+                  'created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  [contactId, o, p.nom, p.prenoms, p.nomFamille, p.telephone, p.profession, p.adresse, maintenant, maintenant]);
             }
             await tx.execute(
                 'INSERT INTO eleves_contacts (id, organisation_id, eleve_id, contact_id, lien, tuteur_principal, '

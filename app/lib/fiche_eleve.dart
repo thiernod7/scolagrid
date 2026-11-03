@@ -302,6 +302,7 @@ Future<void> _modifierIdentiteEleve(BuildContext context, Map<String, Object?> e
 
 Future<void> _ajouterContactEleve(BuildContext context, Map<String, Object?> e) async {
   final tel = TextEditingController();
+  final prenoms = TextEditingController();
   final nom = TextEditingController();
   final profession = TextEditingController();
   var lien = 'mere';
@@ -320,17 +321,29 @@ Future<void> _ajouterContactEleve(BuildContext context, Map<String, Object?> e) 
             maj(() {
               connu = c;
               if (c != null) {
-                nom.text = '${c['nom_complet']}';
+                prenoms.text = '${c['prenoms'] ?? ''}';
+                nom.text = '${c['nom'] ?? c['nom_complet']}';
                 profession.text = '${c['profession'] ?? ''}';
               }
             });
           },
         ),
-        TextField(controller: nom, enabled: connu == null, decoration: _champ('Nom complet')),
+        if (connu != null)
+          Text('Contact déjà connu : ${connu!['nom_complet']}.', style: const TextStyle(color: Couleurs.regle))
+        else ...[
+          TextField(controller: prenoms, textCapitalization: TextCapitalization.words, decoration: _champ('Prénom(s)')),
+          TextField(controller: nom, textCapitalization: TextCapitalization.characters, decoration: _champ('Nom')),
+        ],
         _liste('Type de contact', lien, liensFamille, (v) => maj(() => lien = v)),
         TextField(controller: profession, enabled: connu == null, decoration: _champ('Profession', aide: 'Facultatif')),
       ]);
-  if (!ok || nom.text.trim().length < 2) return;
+  if (!ok) return;
+  if (connu == null && (prenoms.text.trim().isEmpty || nom.text.trim().isEmpty)) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Le prénom et le nom du contact sont demandés.')));
+    }
+    return;
+  }
   final maintenant = _maintenant();
   final eleveId = e['id'] as String;
   await db.writeTransaction((tx) async {
@@ -338,9 +351,10 @@ Future<void> _ajouterContactEleve(BuildContext context, Map<String, Object?> e) 
     if (contactId == null) {
       contactId = (await tx.get('SELECT uuid() AS id'))['id'] as String;
       await tx.execute(
-          'INSERT INTO contacts (id, organisation_id, nom_complet, telephone, profession, created_at, updated_at) '
-          'VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [contactId, e['organisation_id'], nom.text.trim(), tel.text.trim().isEmpty ? null : numeroInternational(tel.text),
+          'INSERT INTO contacts (id, organisation_id, nom_complet, prenoms, nom, telephone, profession, created_at, updated_at) '
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [contactId, e['organisation_id'], nomPersonne(prenoms.text, nom.text), prenoms.text.trim(), nom.text.trim().toUpperCase(),
+            tel.text.trim().isEmpty ? null : numeroInternational(tel.text),
             profession.text.trim().isEmpty ? null : profession.text.trim(), maintenant, maintenant]);
     }
     final deja = await tx.getOptional('SELECT 1 FROM eleves_contacts WHERE eleve_id = ? AND contact_id = ?', [eleveId, contactId]);

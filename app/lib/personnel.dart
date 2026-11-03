@@ -22,6 +22,7 @@ class PersonnelScreen extends StatelessWidget {
   Future<void> _ajouter(BuildContext context) async {
     final sites = await _mesSites();
     if (!context.mounted || sites.isEmpty) return;
+    final prenoms = TextEditingController();
     final nom = TextEditingController();
     final telephone = TextEditingController();
     final libelle = TextEditingController();
@@ -33,10 +34,14 @@ class PersonnelScreen extends StatelessWidget {
     ];
     final ok = await _formulaire(context, 'Nouvelle personne', (maj) => [
           TextField(
-              controller: nom,
+              controller: prenoms,
               autofocus: true,
               textCapitalization: TextCapitalization.words,
-              decoration: _champ('Nom complet')),
+              decoration: _champ('Prénom(s)')),
+          TextField(
+              controller: nom,
+              textCapitalization: TextCapitalization.characters,
+              decoration: _champ('Nom')),
           TextField(
               controller: telephone,
               keyboardType: TextInputType.phone,
@@ -58,15 +63,22 @@ class PersonnelScreen extends StatelessWidget {
             TextField(controller: libelle, decoration: _champ('Précisez', aide: 'Gardien, chauffeur, cuisinière…')),
           if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
         ]);
-    if (!ok || nom.text.trim().length < 2 || choisis.isEmpty) return;
+    if (!ok || prenoms.text.trim().isEmpty || nom.text.trim().isEmpty || choisis.isEmpty) {
+      if (ok && context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Le prénom, le nom et au moins une fonction sont demandés.')));
+      }
+      return;
+    }
     final tel = telephone.text.trim().isEmpty ? null : numeroInternational(telephone.text);
     final maintenant = _maintenant();
     await db.writeTransaction((tx) async {
       final id = (await tx.get('SELECT uuid() AS id'))['id'];
       await tx.execute(
-          'INSERT INTO personnel (id, organisation_id, site_id, nom_complet, telephone, statut, created_at, updated_at) '
-          "VALUES (?, ?, ?, ?, ?, 'actif', ?, ?)",
-          [id, espace.orgId, site, nom.text.trim(), tel, maintenant, maintenant]);
+          'INSERT INTO personnel (id, organisation_id, site_id, nom_complet, prenoms, nom, telephone, statut, created_at, updated_at) '
+          "VALUES (?, ?, ?, ?, ?, ?, ?, 'actif', ?, ?)",
+          [id, espace.orgId, site, nomPersonne(prenoms.text, nom.text), prenoms.text.trim(), nom.text.trim().toUpperCase(), tel,
+            maintenant, maintenant]);
       for (final t in choisis) {
         final titre = titres[t]!;
         await tx.execute(

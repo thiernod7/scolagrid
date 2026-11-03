@@ -373,6 +373,8 @@ void main() {
       expect(cleClasse('1ère année'), '1 ANNEE');
       expect(['Tle SM A', '13ème année SM A', 'Term SM A'].map(cleClasse).toSet(), {'TERMINALE SM A'});
       expect(cleClasse('CP 1 A'), 'CP1 A');
+      expect(nomPersonne(' Mamadou  Saliou ', 'diallo'), 'Mamadou Saliou DIALLO');
+      expect(nomPersonne('Fatoumata', ''), 'Fatoumata');
       expect(cleClasse('PS'), 'PETITE SECTION');
     });
 

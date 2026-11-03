@@ -219,6 +219,8 @@ const schema = Schema([
     Column.text('organisation_id'),
     Column.text('site_id'),
     Column.text('nom_complet'),
+    Column.text('prenoms'),
+    Column.text('nom'),
     Column.text('telephone'),
     Column.text('user_id'),
     Column.text('statut'),
@@ -304,6 +306,8 @@ const schema = Schema([
   Table('contacts', [
     Column.text('organisation_id'),
     Column.text('nom_complet'),
+    Column.text('prenoms'),
+    Column.text('nom'),
     Column.text('telephone'),
     Column.text('telephone2'),
     Column.text('email'),
