@@ -1,0 +1,40 @@
+name: VPS - Repartir de zéro (production)
+
+# Vide TOUTES les données de la PRODUCTION : écoles, élèves, argent, personnel,
+# postes, comptes. Garde le serveur installé et ses réglages.
+# Voir serveur/outils/repartir-de-zero.sql.
+#
+# Se lance quand ce fichier change. MODE « compter » n'efface rien ; MODE
+# « effacer » ne s'utilise qu'après une sauvegarde et l'accord écrit (EFFACER)
+# de la direction. Le journal est public : il n'affiche que des nombres.
+
+on:
+  push:
+    paths:
+      - ".github/workflows/vps-repartir-de-zero.yml"
+
+concurrency:
+  group: vps
+  cancel-in-progress: false
+
+env:
+  MODE: "compter"
+
+jobs:
+  repartir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      - name: ${{ env.MODE == 'effacer' && 'Effacer' || 'Compter' }} (production)
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" \
+            "sudo docker exec -i supabase-db psql -X -q -U supabase_admin -d postgres -v mode=$MODE" \
+            < serveur/outils/repartir-de-zero.sql
