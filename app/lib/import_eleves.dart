@@ -269,3 +269,78 @@ List<LigneImport> analyserImport({
   }
   return r;
 }
+
+// Classes absentes de ScolaGrid -----------------------------------------------------
+
+typedef NiveauImport = ({String id, String nom, String? usage, String? series});
+
+/// Une classe du fichier qui n'existe pas (encore) dans ScolaGrid.
+class ClasseAbsente {
+  ClasseAbsente(this.saisie);
+
+  /// Telle qu'écrite dans le fichier (première fois rencontrée).
+  final String saisie;
+  int eleves = 0;
+
+  /// Niveau reconnu (null : niveau absent de ScolaGrid ou nom illisible).
+  NiveauImport? niveau;
+  String? serie;
+  String? lettre;
+
+  /// Nom que ScolaGrid lui donnera : « 10ème B », « 11ème SS A ».
+  String get nom => [niveau?.nom ?? saisie, ?serie, ?lettre].join(' ');
+}
+
+/// Retrouve le niveau, la série et la lettre d'une classe écrite à la main :
+/// « 10e B » → 10ème, B ; « 11eme ss a » → 11ème, SS, A ; « 1ère année A » → CP1, A.
+/// Null si aucun niveau de l'école ne correspond.
+({NiveauImport niveau, String? serie, String? lettre})? decomposerClasse(String saisie, List<NiveauImport> niveaux) {
+  final k = cleClasse(saisie);
+  NiveauImport? trouve;
+  var cle = '';
+  for (final n in niveaux) {
+    for (final c in [cleClasse(n.nom), if (n.usage != null) cleClasse(n.usage!)]) {
+      if (c.isNotEmpty && (k == c || k.startsWith('$c ')) && c.length > cle.length) {
+        trouve = n;
+        cle = c;
+      }
+    }
+  }
+  if (trouve == null) return null;
+  final reste = k.substring(cle.length).trim().split(' ').where((x) => x.isNotEmpty).toList();
+  String? serie;
+  final series = (trouve.series ?? '').split(',').map((s) => s.trim()).where((s) => s.isNotEmpty);
+  if (reste.isNotEmpty) {
+    for (final s in series) {
+      if (nomSimplifie(s) == reste.first) {
+        serie = s;
+        reste.removeAt(0);
+        break;
+      }
+    }
+  }
+  if (reste.length > 1 || (reste.length == 1 && reste.single.length > 2)) return null;
+  return (niveau: trouve, serie: serie, lettre: reste.isEmpty ? null : reste.single);
+}
+
+/// Regroupe les lignes rejetées pour classe inconnue, par classe (avec tolérance).
+List<ClasseAbsente> classesAbsentes(List<LigneImport> lignes, List<NiveauImport> niveaux) {
+  final r = <String, ClasseAbsente>{};
+  for (final l in lignes) {
+    final v = l.valeurs['classe'];
+    if (l.etat != EtatLigne.rejetee || l.classeId != null || v == null || l.nom.isEmpty || l.prenoms.isEmpty) continue;
+    final a = r.putIfAbsent(cleClasse(v), () {
+      final c = ClasseAbsente(v);
+      final d = decomposerClasse(v, niveaux);
+      if (d != null) {
+        c
+          ..niveau = d.niveau
+          ..serie = d.serie
+          ..lettre = d.lettre;
+      }
+      return c;
+    });
+    a.eleves++;
+  }
+  return r.values.toList();
+}

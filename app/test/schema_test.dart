@@ -368,6 +368,28 @@ void main() {
       expect(cleClasse('1ère année'), '1 ANNEE');
     });
 
+    test("Classes absentes : niveau, série et lettre retrouvés, regroupées par classe", () {
+      final niveaux = <NiveauImport>[
+        (id: 'cp1', nom: 'CP1', usage: '1ère année', series: null),
+        (id: 'n10', nom: '10ème', usage: '10ème année', series: null),
+        (id: 'n11', nom: '11ème', usage: '11ème année', series: 'SM,SE,SS,SL'),
+      ];
+      String? d(String s) {
+        final r = decomposerClasse(s, niveaux);
+        return r == null ? null : '${r.niveau.id}|${r.serie}|${r.lettre}';
+      }
+
+      expect(d('10e B'), 'n10|null|B');
+      expect(d('11eme ss a'), 'n11|SS|A');
+      expect(d('1ère année A'), 'cp1|null|A');
+      expect(d('12ème A'), isNull);
+      expect(d('10ème Bis rouge'), isNull);
+      const texte = 'NOM;PRÉNOMS;CLASSE\nDIALLO;Awa;10e B\nBAH;Ali;10ème b\nSOW;Fanta;12ème A\nBARRY;Ousmane;10ème A\n';
+      final r = analyserImport(lignes: lireCsv(utf8.encode(texte)), classes: {'10ème A': 'c10a'}, existants: const []);
+      final absentes = classesAbsentes(r, niveaux);
+      expect([for (final a in absentes) '${a.nom}:${a.eleves}:${a.niveau?.id}'], ['10ème B:2:n10', '12ème A:1:null']);
+    });
+
     test('Modèle Excel : onglets Élèves, Aide, Classes ; lignes sans élève ignorées', () {
       final classes = {'CP1 A': 'cp1', '7ème A': 'c7a', 'Terminale SM A': 'tsm'};
       final classeur = xl.Excel.decodeBytes(modeleExcelPour(classes.keys.toList()));

@@ -32,6 +32,15 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
   String? _message;
   Map<String, Map<String, Object?>> _classesParId = {};
 
+  /// Lignes brutes du dernier fichier : on les réanalyse après avoir créé des classes.
+  List<List<String?>>? _brut;
+  List<ClasseAbsente> _absentes = [];
+
+  /// Pourquoi une classe absente ne peut pas être créée tout de suite (null : elle peut l'être).
+  Map<ClasseAbsente, String?> _blocages = {};
+  Map<String, String> _sites = {};
+  Map<String, Object?>? _annee;
+
   Future<void> _choisir() async {
     final choix = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['xlsx', 'csv']);
     if (choix.isEmpty) return;
@@ -51,32 +60,117 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
         final feuille = classeur.tables[onglets.firstWhere((k) => nomSimplifie(k) == 'ELEVES', orElse: () => onglets.first)]!;
         lignes = [for (final r in feuille.rows) [for (final c in r) _texteCellule(c)]];
       }
-      final o = widget.espace.orgId;
-      final sites = await _sitesOuJInscris(o);
-      final classes = (await db.getAll(
-              '''SELECT c.id, c.nom, c.site_id, s.code AS code_site FROM classes c JOIN sites s ON s.id = c.site_id
-                 JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1 WHERE c.organisation_id = ? AND c.fermee = 0''', [o]))
-          .where((c) => sites.containsKey(c['site_id']));
-      final existants = await db.getAll('SELECT nom, prenoms, date_naissance FROM eleves WHERE organisation_id = ?', [o]);
-      final resultat = analyserImport(
-        lignes: lignes,
-        classes: {for (final c in classes) '${c['nom']}': c['id'] as String},
-        existants: [
-          for (final e in existants)
-            (nom: '${e['nom']}', prenoms: '${e['prenoms']}', naissance: DateTime.tryParse('${e['date_naissance']}')),
-        ],
-      );
-      setState(() {
-        _fichier = choix.single.name;
-        _lignes = resultat;
-        _classesParId = {for (final c in classes) c['id'] as String: Map<String, Object?>.from(c)};
-        if (resultat.isEmpty) _message = 'Aucune ligne lue. La première ligne doit contenir les titres des colonnes.';
-      });
+      _brut = lignes;
+      _fichier = choix.single.name;
+      await _analyser();
     } catch (e) {
       setState(() => _message = 'Fichier illisible. Enregistrez-le au format Excel (.xlsx) ou CSV et réessayez.');
     } finally {
       if (mounted) setState(() => _travail = false);
     }
+  }
+
+  /// Contrôle les lignes du fichier contre ce qui existe dans ScolaGrid.
+  Future<void> _analyser() async {
+    final lignes = _brut;
+    if (lignes == null) return;
+    final o = widget.espace.orgId;
+    final sites = await _sitesOuJInscris(o);
+    final annee = await db.getOptional('SELECT id, libelle FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1', [o]);
+    final classes = (await db.getAll(
+            '''SELECT c.id, c.nom, c.site_id, s.code AS code_site FROM classes c JOIN sites s ON s.id = c.site_id
+               JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1 WHERE c.organisation_id = ? AND c.fermee = 0''', [o]))
+        .where((c) => sites.containsKey(c['site_id']));
+    final existants = await db.getAll('SELECT nom, prenoms, date_naissance FROM eleves WHERE organisation_id = ?', [o]);
+    final resultat = analyserImport(
+      lignes: lignes,
+      classes: {for (final c in classes) '${c['nom']}': c['id'] as String},
+      existants: [
+        for (final e in existants)
+          (nom: '${e['nom']}', prenoms: '${e['prenoms']}', naissance: DateTime.tryParse('${e['date_naissance']}')),
+      ],
+    );
+    // Classes du fichier absentes de ScolaGrid : créables si leur niveau existe et a ses frais.
+    final niveaux = [
+      for (final n in await db.getAll('SELECT id, nom, nom_usage, series FROM niveaux WHERE organisation_id = ?', [o]))
+        (id: n['id'] as String, nom: '${n['nom']}', usage: n['nom_usage'] as String?, series: n['series'] as String?),
+    ];
+    final absentes = classesAbsentes(resultat, niveaux);
+    final blocages = <ClasseAbsente, String?>{};
+    if (absentes.isNotEmpty) {
+      final avecFrais = annee == null
+          ? <String>{}
+          : {
+              for (final f in await db.getAll(
+                  'SELECT DISTINCT niveau_id, site_id FROM frais WHERE annee_id = ? AND niveau_id IS NOT NULL', [annee['id']]))
+                if (f['site_id'] == null || sites.containsKey(f['site_id'])) f['niveau_id'] as String,
+            };
+      final fermees = annee == null
+          ? <String>{}
+          : {
+              for (final c in await db.getAll('SELECT nom FROM classes WHERE annee_id = ? AND fermee = 1', [annee['id']]))
+                cleClasse('${c['nom']}'),
+            };
+      for (final a in absentes) {
+        blocages[a] = annee == null
+            ? "Il n'y a pas d'année scolaire en cours."
+            : a.niveau == null
+                ? "Ce niveau n'existe pas dans ScolaGrid : ajoutez-le dans Paramètres › Niveaux, puis ses frais."
+                : !avecFrais.contains(a.niveau!.id)
+                    ? 'Le niveau ${a.niveau!.nom} n\'a pas encore de frais : ajoutez-les dans Paramètres › Frais scolaires.'
+                    : fermees.contains(cleClasse(a.nom))
+                        ? 'La classe ${a.nom} a été fermée : rouvrez-la dans Paramètres › Classes.'
+                        : null;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _lignes = resultat;
+      _absentes = absentes;
+      _blocages = blocages;
+      _sites = sites;
+      _annee = annee;
+      _classesParId = {for (final c in classes) c['id'] as String: Map<String, Object?>.from(c)};
+      _message = resultat.isEmpty ? 'Aucune ligne lue. La première ligne doit contenir les titres des colonnes.' : null;
+    });
+  }
+
+  /// Crée les classes absentes dont le niveau est prêt, puis revérifie le fichier.
+  Future<void> _creerClasses(List<ClasseAbsente> aCreer) async {
+    final messager = ScaffoldMessenger.of(context);
+    final annee = _annee;
+    final geres = {for (final s in _sites.entries) if (widget.espace.gereSite(s.key)) s.key: s.value};
+    if (annee == null || aCreer.isEmpty) return;
+    if (geres.isEmpty) {
+      messager.showSnackBar(const SnackBar(content: Text('Seule la direction peut créer des classes. Demandez-lui de le faire.')));
+      return;
+    }
+    var site = geres.keys.first;
+    final noms = aCreer.map((a) => a.nom).join(', ');
+    final ok = geres.length > 1
+        ? await _formulaire(context, 'Créer des classes', (maj) => [
+              Text('Seront créées pour ${annee['libelle']} : $noms'),
+              _liste('Site', site, geres, (v) => maj(() => site = v)),
+            ])
+        : await _confirmer(context, 'Créer ${aCreer.length > 1 ? 'les classes' : 'la classe'} $noms pour l\'année ${annee['libelle']} ?');
+    if (!ok) return;
+    final m = _maintenant();
+    await db.writeTransaction((tx) async {
+      for (final a in aCreer) {
+        await tx.execute(
+            'INSERT INTO classes (id, organisation_id, site_id, annee_id, niveau_id, nom, serie, lettre, fermee, created_at, updated_at) '
+            'VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
+            [widget.espace.orgId, site, annee['id'], a.niveau!.id, a.nom, a.serie, a.lettre, m, m]);
+      }
+    });
+    await _analyser();
+    messager.showSnackBar(SnackBar(content: Text('${aCreer.length} classe(s) créée(s). Leurs élèves sont repris ci-dessous.')));
+  }
+
+  Future<void> _ouvrirReglage(String cle) async {
+    final r = _reglages.firstWhere((r) => r.cle == cle);
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => r.ecran(widget.espace)));
+    await _analyser();
   }
 
   /// Le modèle à remplir, en Excel : listes déroulantes (classe, sexe, type, lien),
@@ -199,6 +293,51 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
     }
   }
 
+  /// Les classes du fichier qui n'existent pas encore : les créer, ou dire quoi faire avant.
+  Widget _cadreAbsentes() {
+    final pretes = [for (final a in _absentes) if (_blocages[a] == null) a];
+    final direction = _sites.keys.any(widget.espace.gereSite);
+    final sansNiveau = _absentes.any((a) => _blocages[a] != null && a.niveau == null);
+    final sansFrais = _absentes.any((a) => _blocages[a] != null && a.niveau != null);
+    final eleves = _absentes.fold<int>(0, (s, a) => s + a.eleves);
+    return Card(
+      color: Couleurs.attente.withValues(alpha: 0.08),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Classes absentes de ScolaGrid : ${_absentes.length} ($eleves élèves)',
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text(
+              direction
+                  ? 'Créez-les ici : leurs élèves seront repris sans recharger le fichier.'
+                  : 'Seule la direction peut créer des classes : demandez-lui de les créer, puis revenez ici.',
+              style: const TextStyle(fontSize: 13)),
+          for (final a in _absentes)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text('« ${a.saisie} » · ${a.eleves} élève${a.eleves > 1 ? 's' : ''}'),
+              subtitle: Text(_blocages[a] ?? 'Sera créée sous le nom « ${a.nom} ».'),
+              trailing: _blocages[a] == null && direction
+                  ? TextButton(onPressed: _travail ? null : () => _creerClasses([a]), child: const Text('Créer'))
+                  : null,
+            ),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            if (direction && pretes.length > 1)
+              FilledButton.tonal(
+                  onPressed: _travail ? null : () => _creerClasses(pretes), child: Text('Créer les ${pretes.length} classes')),
+            if (sansNiveau && widget.espace.fondateur)
+              OutlinedButton(onPressed: () => _ouvrirReglage('niveaux'), child: const Text('Ouvrir les niveaux')),
+            if ((sansNiveau || sansFrais) && widget.espace.gestionnaire)
+              OutlinedButton(onPressed: () => _ouvrirReglage('frais'), child: const Text('Ouvrir les frais')),
+            TextButton(onPressed: _travail ? null : _analyser, child: const Text('Revérifier')),
+          ]),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final texte = Theme.of(context).textTheme;
@@ -233,7 +372,8 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
         const Text('Seuls NOM, PRÉNOMS et CLASSE sont obligatoires. Le plus simple : téléchargez le modèle Excel. '
             'La classe, le sexe, le type et le lien se choisissent dans une liste déroulante, et l\'onglet « Aide » '
             'explique chaque colonne avec un exemple. Il y a déjà une ligne par classe de l\'école : écrivez les élèves '
-            'dessus et copiez la ligne autant de fois que nécessaire (les lignes sans nom sont ignorées). Les élèves '
+            'dessus et copiez la ligne autant de fois que nécessaire (les lignes sans nom sont ignorées). Une classe '
+            "absente de ScolaGrid peut être créée ici, à l'import, si son niveau et ses frais existent. Les élèves "
             'qui partagent le téléphone du parent sont reliés en fratrie. Les matricules sont attribués par ScolaGrid.'),
         const SizedBox(height: 16),
         Wrap(spacing: 8, runSpacing: 8, children: [
@@ -254,6 +394,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
           const SizedBox(height: 16),
           Text('$_fichier : ${l.length} lignes lues', style: texte.titleMedium),
           const SizedBox(height: 8),
+          if (_absentes.isNotEmpty) _cadreAbsentes(),
           groupe('Valides', EtatLigne.valide, Couleurs.regle),
           groupe('Incomplètes (acceptées, à compléter ensuite)', EtatLigne.incomplete, Couleurs.attente),
           groupe('Doublons probables', EtatLigne.doublon, Couleurs.attente),

@@ -71,16 +71,18 @@ Uint8List modeleExcelPour(List<String> classes) {
     eleves.write(ligne(i + 2, [null, null, null, null, null, classes[i]]));
   }
   final n = classes.length + 1;
-  String liste(String colonne, String formule, String titre, String aide, String erreur) =>
-      '<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" '
+  // « warning » : Excel prévient mais laisse écrire (une classe pas encore créée, par exemple).
+  String liste(String colonne, String formule, String titre, String aide, String erreur, {bool avertir = false}) =>
+      '<dataValidation type="list"${avertir ? ' errorStyle="warning"' : ''} allowBlank="1" showInputMessage="1" showErrorMessage="1" '
       'errorTitle="${_x(titre)}" error="${_x(erreur)}" promptTitle="${_x(titre)}" prompt="${_x(aide)}" '
       'sqref="${colonne}2:$colonne$_lignesMax"><formula1>${_x(formule)}</formula1></dataValidation>';
   String conseil(String colonne, String titre, String aide) =>
       '<dataValidation allowBlank="1" showInputMessage="1" promptTitle="${_x(titre)}" prompt="${_x(aide)}" '
       'sqref="${colonne}2:$colonne$_lignesMax"/>';
   final validations = [
-    liste('F', 'Classes!\$A\$2:\$A\$${n < 2 ? 2 : n}', 'Classe', 'Cliquez sur la flèche et choisissez la classe.',
-        "Cette classe n'existe pas dans ScolaGrid. Choisissez-la dans la liste (onglet « Classes »)."),
+    liste('F', 'Classes!\$A\$2:\$A\$${n < 2 ? 2 : n}', 'Classe', 'Choisissez la classe dans la liste, ou écrivez-en une autre.',
+        "Cette classe n'existe pas encore dans ScolaGrid. Continuer quand même ? À l'import, ScolaGrid proposera de la créer.",
+        avertir: true),
     liste('C', '"M,F"', 'Sexe', 'M (garçon) ou F (fille).', 'Choisissez M ou F.'),
     liste('G', '"Nouvelle,Réinscription,Transfert"', 'Type', 'Vide = Réinscription.',
         'Choisissez Nouvelle, Réinscription ou Transfert.'),
@@ -101,7 +103,8 @@ Uint8List modeleExcelPour(List<String> classes) {
   final aide = StringBuffer()
     ..write(ligne(1, ['Comment remplir le fichier'], style: 5))
     ..write(ligne(2, ["1. Remplissez l'onglet « Élèves » : une ligne par élève. Ne modifiez pas la première ligne (les titres)."]))
-    ..write(ligne(3, ['2. CLASSE : cliquez sur la case, puis sur la petite flèche, et choisissez la classe dans la liste.']))
+    ..write(ligne(3, ['2. CLASSE : cliquez sur la case, puis sur la petite flèche, et choisissez la classe dans la liste. '
+        "Une classe qui n'est pas dans la liste peut être écrite : ScolaGrid proposera de la créer à l'import."]))
     ..write(ligne(4, ['3. Il y a déjà une ligne par classe : écrivez un élève dessus, puis copiez-la pour les élèves suivants.']))
     ..write(ligne(5, ['4. Laissez vide ce que vous ne connaissez pas : la fiche sera complétée plus tard dans ScolaGrid.']))
     ..write(ligne(6, ['5. Enregistrez (format Excel .xlsx), puis dans ScolaGrid : Élèves › ⋯ › Importer.']))
@@ -112,7 +115,7 @@ Uint8List modeleExcelPour(List<String> classes) {
     ['SEXE', 'Non', 'M (garçon) ou F (fille), dans la liste.', 'M'],
     ['DATE DE NAISSANCE', 'Non', 'Jour/mois/année.', '15/03/2014'],
     ['LIEU DE NAISSANCE', 'Non', 'Ville ou préfecture.', 'Labé'],
-    ['CLASSE', 'Oui', "Dans la liste : les classes créées dans ScolaGrid (onglet « Classes »).", '%CLASSE%'],
+    ['CLASSE', 'Oui', "De préférence dans la liste (onglet « Classes »). Une autre classe, par exemple « 9ème B », sera proposée à la création.", '%CLASSE%'],
     ['TYPE', 'Non', 'Nouvelle, Réinscription ou Transfert. Vide = Réinscription.', 'Réinscription'],
     ['PARENT', 'Non', 'Nom du parent ou du tuteur.', 'Fatoumata BAH'],
     ['TÉLÉPHONE', 'Non', 'Numéro du parent. Les élèves avec le même numéro sont reliés en frères et sœurs.', '620 00 00 00'],
