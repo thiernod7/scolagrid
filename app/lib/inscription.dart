@@ -99,6 +99,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
   final _nationalite = TextEditingController(text: 'Guinéenne');
   final _quartier = TextEditingController();
   final _matriculeEtat = TextEditingController();
+  final _ancienMatricule = TextEditingController();
   final _allergies = TextEditingController();
   final _sante = TextEditingController();
   final _ecolePrecedente = TextEditingController();
@@ -351,8 +352,8 @@ class _InscrireScreenState extends State<InscrireScreen> {
         LEFT JOIN inscriptions i ON i.eleve_id = e.id AND i.annee_id = ?
         LEFT JOIN classes c ON c.id = i.classe_id
         WHERE e.organisation_id = ?
-          AND (e.nom || ' ' || e.prenoms LIKE ? OR e.prenoms || ' ' || e.nom LIKE ? OR e.matricule LIKE ?)
-        ORDER BY e.nom, e.prenoms LIMIT 8''', [_annee!['id'], widget.espace.orgId, motif, motif, motif]);
+          AND (e.nom || ' ' || e.prenoms LIKE ? OR e.prenoms || ' ' || e.nom LIKE ? OR e.matricule LIKE ? OR e.ancien_matricule LIKE ?)
+        ORDER BY e.nom, e.prenoms LIMIT 8''', [_annee!['id'], widget.espace.orgId, motif, motif, motif, motif]);
     if (!mounted || _recherche.text.trim() != q) return;
     setState(() => _trouves = r.map((e) => Map<String, Object?>.from(e)).toList());
   }
@@ -550,7 +551,14 @@ class _InscrireScreenState extends State<InscrireScreen> {
         memeTuteurEtQuartier: memeTuteur && _quartier.text.trim().isNotEmpty &&
             nomSimplifie(_quartier.text) == nomSimplifie('${e['quartier'] ?? ''}'),
       );
-      if (a != Alerte.aucune) r.add((Map<String, Object?>.from(e), a));
+      // Même ancien matricule de l'école : très probablement le même enfant.
+      final ancien = _ancienMatricule.text.trim().toLowerCase();
+      final memeAncien = ancien.isNotEmpty && '${e['ancien_matricule'] ?? ''}'.trim().toLowerCase() == ancien;
+      if (memeAncien) {
+        r.add((Map<String, Object?>.from(e), Alerte.forte));
+      } else if (a != Alerte.aucune) {
+        r.add((Map<String, Object?>.from(e), a));
+      }
     }
     r.sort((x, y) => y.$2.index.compareTo(x.$2.index));
     return r;
@@ -718,7 +726,9 @@ class _InscrireScreenState extends State<InscrireScreen> {
                     leading: Icon(Icons.warning_amber,
                         color: a == Alerte.forte ? Couleurs.retard : (a == Alerte.moyenne ? Couleurs.attente : Couleurs.attente)),
                     title: Text(_nomEleve(e)),
-                    subtitle: Text('${e['matricule']} · né(e) le ${_dateLisible(e['date_naissance'])}'),
+                    subtitle: Text('${e['matricule']}'
+                        '${e['ancien_matricule'] != null ? ' · ancien ${e['ancien_matricule']}' : ''}'
+                        ' · né(e) le ${_dateLisible(e['date_naissance'])}'),
                     onTap: () => Navigator.pop(context, e['id'] as String),
                   ),
               ]),
@@ -763,12 +773,12 @@ class _InscrireScreenState extends State<InscrireScreen> {
           await noterNumero(tx, 'mat:$prefixe', matricule);
           eleveId = (await tx.get('SELECT uuid() AS id'))['id'] as String;
           await tx.execute(
-              '''INSERT INTO eleves (id, organisation_id, matricule, matricule_etat, site_origine_id, site_id, nom, prenoms,
+              '''INSERT INTO eleves (id, organisation_id, matricule, matricule_etat, ancien_matricule, site_origine_id, site_id, nom, prenoms,
                    sexe, date_naissance, lieu_naissance, nationalite, quartier, allergies, sante, ecole_precedente,
                    pieces_dossier, date_premiere_inscription, poste_id, cree_par, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
               [
-                eleveId, o, matricule, val(_matriculeEtat), classe['site_id'], classe['site_id'],
+                eleveId, o, matricule, val(_matriculeEtat), val(_ancienMatricule), classe['site_id'], classe['site_id'],
                 _nom.text.trim().toUpperCase(), _prenoms.text.trim(), _sexe,
                 _naissance == null ? null : _date(_naissance!), val(_lieu), val(_nationalite), val(_quartier),
                 val(_allergies), val(_sante), val(_ecolePrecedente), pieces.isEmpty ? null : pieces,
@@ -964,11 +974,18 @@ class _InscrireScreenState extends State<InscrireScreen> {
                 ]),
         ),
         const SizedBox(height: 12),
-        _Grille(colonnes: 4, enfants: [
+        _Grille(colonnes: 3, enfants: [
           TextFormField(controller: _lieu, decoration: _champ('Lieu de naissance')),
           TextFormField(controller: _nationalite, decoration: _champ('Nationalité')),
           TextFormField(controller: _quartier, decoration: _champ('Quartier')),
-          TextFormField(controller: _matriculeEtat, decoration: _champ("Matricule d'État", aide: 'Facultatif')),
+        ]),
+        const SizedBox(height: 12),
+        _Grille(colonnes: 2, enfants: [
+          TextFormField(controller: _matriculeEtat, decoration: _champ("Matricule d'État", aide: 'Facultatif (CEE, BEPC…)')),
+          TextFormField(
+            controller: _ancienMatricule,
+            decoration: _champ("Ancien matricule de l'école", aide: "Facultatif : celui du registre d'avant ScolaGrid"),
+          ),
         ]),
         const SizedBox(height: 12),
         _Grille(colonnes: 2, enfants: [

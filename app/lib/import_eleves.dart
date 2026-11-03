@@ -117,6 +117,9 @@ const colonnesImport = {
   'telephone': ['TELEPHONE', 'TEL', 'CONTACT', 'TELEPHONE PARENT', 'TEL PARENT', 'TELEPHONE DU PARENT'],
   'lien': ['LIEN', 'LIEN DE PARENTE', 'PARENTE'],
   'matricule_etat': ['MATRICULE ETAT', 'MATRICULE D ETAT', 'MATRICULE NATIONAL'],
+  // Le matricule du registre d'avant ScolaGrid (une colonne « MATRICULE » tout court, c'est lui).
+  'ancien_matricule': ['ANCIEN MATRICULE', 'MATRICULE', 'MATRICULE ECOLE', 'MATRICULE INTERNE', 'ANCIEN MAT', 'N MATRICULE',
+    'NO MATRICULE', 'NUMERO MATRICULE'],
   'quartier': ['QUARTIER', 'ADRESSE'],
 };
 
@@ -198,7 +201,10 @@ List<LigneImport> analyserImport({
   required List<List<String?>> lignes,
   required Map<String, String> classes, // nom de la classe dans ScolaGrid → id
   required List<({String nom, String prenoms, DateTime? naissance})> existants,
+  // Anciens matricules déjà dans ScolaGrid (en minuscules) → nom de l'élève.
+  Map<String, String> anciensMatricules = const {},
 }) {
+  final anciens = Map<String, String>.of(anciensMatricules);
   if (lignes.isEmpty) return [];
   final cols = lireEntete(lignes.first);
   final r = <LigneImport>[];
@@ -254,8 +260,18 @@ List<LigneImport> analyserImport({
       if (l.sexe == null) l.remarques.add('sexe à compléter');
       if (l.remarques.isNotEmpty) l.etat = EtatLigne.incomplete;
 
+      // Même ancien matricule qu'un élève connu ou qu'une ligne au-dessus : le même enfant, très probablement.
+      final ancien = valeurs['ancien_matricule']?.trim().toLowerCase();
+      final deja = ancien == null ? null : anciens[ancien];
+      if (deja != null) {
+        l.etat = EtatLigne.doublon;
+        l.remarques.add('même ancien matricule que $deja');
+      } else if (ancien != null) {
+        anciens[ancien] = '${l.nom} ${l.prenoms}';
+      }
+
       final autres = [
-        ...existants,
+        if (deja == null) ...existants,
         for (final x in r.where((x) => x.etat != EtatLigne.rejetee)) (nom: x.nom, prenoms: x.prenoms, naissance: x.naissance),
       ];
       for (final e in autres) {

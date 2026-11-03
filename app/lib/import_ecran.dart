@@ -81,7 +81,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
             '''SELECT c.id, c.nom, c.site_id, s.code AS code_site FROM classes c JOIN sites s ON s.id = c.site_id
                JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1 WHERE c.organisation_id = ? AND c.fermee = 0''', [o]))
         .where((c) => sites.containsKey(c['site_id']));
-    final existants = await db.getAll('SELECT nom, prenoms, date_naissance FROM eleves WHERE organisation_id = ?', [o]);
+    final existants = await db.getAll('SELECT nom, prenoms, date_naissance, ancien_matricule FROM eleves WHERE organisation_id = ?', [o]);
     final resultat = analyserImport(
       lignes: lignes,
       classes: {for (final c in classes) '${c['nom']}': c['id'] as String},
@@ -89,6 +89,10 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
         for (final e in existants)
           (nom: '${e['nom']}', prenoms: '${e['prenoms']}', naissance: DateTime.tryParse('${e['date_naissance']}')),
       ],
+      anciensMatricules: {
+        for (final e in existants)
+          if (e['ancien_matricule'] != null) '${e['ancien_matricule']}'.trim().toLowerCase(): '${e['nom']} ${e['prenoms']}',
+      },
     );
     // Classes du fichier absentes de ScolaGrid : créables si leur niveau existe et a ses frais.
     final niveaux = [
@@ -253,12 +257,12 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
           await noterNumero(tx, 'mat:$prefixe', matricule);
           final eleveId = (await tx.get('SELECT uuid() AS id'))['id'] as String;
           await tx.execute(
-              '''INSERT INTO eleves (id, organisation_id, matricule, matricule_etat, site_origine_id, site_id, nom, prenoms, sexe,
+              '''INSERT INTO eleves (id, organisation_id, matricule, matricule_etat, ancien_matricule, site_origine_id, site_id, nom, prenoms, sexe,
                    date_naissance, lieu_naissance, nationalite, quartier, date_premiere_inscription, poste_id, cree_par,
                    created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Guinéenne', ?, ?, ?, ?, ?, ?)''',
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Guinéenne', ?, ?, ?, ?, ?, ?)''',
               [
-                eleveId, o, matricule, l.valeurs['matricule_etat'], classe['site_id'], classe['site_id'], l.nom, l.prenoms,
+                eleveId, o, matricule, l.valeurs['matricule_etat'], l.valeurs['ancien_matricule'], classe['site_id'], classe['site_id'], l.nom, l.prenoms,
                 l.sexe, l.naissance == null ? null : _date(l.naissance!), l.valeurs['lieu'], l.valeurs['quartier'], aujourdhui,
                 poste['poste_id'], monId, maintenant, maintenant,
               ]);
@@ -374,7 +378,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
             'virgules). La première ligne contient les titres des colonnes :'),
         const SizedBox(height: 8),
         const Text('NOM · PRÉNOMS · SEXE · DATE DE NAISSANCE · LIEU DE NAISSANCE · CLASSE · TYPE · PARENT · TÉLÉPHONE · '
-            "LIEN · MATRICULE D'ÉTAT · QUARTIER",
+            "LIEN · MATRICULE D'ÉTAT · ANCIEN MATRICULE · QUARTIER",
             style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         const Text('Seuls NOM, PRÉNOMS et CLASSE sont obligatoires. Le plus simple : téléchargez le modèle Excel. '

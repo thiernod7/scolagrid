@@ -28,10 +28,10 @@ const _aussiCompris = {
 
 const titresImport = [
   'NOM', 'PRÉNOMS', 'SEXE', 'DATE DE NAISSANCE', 'LIEU DE NAISSANCE', 'CLASSE', 'TYPE', 'PARENT', 'TÉLÉPHONE', 'LIEN',
-  "MATRICULE D'ÉTAT", 'QUARTIER',
+  "MATRICULE D'ÉTAT", 'ANCIEN MATRICULE', 'QUARTIER',
 ];
 
-const _largeurs = [18, 24, 8, 20, 20, 22, 16, 24, 18, 16, 20, 20];
+const _largeurs = [18, 24, 8, 20, 20, 22, 16, 24, 18, 16, 20, 20, 20];
 
 /// Nombre de lignes couvertes par les listes déroulantes.
 const _lignesMax = 3000;
@@ -106,10 +106,11 @@ Uint8List modeleExcelPour(List<String> classes, {List<NiveauGuide> niveauxEcole 
         'Choisissez dans la liste.'),
     conseil('D', 'Date de naissance', 'Jour/mois/année, par exemple 15/03/2014.'),
     conseil('I', 'Téléphone', 'Numéro du parent, par exemple 620 00 00 00.'),
+    conseil('L', 'Ancien matricule', "Celui de votre ancien registre, s'il existe. ScolaGrid attribue le sien et garde celui-ci."),
   ];
   final feuilleEleves = feuille(
     vue: figee.replaceFirst('%A%', ' tabSelected="1"'),
-    colonnes: largeurs(_largeurs, styles: {8: 2, 10: 2}),
+    colonnes: largeurs(_largeurs, styles: {8: 2, 10: 2, 11: 2}),
     donnees: eleves.toString(),
     fin: '<dataValidations count="${validations.length}">${validations.join()}</dataValidations>',
   );
@@ -137,6 +138,8 @@ Uint8List modeleExcelPour(List<String> classes, {List<NiveauGuide> niveauxEcole 
     ['TÉLÉPHONE', 'Non', 'Numéro du parent. Les élèves avec le même numéro sont reliés en frères et sœurs.', '620 00 00 00'],
     ['LIEN', 'Non', 'Père, Mère, Oncle… dans la liste. Vide = Tuteur.', 'Mère'],
     ["MATRICULE D'ÉTAT", 'Non', 'Matricule national (CEE, BEPC…) s\'il existe.', ''],
+    ['ANCIEN MATRICULE', 'Non', "Le matricule de l'élève dans votre ancien registre. ScolaGrid lui donne un nouveau matricule "
+        "mais garde l'ancien : on retrouve l'élève en le tapant dans la recherche.", '2023-145'],
     ['QUARTIER', 'Non', "Quartier où habite l'élève.", 'Hamdallaye'],
   ];
   for (var i = 0; i < lignesAide.length; i++) {

@@ -224,14 +224,14 @@ class _ElevesScreenState extends State<ElevesScreen> {
     xl.TextCellValue t(Object? v) => xl.TextCellValue(v == null ? '' : '$v');
     feuille.appendRow([
       for (final c in const [
-        'Matricule', "Matricule d'État", 'Nom', 'Prénoms', 'Sexe', 'Date de naissance', 'Classe', 'Statut', 'Tuteur',
+        'Matricule', "Matricule d'État", 'Ancien matricule', 'Nom', 'Prénoms', 'Sexe', 'Date de naissance', 'Classe', 'Statut', 'Tuteur',
         'Téléphone', 'Quartier',
       ])
         t(c),
     ]);
     for (final e in eleves) {
       feuille.appendRow([
-        t(e['matricule']), t(e['matricule_etat']), t(e['nom']), t(e['prenoms']), t(e['sexe']),
+        t(e['matricule']), t(e['matricule_etat']), t(e['ancien_matricule']), t(e['nom']), t(e['prenoms']), t(e['sexe']),
         t(e['date_naissance'] == null ? null : _dateLisible(e['date_naissance'])), t(e['classe']),
         t(e['statut'] == null ? 'Pas inscrit' : statutsInscription[e['statut']]), t(e['tuteur']), t(e['tuteur_tel']),
         t(e['quartier']),
@@ -270,7 +270,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
            ORDER BY n.ordre, c.nom''',
         parametres: [o],
         builder: (context, lignesClasses) => Requete(
-          '''SELECT e.id, e.nom, e.prenoms, e.matricule, e.matricule_etat, e.sexe, e.date_naissance, e.quartier,
+          '''SELECT e.id, e.nom, e.prenoms, e.matricule, e.matricule_etat, e.ancien_matricule, e.sexe, e.date_naissance, e.quartier,
                e.allergies, e.sante, e.created_at, e.site_id, s.nom AS site,
                i.statut, i.classe_id, c.nom AS classe, n.cycle,
                (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj,
@@ -323,7 +323,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
       if (_statut != null && (e['statut'] ?? 'non_inscrit') != _statut) return false;
       if (q.isEmpty) return true;
       final texte = nomSimplifie([
-        e['nom'], e['prenoms'], e['nom'], e['matricule'], e['matricule_etat'], e['classe'], e['familles'],
+        e['nom'], e['prenoms'], e['nom'], e['matricule'], e['matricule_etat'], e['ancien_matricule'], e['classe'], e['familles'],
       ].whereType<String>().join(' '));
       if (texte.contains(q) || nomSimplifie('${e['prenoms']} ${e['nom']}').contains(q)) return true;
       return chiffres.length >= 4 && '${e['familles'] ?? ''}'.contains(chiffres);

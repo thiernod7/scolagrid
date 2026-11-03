@@ -413,10 +413,15 @@ void main() {
       expect(lireEntete(lignes.first).length, colonnesImport.length);
       expect([for (final l in lignes.skip(1)) l[5]], classes.keys);
       expect(analyserImport(lignes: lignes, classes: classes, existants: const []), isEmpty);
-      lignes[2] = ['DIALLO', 'Awa', 'F', '15/03/2014', null, '7ème A', 'Nouvelle', null, '620000000', 'Mère', null, null];
+      lignes[2] = ['DIALLO', 'Awa', 'F', '15/03/2014', null, '7ème A', 'Nouvelle', null, '620000000', 'Mère', null, '2023-145', null];
       final r = analyserImport(lignes: lignes, classes: classes, existants: const []);
       expect(r.single.classeId, 'c7a');
       expect(r.single.etat, EtatLigne.valide);
+      expect(r.single.valeurs['ancien_matricule'], '2023-145');
+      // Un élève déjà dans ScolaGrid avec ce même ancien matricule : doublon probable.
+      final d = analyserImport(lignes: lignes, classes: classes, existants: const [], anciensMatricules: {'2023-145': 'DIALLO Aïssatou'});
+      expect(d.single.etat, EtatLigne.doublon);
+      expect(d.single.remarques.last, 'même ancien matricule que DIALLO Aïssatou');
     });
   });
 }

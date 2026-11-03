@@ -277,6 +277,7 @@ const schema = Schema([
     Column.text('organisation_id'),
     Column.text('matricule'),
     Column.text('matricule_etat'),
+    Column.text('ancien_matricule'),
     Column.text('site_origine_id'),
     Column.text('site_id'),
     Column.text('nom'),

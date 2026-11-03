@@ -255,6 +255,7 @@ Future<void> _modifierIdentiteEleve(BuildContext context, Map<String, Object?> e
     'nationalite': c('nationalite'),
     'quartier': c('quartier'),
     'matricule_etat': c('matricule_etat'),
+    'ancien_matricule': c('ancien_matricule'),
     'allergies': c('allergies'),
     'sante': c('sante'),
   };
@@ -265,6 +266,7 @@ Future<void> _modifierIdentiteEleve(BuildContext context, Map<String, Object?> e
     'nationalite': 'Nationalité',
     'quartier': 'Quartier',
     'matricule_etat': "Matricule d'État",
+    'ancien_matricule': "Ancien matricule de l'école",
     'allergies': 'Allergies',
     'sante': 'Traitement ou condition',
   };
@@ -785,6 +787,7 @@ class _OngletDossier extends StatelessWidget {
         e['matricule_etat'] == null
             ? const _ChampLu("Matricule d'État", "en attente d'attribution", attenue: true)
             : _ChampLu("Matricule d'État", '${e['matricule_etat']}', mono: true),
+        if (e['ancien_matricule'] != null) _ChampLu("Ancien matricule de l'école", '${e['ancien_matricule']}', mono: true),
         _ChampLu('Nom', '${e['nom']}'),
         _ChampLu('Prénom(s)', '${e['prenoms']}'),
         _ChampLu('Sexe', switch (e['sexe']) { 'M' => 'Masculin', 'F' => 'Féminin', _ => null }),
