@@ -1,4 +1,5 @@
 import 'dart:convert' show utf8;
+import 'dart:io' show File;
 
 import 'package:excel/excel.dart' as xl;
 import 'package:flutter_test/flutter_test.dart';
@@ -7,7 +8,7 @@ import 'package:scolagrid/caisse.dart';
 import 'package:scolagrid/echeancier.dart';
 import 'package:scolagrid/import_eleves.dart';
 import 'package:scolagrid/matricule.dart';
-import 'package:scolagrid/configuration.dart' show decalerDate, empreintePin, gnf, lettresSuivantes, libelleSuivant, nomDeClasse, pinValide;
+import 'package:scolagrid/configuration.dart' show versionApp, decalerDate, empreintePin, gnf, lettresSuivantes, libelleSuivant, nomDeClasse, pinValide;
 import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_excel.dart';
 import 'package:scolagrid/modele_guineen.dart';
@@ -16,6 +17,11 @@ import 'package:scolagrid/schema.dart';
 import 'package:scolagrid/theme.dart';
 
 void main() {
+  test("La version affichée dans l'app est celle de pubspec.yaml", () {
+    final v = RegExp(r'^version: ([0-9.]+)\+', multiLine: true).firstMatch(File('pubspec.yaml').readAsStringSync())![1];
+    expect(versionApp, v);
+  });
+
   test('le schéma local contient les tables de l\'espace école', () {
     final tables = schema.tables.map((t) => t.name);
     for (final t in ['organisations', 'sites', 'rattachements', 'personnes', 'annees_scolaires', 'niveaux', 'classes', 'matieres', 'frais', 'personnel', 'affectations', 'droits_personnel', 'postes', 'ce_poste', 'echeances', 'eleves', 'contacts', 'eleves_contacts', 'inscriptions', 'historique_eleves', 'souscriptions', 'encaissements', 'lignes_encaissement', 'regles_reduction', 'reductions_eleves', 'clotures_caisse', 'impressions_documents', 'remboursements', 'photos_eleves']) {

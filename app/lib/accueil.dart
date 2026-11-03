@@ -28,6 +28,10 @@ class _Entree {
   final String? groupe;
 }
 
+/// « ScolaGrid 0.9.0 · essai » : pour savoir d'un coup d'œil quelle application on a.
+String get versionAffichee => 'ScolaGrid $versionApp${environnement == 'essai' ? ' · essai' : ''}';
+String get _versionCourte => 'v$versionApp${environnement == 'essai' ? '\nessai' : ''}';
+
 const _toutes = [
   _Entree(_Rubrique.accueil, 'Accueil', Icons.home_outlined, Icons.home, null),
   _Entree(_Rubrique.eleves, 'Élèves', Icons.school_outlined, Icons.school, 'ÉLÈVES'),
@@ -425,6 +429,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       const BoutonTheme(),
                       IconButton(tooltip: 'Verrouiller', onPressed: _verrouiller, icon: const Icon(Icons.lock_outline)),
                       IconButton(tooltip: 'Se déconnecter', onPressed: _seDeconnecter, icon: const Icon(Icons.logout)),
+                      Text(_versionCourte, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                     ]),
                   ),
                 ),
@@ -490,6 +495,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                       _seDeconnecter();
                     },
                   ),
+                  ListTile(dense: true, enabled: false, leading: const Icon(Icons.info_outline), title: Text(versionAffichee)),
                 ]),
               ),
             );
@@ -752,9 +758,10 @@ class _EnTete extends StatelessWidget {
         PopupMenuButton<String>(
           tooltip: 'Mon compte',
           onSelected: (v) => v == 'verrou' ? verrouiller() : seDeconnecter(),
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'verrou', child: Text('Verrouiller')),
-            PopupMenuItem(value: 'sortir', child: Text('Se déconnecter')),
+          itemBuilder: (_) => [
+            const PopupMenuItem(value: 'verrou', child: Text('Verrouiller')),
+            const PopupMenuItem(value: 'sortir', child: Text('Se déconnecter')),
+            PopupMenuItem(enabled: false, child: Text(versionAffichee)),
           ],
           child: Row(children: [
             Initiales(nom.isEmpty ? '?' : nom, taille: 32),
