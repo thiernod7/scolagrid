@@ -19,7 +19,7 @@ concurrency:
 
 env:
   ECOLE: "GS Avenir"
-  MODE: "compter"
+  MODE: "effacer"
 
 jobs:
   nettoyer:
