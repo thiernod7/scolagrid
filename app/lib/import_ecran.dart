@@ -115,7 +115,10 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
         blocages[a] = annee == null
             ? "Il n'y a pas d'année scolaire en cours."
             : a.niveau == null
-                ? "Ce niveau n'existe pas dans ScolaGrid : ajoutez-le dans Paramètres › Niveaux, puis ses frais."
+                ? "Ce niveau n'existe pas dans ScolaGrid : ajoutez-le dans Paramètres › Niveaux, puis ses frais. "
+                    "Voyez l'onglet « Guide des classes » du modèle pour l'écriture."
+                : a.probleme != null
+                ? 'Classe mal écrite dans le fichier : ${a.probleme} Corrigez le fichier puis rechargez-le.'
                 : !avecFrais.contains(a.niveau!.id)
                     ? 'Le niveau ${a.niveau!.nom} n\'a pas encore de frais : ajoutez-les dans Paramètres › Frais scolaires.'
                     : fermees.contains(cleClasse(a.nom))
@@ -303,7 +306,7 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
     final pretes = [for (final a in _absentes) if (_blocages[a] == null) a];
     final direction = _sites.keys.any(widget.espace.gereSite);
     final sansNiveau = _absentes.any((a) => _blocages[a] != null && a.niveau == null);
-    final sansFrais = _absentes.any((a) => _blocages[a] != null && a.niveau != null);
+    final sansFrais = _absentes.any((a) => _blocages[a] != null && a.niveau != null && a.probleme == null);
     final eleves = _absentes.fold<int>(0, (s, a) => s + a.eleves);
     return Card(
       color: Couleurs.attente.withValues(alpha: 0.08),

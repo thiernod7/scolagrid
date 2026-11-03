@@ -18,15 +18,29 @@ const examens = {
   'BAC': 'Baccalauréat',
 };
 
-/// Séries du lycée.
-const seriesLycee = {
-  'SM': 'Sciences mathématiques',
-  'SE': 'Sciences expérimentales',
-  'SS': 'Sciences sociales',
-  'SL': 'Sciences littéraires',
+/// Options (séries) du lycée : l'école choisit UN jeu, appliqué à tous ses
+/// niveaux du lycée. Une classe du lycée = niveau + option + groupe :
+/// « 11ème SS A », « Terminale SM B ». ⚠️ « SS » n'a pas le même sens dans les
+/// deux jeux.
+const jeuxOptions = <int, Map<String, String>>{
+  1: {'SS': 'Série scientifique', 'SL': 'Série littéraire'},
+  2: {'SM': 'Sciences mathématiques', 'SS': 'Sciences sociales', 'SE': 'Sciences expérimentales'},
 };
 
-const _toutes = 'SM,SE,SS,SL';
+/// Les options d'un jeu, telles que rangées dans niveaux.series.
+String seriesDuJeu(int jeu) => jeuxOptions[jeu]!.keys.join(',');
+
+/// Le jeu d'une école, d'après les séries de ses niveaux du lycée (type 2 par défaut).
+int jeuOptionsDe(Iterable<Object?> series) {
+  final toutes = series.expand((s) => '${s ?? ''}'.split(',')).toSet();
+  if (toutes.contains('SM') || toutes.contains('SE')) return 2;
+  return toutes.contains('SL') ? 1 : 2;
+}
+
+/// « SS — Sciences sociales » ou « SS — Série scientifique », selon le jeu.
+String libelleSerie(String code, int jeu) => '$code — ${jeuxOptions[jeu]?[code] ?? code}';
+
+const _toutes = 'SM,SS,SE';
 
 const niveauxParCycle = <String, List<Niveau>>{
   'maternelle': [

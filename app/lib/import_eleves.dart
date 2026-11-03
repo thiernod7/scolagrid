@@ -293,14 +293,17 @@ class ClasseAbsente {
   String? serie;
   String? lettre;
 
+  /// Niveau reconnu mais classe mal écrite (option manquante ou hors du jeu…).
+  String? probleme;
+
   /// Nom que ScolaGrid lui donnera : « 10ème B », « 11ème SS A ».
   String get nom => [niveau?.nom ?? saisie, ?serie, ?lettre].join(' ');
 }
 
 /// Retrouve le niveau, la série et la lettre d'une classe écrite à la main :
 /// « 10e B » → 10ème, B ; « 11eme ss a » → 11ème, SS, A ; « 1ère année A » → CP1, A.
-/// Null si aucun niveau de l'école ne correspond.
-({NiveauImport niveau, String? serie, String? lettre})? decomposerClasse(String saisie, List<NiveauImport> niveaux) {
+/// Null si aucun niveau de l'école ne correspond ; [probleme] dit ce qui cloche sinon.
+({NiveauImport niveau, String? serie, String? lettre, String? probleme})? decomposerClasse(String saisie, List<NiveauImport> niveaux) {
   final k = cleClasse(saisie);
   NiveauImport? trouve;
   var cle = '';
@@ -325,8 +328,18 @@ class ClasseAbsente {
       }
     }
   }
-  if (reste.length > 1 || (reste.length == 1 && reste.single.length > 2)) return null;
-  return (niveau: trouve, serie: serie, lettre: reste.isEmpty ? null : reste.single);
+  final exemple = [trouve.nom, if (series.isNotEmpty) series.first, 'A'].join(' ');
+  String? probleme;
+  if (serie == null && reste.isNotEmpty && const {'SM', 'SE', 'SS', 'SL'}.contains(reste.first)) {
+    probleme = series.isEmpty
+        ? "${trouve.nom} n'a pas d'option : écrivez « ${trouve.nom} A »."
+        : "l'option ${reste.first} n'existe pas dans le jeu de l'école (${series.join(', ')}).";
+  } else if (serie == null && series.isNotEmpty) {
+    probleme = 'au lycée, précisez l\'option (${series.join(', ')}) : « $exemple ».';
+  } else if (reste.length > 1 || (reste.length == 1 && reste.single.length > 2)) {
+    probleme = 'nom non reconnu : écrivez le niveau${series.isEmpty ? '' : ", l'option"} puis la lettre, par exemple « $exemple ».';
+  }
+  return (niveau: trouve, serie: serie, lettre: reste.isEmpty ? null : reste.last, probleme: probleme);
 }
 
 /// Regroupe les lignes rejetées pour classe inconnue, par classe (avec tolérance).
@@ -342,7 +355,8 @@ List<ClasseAbsente> classesAbsentes(List<LigneImport> lignes, List<NiveauImport>
         c
           ..niveau = d.niveau
           ..serie = d.serie
-          ..lettre = d.lettre;
+          ..lettre = d.lettre
+          ..probleme = d.probleme;
       }
       return c;
     });

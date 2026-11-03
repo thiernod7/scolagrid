@@ -55,25 +55,23 @@ class NiveauxScreen extends StatelessWidget {
     final nom = TextEditingController(text: '${niveau?['nom'] ?? ''}');
     final usage = TextEditingController(text: '${niveau?['nom_usage'] ?? ''}');
     String? examen = niveau?['examen'] as String?;
-    final series = '${niveau?['series'] ?? ''}'.split(',').where((x) => x.isNotEmpty).toSet();
+    // Les séries d'un niveau du lycée suivent le jeu d'options de l'école.
+    final jeu = jeuOptionsDe([
+      for (final x in await db.getAll("SELECT series FROM niveaux WHERE organisation_id = ? AND cycle = 'lycee'", [espace.orgId])) x['series'],
+    ]);
     var dernier = niveau?['niveau_final'] == 1;
+    if (!context.mounted) return;
     final ok = await _formulaire(context, niveau == null ? 'Nouveau niveau' : 'Modifier ${niveau['nom']}', (maj) => [
           if (niveau == null) _liste('Cycle', cycle, cycles, (v) => maj(() => cycle = v)),
           TextField(controller: nom, autofocus: niveau == null, decoration: _champ('Nom', aide: 'CM2, 10ème, Terminale…')),
           TextField(controller: usage, decoration: _champ("Nom d'usage (facultatif)", aide: 'Ce que disent les familles : 6ème année…')),
           _liste<String?>('Examen en fin d\'année', examen, {null: 'Aucun', ...examens}, (v) => maj(() => examen = v)),
-          if (cycle == 'lycee') ...[
-            const Align(alignment: Alignment.centerLeft, child: Text('Séries proposées', style: TextStyle(fontSize: 13))),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final s in seriesLycee.entries)
-                FilterChip(
-                  label: Text(s.key),
-                  tooltip: s.value,
-                  selected: series.contains(s.key),
-                  onSelected: (v) => maj(() => v ? series.add(s.key) : series.remove(s.key)),
-                ),
-            ]),
-          ],
+          if (cycle == 'lycee')
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Options : ${seriesDuJeu(jeu).replaceAll(',', ', ')} (jeu choisi pour tout le lycée, sous le tableau des niveaux).',
+                  style: const TextStyle(fontSize: 13)),
+            ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: dernier,
@@ -87,7 +85,7 @@ class NiveauxScreen extends StatelessWidget {
       'nom': nom.text.trim(),
       'nom_usage': usage.text.trim().isEmpty ? null : usage.text.trim(),
       'examen': examen,
-      'series': cycle == 'lycee' && series.isNotEmpty ? seriesLycee.keys.where(series.contains).join(',') : null,
+      'series': cycle == 'lycee' ? seriesDuJeu(jeu) : null,
       'niveau_final': dernier ? 1 : 0,
     };
     final m = _maintenant();
@@ -198,7 +196,7 @@ class NiveauxScreen extends StatelessWidget {
             colonnes: [
               const ColonneTableau('Niveau', flex: 3),
               if (large) const ColonneTableau('Cycle', flex: 2),
-              if (large) const ColonneTableau('Séries', flex: 2),
+              if (large) const ColonneTableau('Options', flex: 2),
               const ColonneTableau('Examen', flex: 2),
               const ColonneTableau('Classes', largeur: 70, droite: true),
               const ColonneTableau('Élèves', largeur: 70, droite: true),
@@ -257,11 +255,76 @@ class NiveauxScreen extends StatelessWidget {
             ],
             onTap: f ? (i) => _editer(context, niveau: niveaux[i]) : null,
           ),
+          if (niveaux.any((n) => n['cycle'] == 'lycee')) ...[
+            const SizedBox(height: 12),
+            _OptionsLycee(espace: espace, jeu: jeuOptionsDe([for (final n in niveaux) if (n['cycle'] == 'lycee') n['series']])),
+          ],
           const SizedBox(height: 10),
           Text("Les élèves d'un niveau d'examen paient ses frais d'examen d'office. "
               'Un niveau qui a déjà eu des classes ne se supprime plus.', style: TextStyle(fontSize: 12, color: gris)),
         ]);
       }),
+    );
+  }
+}
+
+/// Le jeu d'options du lycée (Paramétrage §4.1) : type 1 (SS, SL) ou type 2
+/// (SM, SS, SE). L'école choisit, elle n'invente pas ses séries.
+class _OptionsLycee extends StatelessWidget {
+  const _OptionsLycee({required this.espace, required this.jeu});
+
+  final Espace espace;
+  final int jeu;
+
+  Future<void> _changer(BuildContext context, int nouveau) async {
+    final messager = ScaffoldMessenger.of(context);
+    final gardees = jeuxOptions[nouveau]!.keys.toSet();
+    // Une classe ouverte qui porte une option du jeu quitté bloque le changement.
+    final portees = [
+      for (final c in await db.getAll(
+          '''SELECT DISTINCT c.serie FROM classes c JOIN annees_scolaires a ON a.id = c.annee_id
+             WHERE c.organisation_id = ? AND c.fermee = 0 AND c.serie IS NOT NULL AND a.etat <> ?''', [espace.orgId, 'cloturee']))
+        if (!gardees.contains(c['serie'])) '${c['serie']}',
+    ];
+    if (portees.isNotEmpty) {
+      messager.showSnackBar(SnackBar(
+          content: Text('Des classes portent encore ${portees.join(', ')} : fermez-les ou renommez-les avant de changer de jeu.')));
+      return;
+    }
+    if (!context.mounted) return;
+    if (!await _confirmer(context, 'Passer au type $nouveau : ${jeuxOptions[nouveau]!.entries.map((e) => '${e.key} (${e.value})').join(', ')} ?')) {
+      return;
+    }
+    await db.execute("UPDATE niveaux SET series = ?, updated_at = ? WHERE organisation_id = ? AND cycle = 'lycee'",
+        [seriesDuJeu(nouveau), _maintenant(), espace.orgId]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Options du lycée', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text("L'école choisit son jeu d'options, valable pour la 11ème, la 12ème et la Terminale. "
+              'Une classe du lycée = niveau + option + groupe : « 11ème SS A », « Terminale SM B ».',
+              style: TextStyle(fontSize: 13, color: gris)),
+          const SizedBox(height: 12),
+          SegmentedButton<int>(
+            segments: [
+              for (final j in jeuxOptions.keys)
+                ButtonSegment(value: j, label: Text('Type $j : ${jeuxOptions[j]!.keys.join(' · ')}')),
+            ],
+            selected: {jeu},
+            showSelectedIcon: false,
+            onSelectionChanged: espace.fondateur ? (s) => _changer(context, s.first) : null,
+          ),
+          const SizedBox(height: 8),
+          for (final e in jeuxOptions[jeu]!.entries) Text('${e.key} : ${e.value}', style: const TextStyle(fontSize: 13)),
+        ]),
+      ),
     );
   }
 }
@@ -327,23 +390,35 @@ class _ClassesScreenState extends State<ClassesScreen> {
       return;
     }
     final existantes = [
-      for (final c in await db.getAll('SELECT site_id, niveau_id, serie, lettre FROM classes WHERE annee_id = ?', [annee['id']]))
+      for (final c in await db.getAll('SELECT site_id, niveau_id, serie, lettre, nom, fermee FROM classes WHERE annee_id = ?', [annee['id']]))
         Map<String, Object?>.from(c),
     ];
     if (!mounted) return;
     var site = sites.keys.first;
     var niveau = (_niveau != null && niveaux.any((n) => n['id'] == _niveau) ? _niveau : niveaux.first['id']) as String;
-    String? serie;
+    final jeu = jeuOptionsDe([for (final n in niveaux) n['series']]);
+    List<String> seriesDe(String id) =>
+        '${niveaux.firstWhere((n) => n['id'] == id)['series'] ?? ''}'.split(',').where((x) => x.isNotEmpty).toList();
+    // Au lycée, l'option fait partie de la classe : la première est proposée d'office.
+    String? serie = seriesDe(niveau).firstOrNull;
     var nombre = 1;
     final capacite = TextEditingController();
     Map<String, Object?> nv() => niveaux.firstWhere((n) => n['id'] == niveau);
-    List<String> noms() {
+    // Lettres prises : celles des classes du niveau, et celles qu'un NOM déjà porté
+    // occupe (une ancienne « 10ème A » sans lettre enregistrée, par exemple).
+    List<String> lettresLibres() {
       final n = nv();
-      final lettres = lettresSuivantes(
-          existantes.where((c) => c['site_id'] == site && c['niveau_id'] == niveau && c['serie'] == serie).map((c) => c['lettre'] as String?),
-          nombre);
-      return [for (final l in lettres) nomDeClasse('${n['nom']}', serie, l)];
+      final nomsPris = {for (final c in existantes) if (c['site_id'] == site && c['fermee'] != 1) cleClasse('${c['nom']}')};
+      final prises = {
+        for (final c in existantes)
+          if (c['site_id'] == site && c['niveau_id'] == niveau && c['serie'] == serie) c['lettre'] as String?,
+        for (var i = 0; i < 26; i++)
+          if (nomsPris.contains(cleClasse(nomDeClasse('${n['nom']}', serie, String.fromCharCode(65 + i))))) String.fromCharCode(65 + i),
+      };
+      return lettresSuivantes(prises, nombre);
     }
+
+    List<String> noms() => [for (final l in lettresLibres()) nomDeClasse('${nv()['nom']}', serie, l)];
 
     final ok = await _formulaire(context, 'Créer des classes', (maj) {
       final series = '${nv()['series'] ?? ''}'.split(',').where((x) => x.isNotEmpty).toList();
@@ -351,13 +426,12 @@ class _ClassesScreenState extends State<ClassesScreen> {
         if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
         _liste('Niveau', niveau, {for (final n in niveaux) n['id'] as String: '${n['nom']}'}, (v) => maj(() {
               niveau = v;
-              serie = null;
+              serie = seriesDe(v).firstOrNull;
             })),
         if (series.isNotEmpty)
           KeyedSubtree(
             key: ValueKey('serie-$niveau'),
-            child: _liste<String?>('Série', serie, {null: 'Sans série', for (final s in series) s: '$s — ${seriesLycee[s] ?? ''}'},
-                (v) => maj(() => serie = v)),
+            child: _liste<String?>('Option', serie, {for (final s in series) s: libelleSerie(s, jeu)}, (v) => maj(() => serie = v)),
           ),
         Row(children: [
           const Expanded(child: Text('Nombre de groupes')),
@@ -379,9 +453,7 @@ class _ClassesScreenState extends State<ClassesScreen> {
     if (!ok) return;
     final cap = int.tryParse(capacite.text.trim());
     final n = nv();
-    final lettres = lettresSuivantes(
-        existantes.where((c) => c['site_id'] == site && c['niveau_id'] == niveau && c['serie'] == serie).map((c) => c['lettre'] as String?),
-        nombre);
+    final lettres = lettresLibres();
     final m = _maintenant();
     await db.writeTransaction((tx) async {
       for (final l in lettres) {
@@ -409,6 +481,17 @@ class _ClassesScreenState extends State<ClassesScreen> {
         ]);
     if (!ok || nom.text.trim().isEmpty) return;
     final cap = int.tryParse(capacite.text.trim());
+    // Pas deux classes ouvertes du même nom sur le site, la même année.
+    final memeNom = (await db.getAll('SELECT nom FROM classes WHERE site_id = ? AND annee_id = ? AND fermee = 0 AND id <> ?',
+            [c['site_id'], c['annee_id'], c['id']]))
+        .any((x) => cleClasse('${x['nom']}') == cleClasse(nom.text));
+    if (memeNom) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Une classe « ${nom.text.trim()} » existe déjà sur ce site cette année.')));
+      }
+      return;
+    }
     await _modifier('classes', c['id'] as String, {
       'nom': nom.text.trim(),
       'salle': salle.text.trim().isEmpty ? null : salle.text.trim(),
@@ -519,7 +602,7 @@ class _ClassesScreenState extends State<ClassesScreen> {
             ORDER BY s.created_at, n.ordre, c.nom''', parametres: [anneeId, _e.orgId], builder: (context, toutes) {
           if (toutes.isEmpty) {
             return _vide(_e.gestionnaire
-                ? "Aucune classe pour l'année en cours. « Créer des classes » : un niveau, une série, le nombre de groupes."
+                ? "Aucune classe pour l'année en cours. « Créer des classes » : un niveau, une option (lycée), le nombre de groupes."
                 : "Aucune classe pour l'année en cours.");
           }
           final gris = Theme.of(context).colorScheme.onSurfaceVariant;

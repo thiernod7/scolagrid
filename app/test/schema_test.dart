@@ -304,10 +304,15 @@ void main() {
     final tous = niveauxParCycle.values.expand((l) => l).toList();
     expect(tous.firstWhere((n) => n.nom == 'CP1').usage, '1ère année');
     expect(tous.where((n) => n.examen != null).map((n) => n.examen), ['CEE', 'BEPC', 'BAC']);
-    expect(tous.firstWhere((n) => n.nom == 'Terminale').series, 'SM,SE,SS,SL');
+    expect(tous.firstWhere((n) => n.nom == 'Terminale').series, 'SM,SS,SE');
     // Mêmes valeurs que les contrôles du serveur (migration 022).
     expect(examens.keys, ['CEE', 'BEPC', 'BAC']);
-    expect(seriesLycee.keys, ['SM', 'SE', 'SS', 'SL']);
+    expect(seriesDuJeu(1), 'SS,SL');
+    expect(seriesDuJeu(2), 'SM,SS,SE');
+    expect(jeuOptionsDe(['SS,SL', null]), 1);
+    expect(jeuOptionsDe(['SM,SS,SE']), 2);
+    expect(libelleSerie('SS', 1), 'SS — Série scientifique');
+    expect(libelleSerie('SS', 2), 'SS — Sciences sociales');
   });
 
   test("Réductions : l'enfant du personnel passe après la fratrie, avant le paiement annuel", () {
@@ -375,18 +380,20 @@ void main() {
       final niveaux = <NiveauImport>[
         (id: 'cp1', nom: 'CP1', usage: '1ère année', series: null),
         (id: 'n10', nom: '10ème', usage: '10ème année', series: null),
-        (id: 'n11', nom: '11ème', usage: '11ème année', series: 'SM,SE,SS,SL'),
+        (id: 'n11', nom: '11ème', usage: '11ème année', series: 'SM,SS,SE'),
       ];
       String? d(String s) {
         final r = decomposerClasse(s, niveaux);
-        return r == null ? null : '${r.niveau.id}|${r.serie}|${r.lettre}';
+        return r == null ? null : '${r.niveau.id}|${r.serie}|${r.lettre}${r.probleme == null ? '' : '|!'}';
       }
 
       expect(d('10e B'), 'n10|null|B');
       expect(d('11eme ss a'), 'n11|SS|A');
       expect(d('1ère année A'), 'cp1|null|A');
       expect(d('12ème A'), isNull);
-      expect(d('10ème Bis rouge'), isNull);
+      expect(d('10ème Bis rouge'), 'n10|null|ROUGE|!');
+      expect(d('11ème A'), 'n11|null|A|!'); // option manquante au lycée
+      expect(d('11ème SL A'), 'n11|null|A|!'); // option hors du jeu de l'école
       const texte = 'NOM;PRÉNOMS;CLASSE\nDIALLO;Awa;10e B\nBAH;Ali;10ème b\nSOW;Fanta;12ème A\nBARRY;Ousmane;10ème A\n';
       final r = analyserImport(lignes: lireCsv(utf8.encode(texte)), classes: {'10ème A': 'c10a'}, existants: const []);
       final absentes = classesAbsentes(r, niveaux);

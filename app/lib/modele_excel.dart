@@ -163,16 +163,22 @@ Uint8List modeleExcelPour(List<String> classes, {List<NiveauGuide> niveauxEcole 
   // --- Onglet Guide des classes : tous les niveaux reconnus, et comment les écrire.
   final ecole = {for (final n in niveauxEcole) cleClasse(n.nom)};
   final modele = [for (final c in niveauxParCycle.entries) for (final n in c.value) (cycle: cycles[c.key]!, n: n)];
+  // Le jeu d'options du lycée de l'école (type 2 si elle n'a pas encore de lycée).
+  final jeu = jeuOptionsDe([for (final n in niveauxEcole) n.series]);
+  final options = seriesDuJeu(jeu);
+  final o1 = jeuxOptions[jeu]!.keys.first;
   final guide = StringBuffer()
     ..write(ligne(1, ['Comment écrire une classe'], style: 5))
-    ..write(ligne(2, ['Écrivez le NIVEAU exactement comme dans la colonne B, puis la SÉRIE (lycée seulement), puis la LETTRE du groupe.']))
-    ..write(ligne(3, ['Exemples : « 10ème A », « 10ème B », « CM2 A », « 11ème SM A », « Terminale SS B ». '
-        "S'il n'y a qu'une classe du niveau, la lettre est facultative : « 9ème »."]))
+    ..write(ligne(2, ["Écrivez le NIVEAU exactement comme dans la colonne B, puis l'OPTION (lycée seulement), puis la LETTRE du groupe."]))
+    ..write(ligne(3, ['Exemples : « 10ème A », « 10ème B », « CM2 A », « 11ème $o1 A », « Terminale ${jeuxOptions[jeu]!.keys.last} B ». '
+        "S'il n'y a qu'une classe du niveau, la lettre est facultative : « 9ème ». Au lycée, l'option est obligatoire."]))
     ..write(ligne(4, ["N'inventez pas d'autre nom : « 13ème année » n'existe pas, écrivez « Terminale ». "
         '« 1ère année » est compris comme CP1, « 7e » comme 7ème.']))
     ..write(ligne(5, ["Une classe absente de ScolaGrid sera proposée à la création lors de l'import, si son niveau et ses frais "
         "existent (colonne G). Sinon, la direction ajoute d'abord le niveau et ses frais dans Paramètres."]))
-    ..write(ligne(7, ['CYCLE', 'NIVEAU (à écrire)', 'AUSSI COMPRIS', 'SÉRIES (lycée)', 'EXEMPLES DE CLASSES', 'CLASSES DÉJÀ CRÉÉES',
+    ..write(ligne(6, ["Options du lycée de l'école (type $jeu) : "
+        '${jeuxOptions[jeu]!.entries.map((e) => '${e.key} = ${e.value}').join(' ; ')}. Pas d\'autre option.']))
+    ..write(ligne(7, ['CYCLE', 'NIVEAU (à écrire)', 'AUSSI COMPRIS', 'OPTIONS (lycée)', 'EXEMPLES DE CLASSES', 'CLASSES DÉJÀ CRÉÉES',
       'DANS VOTRE ÉCOLE'], style: 1));
   var g = 8;
   String exemples(String nom, String? series) {
@@ -189,7 +195,8 @@ Uint8List modeleExcelPour(List<String> classes, {List<NiveauGuide> niveauxEcole 
     final n = m.n;
     final aussi = [if (n.usage != n.nom) n.usage, ?_aussiCompris[n.nom]].join(', ');
     guide.write(ligne(g++, [
-      m.cycle, n.nom, aussi, n.series?.replaceAll(',', ', ') ?? '', exemples(n.nom, n.series), dejaCreees(n.nom),
+      m.cycle, n.nom, aussi, n.series == null ? '' : options.replaceAll(',', ', '), exemples(n.nom, n.series == null ? null : options),
+      dejaCreees(n.nom),
       ecole.contains(cleClasse(n.nom)) ? 'Oui' : 'Niveau à ajouter dans Paramètres',
     ], styles: [0, 3, 0, 0, 0, 0, 0]));
   }
