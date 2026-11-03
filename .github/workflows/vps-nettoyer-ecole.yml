@@ -1,0 +1,42 @@
+name: VPS - Nettoyer une école (essai)
+
+# Efface les élèves et l'argent d'UNE école sur le serveur d'ESSAI seulement,
+# pour refaire des essais. Garde le réglage de l'école (sites, année, niveaux,
+# classes, frais, personnel, postes). Voir serveur/outils/nettoyer-ecole.sql.
+#
+# Se lance quand ce fichier change. MODE « compter » n'efface rien ; MODE
+# « effacer » ne s'utilise qu'après accord écrit (EFFACER) de la direction.
+# Le journal est public : il n'affiche que des nombres.
+
+on:
+  push:
+    paths:
+      - ".github/workflows/vps-nettoyer-ecole.yml"
+
+concurrency:
+  group: vps
+  cancel-in-progress: false
+
+env:
+  ECOLE: "GS Avenir"
+  MODE: "compter"
+
+jobs:
+  nettoyer:
+    runs-on: ubuntu-latest
+    if: github.ref_name != github.event.repository.default_branch
+    steps:
+      - uses: actions/checkout@v4
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      - name: ${{ env.MODE == 'effacer' && 'Effacer' || 'Compter' }} (essai)
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" \
+            "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres -v $(printf %q "ecole=$ECOLE") -v mode=$MODE" \
+            < serveur/outils/nettoyer-ecole.sql
