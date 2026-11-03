@@ -186,11 +186,16 @@ class _ImportElevesScreenState extends State<ImportElevesScreen> {
              WHERE c.organisation_id = ? AND c.fermee = 0 ORDER BY n.ordre, c.nom''', [widget.espace.orgId]))
         if (sites.containsKey(c['site_id'])) '${c['nom']}',
     ];
+    final niveaux = [
+      for (final n in await db.getAll('SELECT nom, nom_usage, series FROM niveaux WHERE organisation_id = ? ORDER BY ordre',
+          [widget.espace.orgId]))
+        (nom: '${n['nom']}', usage: n['nom_usage'] as String?, series: n['series'] as String?),
+    ];
     try {
       await FilePicker.saveFile(
         dialogTitle: 'Enregistrer le modèle',
         fileName: 'modele-import-eleves.xlsx',
-        bytes: modeleExcelPour(classes.isEmpty ? classesModeleGuineen : classes),
+        bytes: modeleExcelPour(classes.isEmpty ? classesModeleGuineen : classes, niveauxEcole: niveaux),
       );
     } catch (_) {
       messager.showSnackBar(const SnackBar(content: Text("Impossible d'enregistrer le fichier sur cet appareil.")));

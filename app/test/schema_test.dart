@@ -366,6 +366,9 @@ void main() {
       expect(r.last.etat, EtatLigne.rejetee);
       expect(r.last.remarques.single, contains('classes possibles : 7ème A, 7ème B'));
       expect(cleClasse('1ère année'), '1 ANNEE');
+      expect(['Tle SM A', '13ème année SM A', 'Term SM A'].map(cleClasse).toSet(), {'TERMINALE SM A'});
+      expect(cleClasse('CP 1 A'), 'CP1 A');
+      expect(cleClasse('PS'), 'PETITE SECTION');
     });
 
     test("Classes absentes : niveau, série et lettre retrouvés, regroupées par classe", () {
@@ -393,7 +396,9 @@ void main() {
     test('Modèle Excel : onglets Élèves, Aide, Classes ; lignes sans élève ignorées', () {
       final classes = {'CP1 A': 'cp1', '7ème A': 'c7a', 'Terminale SM A': 'tsm'};
       final classeur = xl.Excel.decodeBytes(modeleExcelPour(classes.keys.toList()));
-      expect(classeur.tables.keys, ['Élèves', 'Aide', 'Classes']);
+      expect(classeur.tables.keys, ['Élèves', 'Guide des classes', 'Aide', 'Classes']);
+      final guide = [for (final r in classeur.tables['Guide des classes']!.rows) [for (final c in r) c?.value?.toString()]];
+      expect(guide.any((l) => l.length > 2 && l[1] == 'Terminale' && '${l[2]}'.contains('13ème année')), isTrue);
       final lignes = [
         for (final r in classeur.tables['Élèves']!.rows) [for (final c in r) c?.value?.toString()],
       ];

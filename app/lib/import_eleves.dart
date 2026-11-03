@@ -96,7 +96,13 @@ String cleClasse(String s) => nomSimplifie(s)
     // « 7E », « 7EME », « 7 EME » → « 7 » ; mais « CE2 E » (groupe E) reste tel quel.
     .replaceAllMapped(RegExp(r'(\d+)(?:IEME|EME|ERE|RE|E|\s(?:IEME|EME|ERE))\b'), (m) => m[1]!)
     .replaceAll(RegExp(r'\s+'), ' ')
-    .trim();
+    .trim()
+    // Écritures courantes : « CP 1 » → CP1, « Tle » ou « 13ème année » → Terminale, « PS » → Petite section.
+    .replaceAllMapped(RegExp(r'^(CP|CE|CM) (\d)\b'), (m) => '${m[1]}${m[2]}')
+    .replaceFirst(RegExp(r'^(?:TLE|TERM|13(?: ANNEE)?)(?= |$)'), 'TERMINALE')
+    .replaceFirst(RegExp(r'^PS(?= |$)'), 'PETITE SECTION')
+    .replaceFirst(RegExp(r'^MS(?= |$)'), 'MOYENNE SECTION')
+    .replaceFirst(RegExp(r'^GS(?= |$)'), 'GRANDE SECTION');
 
 /// Colonnes reconnues (l'en-tête du fichier peut varier un peu).
 const colonnesImport = {

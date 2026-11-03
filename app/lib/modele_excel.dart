@@ -2,6 +2,8 @@
 /// excel ne sait pas faire de listes déroulantes) :
 /// - onglet « Élèves » : les titres, une ligne par classe, et des listes
 ///   déroulantes pour CLASSE, SEXE, TYPE et LIEN ;
+/// - onglet « Guide des classes » : comment écrire une classe (tous les niveaux
+///   reconnus, séries, lettre du groupe), même si l'école ne l'a pas encore créée ;
 /// - onglet « Aide » : quoi écrire dans chaque colonne, avec un exemple ;
 /// - onglet « Classes » : les classes de l'école (source de la liste CLASSE).
 library;
@@ -10,6 +12,19 @@ import 'dart:convert' show utf8;
 import 'dart:typed_data' show Uint8List;
 
 import 'package:archive/archive.dart' show Archive, ArchiveFile, ZipEncoder;
+
+import 'import_eleves.dart' show cleClasse;
+import 'modele_guineen.dart';
+
+typedef NiveauGuide = ({String nom, String? usage, String? series});
+
+/// Autres écritures comprises à l'import, en plus du nom d'usage.
+const _aussiCompris = {
+  'Petite section': 'PS',
+  'Moyenne section': 'MS',
+  'Grande section': 'GS',
+  'Terminale': 'Tle, 13ème année',
+};
 
 const titresImport = [
   'NOM', 'PRÉNOMS', 'SEXE', 'DATE DE NAISSANCE', 'LIEU DE NAISSANCE', 'CLASSE', 'TYPE', 'PARENT', 'TÉLÉPHONE', 'LIEN',
@@ -26,7 +41,8 @@ String _x(String s) =>
 
 String _col(int i) => String.fromCharCode(65 + i); // A à L suffisent ici.
 
-Uint8List modeleExcelPour(List<String> classes) {
+/// [niveauxEcole] : les niveaux déjà dans ScolaGrid (le guide signale ceux qui manquent).
+Uint8List modeleExcelPour(List<String> classes, {List<NiveauGuide> niveauxEcole = const []}) {
   final chaines = <String>[];
   final index = <String, int>{};
   int s(String t) => index.putIfAbsent(t, () {
@@ -80,7 +96,7 @@ Uint8List modeleExcelPour(List<String> classes) {
       '<dataValidation allowBlank="1" showInputMessage="1" promptTitle="${_x(titre)}" prompt="${_x(aide)}" '
       'sqref="${colonne}2:$colonne$_lignesMax"/>';
   final validations = [
-    liste('F', 'Classes!\$A\$2:\$A\$${n < 2 ? 2 : n}', 'Classe', 'Choisissez la classe dans la liste, ou écrivez-en une autre.',
+    liste('F', 'Classes!\$A\$2:\$A\$${n < 2 ? 2 : n}', 'Classe', 'Choisissez dans la liste. Pour une autre classe, écrivez-la comme dans l\'onglet « Guide des classes ».',
         "Cette classe n'existe pas encore dans ScolaGrid. Continuer quand même ? À l'import, ScolaGrid proposera de la créer.",
         avertir: true),
     liste('C', '"M,F"', 'Sexe', 'M (garçon) ou F (fille).', 'Choisissez M ou F.'),
@@ -104,7 +120,7 @@ Uint8List modeleExcelPour(List<String> classes) {
     ..write(ligne(1, ['Comment remplir le fichier'], style: 5))
     ..write(ligne(2, ["1. Remplissez l'onglet « Élèves » : une ligne par élève. Ne modifiez pas la première ligne (les titres)."]))
     ..write(ligne(3, ['2. CLASSE : cliquez sur la case, puis sur la petite flèche, et choisissez la classe dans la liste. '
-        "Une classe qui n'est pas dans la liste peut être écrite : ScolaGrid proposera de la créer à l'import."]))
+        "Pour une classe qui n'est pas dans la liste, écrivez-la comme indiqué dans l'onglet « Guide des classes »."]))
     ..write(ligne(4, ['3. Il y a déjà une ligne par classe : écrivez un élève dessus, puis copiez-la pour les élèves suivants.']))
     ..write(ligne(5, ['4. Laissez vide ce que vous ne connaissez pas : la fiche sera complétée plus tard dans ScolaGrid.']))
     ..write(ligne(6, ['5. Enregistrez (format Excel .xlsx), puis dans ScolaGrid : Élèves › ⋯ › Importer.']))
@@ -115,7 +131,7 @@ Uint8List modeleExcelPour(List<String> classes) {
     ['SEXE', 'Non', 'M (garçon) ou F (fille), dans la liste.', 'M'],
     ['DATE DE NAISSANCE', 'Non', 'Jour/mois/année.', '15/03/2014'],
     ['LIEU DE NAISSANCE', 'Non', 'Ville ou préfecture.', 'Labé'],
-    ['CLASSE', 'Oui', "De préférence dans la liste (onglet « Classes »). Une autre classe, par exemple « 9ème B », sera proposée à la création.", '%CLASSE%'],
+    ['CLASSE', 'Oui', "Dans la liste. Une autre classe s'écrit comme dans l'onglet « Guide des classes » : niveau, série (lycée), lettre.", '%CLASSE%'],
     ['TYPE', 'Non', 'Nouvelle, Réinscription ou Transfert. Vide = Réinscription.', 'Réinscription'],
     ['PARENT', 'Non', 'Nom du parent ou du tuteur.', 'Fatoumata BAH'],
     ['TÉLÉPHONE', 'Non', 'Numéro du parent. Les élèves avec le même numéro sont reliés en frères et sœurs.', '620 00 00 00'],
@@ -144,7 +160,54 @@ Uint8List modeleExcelPour(List<String> classes) {
     donnees: listeClasses.toString(),
   );
 
-  const onglets = ['Élèves', 'Aide', 'Classes'];
+  // --- Onglet Guide des classes : tous les niveaux reconnus, et comment les écrire.
+  final ecole = {for (final n in niveauxEcole) cleClasse(n.nom)};
+  final modele = [for (final c in niveauxParCycle.entries) for (final n in c.value) (cycle: cycles[c.key]!, n: n)];
+  final guide = StringBuffer()
+    ..write(ligne(1, ['Comment écrire une classe'], style: 5))
+    ..write(ligne(2, ['Écrivez le NIVEAU exactement comme dans la colonne B, puis la SÉRIE (lycée seulement), puis la LETTRE du groupe.']))
+    ..write(ligne(3, ['Exemples : « 10ème A », « 10ème B », « CM2 A », « 11ème SM A », « Terminale SS B ». '
+        "S'il n'y a qu'une classe du niveau, la lettre est facultative : « 9ème »."]))
+    ..write(ligne(4, ["N'inventez pas d'autre nom : « 13ème année » n'existe pas, écrivez « Terminale ». "
+        '« 1ère année » est compris comme CP1, « 7e » comme 7ème.']))
+    ..write(ligne(5, ["Une classe absente de ScolaGrid sera proposée à la création lors de l'import, si son niveau et ses frais "
+        "existent (colonne G). Sinon, la direction ajoute d'abord le niveau et ses frais dans Paramètres."]))
+    ..write(ligne(7, ['CYCLE', 'NIVEAU (à écrire)', 'AUSSI COMPRIS', 'SÉRIES (lycée)', 'EXEMPLES DE CLASSES', 'CLASSES DÉJÀ CRÉÉES',
+      'DANS VOTRE ÉCOLE'], style: 1));
+  var g = 8;
+  String exemples(String nom, String? series) {
+    final s = (series ?? '').split(',').where((x) => x.isNotEmpty).toList();
+    return s.isEmpty ? '$nom A, $nom B' : '$nom ${s.first} A, $nom ${s.last} B';
+  }
+
+  String dejaCreees(String nom) {
+    final k = cleClasse(nom);
+    return classes.where((c) => cleClasse(c) == k || cleClasse(c).startsWith('$k ')).join(', ');
+  }
+
+  for (final m in modele) {
+    final n = m.n;
+    final aussi = [if (n.usage != n.nom) n.usage, ?_aussiCompris[n.nom]].join(', ');
+    guide.write(ligne(g++, [
+      m.cycle, n.nom, aussi, n.series?.replaceAll(',', ', ') ?? '', exemples(n.nom, n.series), dejaCreees(n.nom),
+      ecole.contains(cleClasse(n.nom)) ? 'Oui' : 'Niveau à ajouter dans Paramètres',
+    ], styles: [0, 3, 0, 0, 0, 0, 0]));
+  }
+  // Niveaux propres à l'école, hors modèle guinéen.
+  final duModele = {for (final m in modele) cleClasse(m.n.nom)};
+  for (final n in niveauxEcole.where((n) => !duModele.contains(cleClasse(n.nom)))) {
+    guide.write(ligne(g++, [
+      'Autre', n.nom, n.usage != null && n.usage != n.nom ? n.usage : '', n.series?.replaceAll(',', ', ') ?? '',
+      exemples(n.nom, n.series), dejaCreees(n.nom), 'Oui',
+    ], styles: [0, 3, 0, 0, 0, 0, 0]));
+  }
+  final feuilleGuide = feuille(
+    vue: '<sheetView workbookViewId="0"/>',
+    colonnes: largeurs([12, 18, 22, 16, 30, 30, 32]),
+    donnees: guide.toString(),
+  );
+
+  const onglets = ['Élèves', 'Guide des classes', 'Aide', 'Classes'];
   final fichiers = <String, String>{
     '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
@@ -190,8 +253,9 @@ Uint8List modeleExcelPour(List<String> classes) {
         '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
         '</styleSheet>',
     'xl/worksheets/sheet1.xml': feuilleEleves,
-    'xl/worksheets/sheet2.xml': feuilleAide,
-    'xl/worksheets/sheet3.xml': feuilleClasses,
+    'xl/worksheets/sheet2.xml': feuilleGuide,
+    'xl/worksheets/sheet3.xml': feuilleAide,
+    'xl/worksheets/sheet4.xml': feuilleClasses,
   };
   // Les chaînes en dernier : toutes les feuilles les ont déjà remplies.
   fichiers['xl/sharedStrings.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
