@@ -186,3 +186,4 @@ if (etape === 'connexion') {
   for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
 }
 await ctx.close();
+// vérification de la caisse après correction (0.9.8)
