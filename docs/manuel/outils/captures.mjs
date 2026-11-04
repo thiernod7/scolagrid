@@ -146,13 +146,14 @@ if (etape === 'connexion') {
   await etapeSure('tableau', async () => { await aller('Accueil', 'FINANCES'); await pause(3000); await photo('10-tableau-de-bord'); });
   await etapeSure('eleves', async () => {
     await aller('Élèves', 'DIALLO'); await arbre('élèves'); await photo('40-eleves');
-    await page.getByText('DIALLO', { exact: false }).first().click(); await pause(3000); await semantique();
+    await page.mouse.click(360, 254); await pause(3500); await semantique();
     await arbre('fiche'); await photo('41-fiche-eleve');
     await retour();
   });
   await etapeSure('inscription', async () => {
     await aller('Élèves', 'Nouvelle inscription'); await clic('Nouvelle inscription'); await pause(3000); await semantique();
     await photo('42-inscription-recherche');
+    await page.keyboard.press('Escape');
     await clic('Nouvelle inscription'); await pause(3000); await semantique();
     await arbre('formulaire'); await photo('43-inscription-formulaire');
     await retour();
@@ -167,15 +168,19 @@ if (etape === 'connexion') {
     await arbre('encaisser élève'); await photo('52-encaisser-eleve');
     await page.getByRole('button', { name: 'Solde' }).first().click(); await pause(1500);
     await photo('53-encaisser-montant');
+    await clic('Enregistrer et imprimer'); await pause(2000); await semantique();
+    await photo('54-encaisser-confirmer');
     const [nouvelle] = await Promise.all([
       ctx.waitForEvent('page', { timeout: 15000 }).catch(() => null),
-      clic('Enregistrer et imprimer'),
+      page.getByRole('button', { name: 'Confirmer' }).last().click(),
     ]);
-    await pause(6000);
-    if (nouvelle) { await nouvelle.waitForTimeout(3000); await nouvelle.screenshot({ path: `${dossier}/54-recu.png` }); await nouvelle.close(); }
-    else await photo('54-recu');
+    await pause(8000);
+    if (nouvelle) { await nouvelle.waitForTimeout(4000); await nouvelle.screenshot({ path: `${dossier}/55-recu-pdf.png` }); await nouvelle.close(); }
+    await photo('55-apres-encaissement');
     await page.keyboard.press('Escape'); await pause(2000); await semantique();
-    await aller('Caisse', 'Journal de caisse'); await pause(3000); await photo('55-journal-caisse');
+    await aller('Caisse', 'Journal de caisse'); await pause(4000); await arbre('journal'); await photo('56-journal-caisse');
+    await page.mouse.click(700, 220); await pause(3000); await semantique(); await arbre('reçu'); await photo('57-recu');
+    await retour();
   });
   for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
 }
