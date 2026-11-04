@@ -7,7 +7,7 @@ name: VPS - Repartir de zéro (production)
 # Se lance quand ce fichier change. MODE « compter » n'efface rien ; MODE
 # « effacer » ne s'utilise qu'après une sauvegarde et l'accord écrit (EFFACER)
 # de la direction. Le journal est public : il n'affiche que des nombres.
-# (Comptage demandé avant remise à zéro du 04/11/2026.)
+# (Remise à zéro du 04/11/2026, accord EFFACER.)
 
 on:
   push:
@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MODE: "compter"
+  MODE: "effacer"
 
 jobs:
   repartir:
