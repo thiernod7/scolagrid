@@ -110,34 +110,205 @@ class _FraisScreenState extends State<FraisScreen> {
     });
   }
 
-  /// Autres frais : cantine, transport, tenue, examen…
-  Future<void> _ajouterAutre(Map<String, Object?> annee) async {
-    final niveaux = <String?, String>{
-      null: 'Tous les niveaux',
-      for (final n in await db.getAll('SELECT id, nom FROM niveaux WHERE organisation_id = ? ORDER BY ordre, nom', [_e.orgId]))
-        n['id'] as String: n['nom'] as String,
-    };
-    final libelle = TextEditingController();
+  /// Les lignes (une par niveau) d'un autre frais, repéré par son libellé.
+  Future<List<Map<String, Object?>>> _lignesAutre(Map<String, Object?> annee, String libelle) async => [
+        for (final f in await db.getAll(
+            "SELECT f.*, (SELECT count(*) FROM lignes_encaissement l WHERE l.frais_id = f.id) AS payes, "
+            "(SELECT count(*) FROM souscriptions s WHERE s.frais_id = f.id AND s.actif = 1) AS pris "
+            "FROM frais f WHERE f.annee_id = ? AND f.type_frais = 'optionnel' AND coalesce(f.examen, 0) = 0 "
+            "AND f.site_id IS ? AND lower(trim(f.libelle)) = lower(trim(?))",
+            [annee['id'], _site, libelle]))
+          Map<String, Object?>.from(f),
+      ];
+
+  /// Crée ou modifie un autre frais (internat, cantine, transport…) : son nom, s'il est
+  /// obligatoire, comment il se paie et à quelles classes il s'adresse. Un nouveau frais
+  /// reçoit le même montant à chaque niveau concerné ; on l'ajuste ensuite dans la grille.
+  Future<void> _parametrerAutre(Map<String, Object?> annee, {String? libelleActuel}) async {
+    final messager = ScaffoldMessenger.of(context);
+    final actuelles = libelleActuel == null ? <Map<String, Object?>>[] : await _lignesAutre(annee, libelleActuel);
+    final modele = actuelles.firstOrNull;
+    final classes = [
+      for (final c in await db.getAll(
+          'SELECT c.id, c.nom, c.niveau_id FROM classes c JOIN niveaux n ON n.id = c.niveau_id '
+          'WHERE c.annee_id = ? AND c.fermee = 0 AND (? IS NULL OR c.site_id = ?) ORDER BY n.ordre, c.nom',
+          [annee['id'], _site, _site]))
+        Map<String, Object?>.from(c),
+    ];
+    final libelle = TextEditingController(text: libelleActuel ?? '');
     final montant = TextEditingController();
-    String? niveau;
+    var obligatoire = modele?['obligatoire'] == 1;
+    var tranches = modele?['periodicite'] == 'tranches';
+    final choisies = '${modele?['classes'] ?? ''}'.split(',').where((x) => x.isNotEmpty).toSet();
+    var certaines = choisies.isNotEmpty;
     if (!mounted) return;
-    final ok = await _formulaire(context, 'Autre frais', (maj) => [
-          TextField(controller: libelle, autofocus: true, decoration: _champ('Libellé', aide: 'Cantine, Transport, Tenue, Examen…')),
-          TextField(controller: montant, keyboardType: TextInputType.number, decoration: _champ("Montant pour l'année", suffixe: 'GNF')),
-          _liste('Niveau', niveau, niveaux, (v) => maj(() => niveau = v)),
-          const Text("La famille choisit de le prendre ou non (sur la fiche de l'élève).", style: TextStyle(fontSize: 13)),
+    final ok = await _formulaire(context, libelleActuel == null ? 'Nouvel autre frais' : 'Modifier « $libelleActuel »', (maj) => [
+          TextField(
+              controller: libelle,
+              autofocus: libelleActuel == null,
+              decoration: _champ('Libellé', aide: 'Internat, Demi-pension, Cantine, Transport, Tenue…')),
+          if (libelleActuel == null)
+            TextField(
+                controller: montant,
+                keyboardType: TextInputType.number,
+                decoration: _champ("Montant pour l'année", suffixe: 'GNF', aide: 'Le même à chaque niveau ; ajustez ensuite dans la grille')),
+          const Text('Qui le paie ?', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          Segments<bool>(
+            valeur: obligatoire,
+            choix: const {false: 'Au choix de la famille', true: 'Obligatoire'},
+            onChanged: (v) => maj(() => obligatoire = v),
+          ),
+          Text(
+              obligatoire
+                  ? 'Dû par tous les élèves des classes concernées, comme la scolarité.'
+                  : "La famille le prend ou non, sur la fiche de l'élève (onglet Finances).",
+              style: const TextStyle(fontSize: 12)),
+          const Text('Comment se paie-t-il ?', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          Segments<bool>(
+            valeur: tranches,
+            choix: const {false: 'En une fois', true: "Selon les tranches de l'année"},
+            onChanged: (v) => maj(() => tranches = v),
+          ),
+          const Text('Pour quelles classes ?', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          Segments<bool>(
+            valeur: certaines,
+            choix: const {false: 'Toutes les classes', true: 'Certaines classes'},
+            onChanged: (v) => maj(() => certaines = v),
+          ),
+          if (certaines)
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final c in classes)
+                FilterChip(
+                  label: Text('${c['nom']}'),
+                  selected: choisies.contains(c['id']),
+                  onSelected: (v) => maj(() => v ? choisies.add(c['id'] as String) : choisies.remove(c['id'])),
+                ),
+            ]),
         ]);
-    final m = int.tryParse(montant.text.replaceAll(RegExp(r'[^0-9]'), ''));
-    if (!ok || libelle.text.trim().length < 2 || m == null || m <= 0) return;
-    await _inserer('frais', {
-      'organisation_id': _e.orgId,
-      'annee_id': annee['id'],
-      'site_id': _site,
-      'niveau_id': niveau,
-      'libelle': libelle.text.trim(),
-      'montant_gnf': m,
-      'periodicite': 'unique',
-      'type_frais': 'optionnel',
+    if (!ok) return;
+    final nom = libelle.text.trim();
+    if (nom.length < 2) return;
+    if (certaines && choisies.isEmpty) {
+      messager.showSnackBar(const SnackBar(content: Text('Choisissez au moins une classe.')));
+      return;
+    }
+    if (nom.toLowerCase() != libelleActuel?.toLowerCase() && (await _lignesAutre(annee, nom)).isNotEmpty) {
+      messager.showSnackBar(SnackBar(content: Text('Un autre frais « $nom » existe déjà.')));
+      return;
+    }
+    final listeClasses = certaines ? classes.where((c) => choisies.contains(c['id'])).map((c) => c['id'] as String).join(',') : null;
+    final maintenant = _maintenant();
+    final cal = await _calendrierDe(annee['id'] as String);
+    if (libelleActuel == null) {
+      final m = int.tryParse(montant.text.replaceAll(RegExp(r'[^0-9]'), ''));
+      if (m == null || m <= 0) {
+        messager.showSnackBar(const SnackBar(content: Text("Indiquez le montant pour l'année.")));
+        return;
+      }
+      // Une ligne par niveau concerné : ceux des classes choisies, ou tous les niveaux qui ont des classes.
+      final niveaux = {
+        for (final c in classes)
+          if (!certaines || choisies.contains(c['id'])) c['niveau_id'] as String,
+      };
+      await db.writeTransaction((tx) async {
+        for (final n in niveaux) {
+          final id = (await tx.get('SELECT uuid() AS id'))['id'] as String;
+          await tx.execute(
+              'INSERT INTO frais (id, organisation_id, annee_id, site_id, niveau_id, libelle, montant_gnf, periodicite, type_frais, '
+              "obligatoire, classes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'optionnel', ?, ?, ?, ?)",
+              [id, _e.orgId, annee['id'], _site, n, nom, m, tranches ? 'tranches' : 'unique', obligatoire ? 1 : 0, listeClasses,
+                maintenant, maintenant]);
+          if (tranches) await _refaireEcheances(tx, orgId: _e.orgId, fraisId: id, total: m, cal: cal, maintenant: maintenant);
+        }
+      });
+      return;
+    }
+    await db.writeTransaction((tx) async {
+      for (final f in actuelles) {
+        await tx.execute('UPDATE frais SET libelle = ?, obligatoire = ?, periodicite = ?, classes = ?, updated_at = ? WHERE id = ?',
+            [nom, obligatoire ? 1 : 0, tranches ? 'tranches' : 'unique', listeClasses, maintenant, f['id']]);
+        if (tranches) {
+          await _refaireEcheances(tx,
+              orgId: _e.orgId, fraisId: f['id'] as String, total: f['montant_gnf'] as int, cal: cal, maintenant: maintenant);
+        } else {
+          await tx.execute('DELETE FROM echeances WHERE frais_id = ?', [f['id']]);
+        }
+      }
+    });
+  }
+
+  /// Retire un autre frais (toutes ses lignes), s'il n'a été ni payé ni choisi.
+  Future<void> _retirerAutre(Map<String, Object?> annee, String libelle) async {
+    final messager = ScaffoldMessenger.of(context);
+    final lignes = await _lignesAutre(annee, libelle);
+    if (lignes.any((f) => (f['payes'] as int? ?? 0) > 0 || (f['pris'] as int? ?? 0) > 0)) {
+      messager.showSnackBar(SnackBar(content: Text('« $libelle » a déjà été payé ou choisi par des familles : il ne peut plus être retiré.')));
+      return;
+    }
+    if (!mounted || !await _confirmer(context, 'Retirer « $libelle » de tous les niveaux ?')) return;
+    await db.writeTransaction((tx) async {
+      for (final f in lignes) {
+        await tx.execute('DELETE FROM echeances WHERE frais_id = ?', [f['id']]);
+        await tx.execute('DELETE FROM frais WHERE id = ?', [f['id']]);
+      }
+    });
+  }
+
+  /// Fixe le montant d'un autre frais pour un niveau (crée, corrige ou retire la ligne).
+  Future<void> _fixerAutre(Map<String, Object?> annee, String libelle, String niveauId, int? montant) async {
+    final messager = ScaffoldMessenger.of(context);
+    final lignes = await _lignesAutre(annee, libelle);
+    final modele = lignes.firstOrNull;
+    if (modele == null) return;
+    final existant = lignes.where((f) => f['niveau_id'] == niveauId).firstOrNull;
+    final maintenant = _maintenant();
+    final cal = await _calendrierDe(annee['id'] as String);
+    final tranches = modele['periodicite'] == 'tranches';
+    if (existant == null) {
+      if (montant == null || montant <= 0) return;
+      await db.writeTransaction((tx) async {
+        final id = (await tx.get('SELECT uuid() AS id'))['id'] as String;
+        await tx.execute(
+            'INSERT INTO frais (id, organisation_id, annee_id, site_id, niveau_id, libelle, montant_gnf, periodicite, type_frais, '
+            "obligatoire, classes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'optionnel', ?, ?, ?, ?)",
+            [id, _e.orgId, annee['id'], _site, niveauId, modele['libelle'], montant, modele['periodicite'], modele['obligatoire'] ?? 0,
+              modele['classes'], maintenant, maintenant]);
+        if (tranches) await _refaireEcheances(tx, orgId: _e.orgId, fraisId: id, total: montant, cal: cal, maintenant: maintenant);
+      });
+      return;
+    }
+    final utilise = (existant['payes'] as int? ?? 0) > 0 || (existant['pris'] as int? ?? 0) > 0;
+    if (montant == null || montant <= 0) {
+      if (utilise) {
+        messager.showSnackBar(const SnackBar(content: Text('Déjà payé ou choisi à ce niveau : il ne peut plus être retiré.')));
+        return;
+      }
+      await db.writeTransaction((tx) async {
+        await tx.execute('DELETE FROM echeances WHERE frais_id = ?', [existant['id']]);
+        await tx.execute('DELETE FROM frais WHERE id = ?', [existant['id']]);
+      });
+      return;
+    }
+    if (montant == existant['montant_gnf']) return;
+    String? motif;
+    if ((existant['payes'] as int? ?? 0) > 0) {
+      final m = TextEditingController();
+      if (!mounted) return;
+      final ok = await _formulaire(context, 'Corriger un frais déjà payé', (_) => [
+            Text('${existant['libelle']} : ${gnf(existant['montant_gnf'])} → ${gnf(montant)}. '
+                'Des familles ont déjà payé sur ce montant : la correction est gardée avec son motif.',
+                style: const TextStyle(fontSize: 13)),
+            TextField(controller: m, autofocus: true, decoration: _champ('Motif', aide: 'Par exemple : erreur de saisie')),
+          ]);
+      if (!ok || m.text.trim().length < 3) return;
+      motif = m.text.trim();
+    }
+    await db.writeTransaction((tx) async {
+      await tx.execute('UPDATE frais SET montant_gnf = ?, motif_correction = ?, updated_at = ? WHERE id = ?',
+          [montant, motif ?? existant['motif_correction'], maintenant, existant['id']]);
+      if (tranches) {
+        await _refaireEcheances(tx, orgId: _e.orgId, fraisId: existant['id'] as String, total: montant, cal: cal, maintenant: maintenant);
+      }
     });
   }
 
@@ -193,7 +364,15 @@ class _FraisScreenState extends State<FraisScreen> {
                 const SizedBox(height: 8),
                 _GrilleTarifs(annee: annee, site: _site, modifiable: _modifiable, fixer: (t, n, m) => _fixer(annee, t, n, m)),
                 const SizedBox(height: 20),
-                _AutresFrais(annee: annee, site: _site, ajouter: _modifiable ? () => _ajouterAutre(annee) : null),
+                _AutresFrais(
+                  annee: annee,
+                  site: _site,
+                  modifiable: _modifiable,
+                  ajouter: () => _parametrerAutre(annee),
+                  modifier: (l) => _parametrerAutre(annee, libelleActuel: l),
+                  retirer: (l) => _retirerAutre(annee, l),
+                  fixer: (l, n, m) => _fixerAutre(annee, l, n, m),
+                ),
                 const SizedBox(height: 20),
                 _ApercuFamille(espace: _e, annee: annee),
                 const SizedBox(height: 20),
@@ -390,8 +569,11 @@ class _Calendrier extends StatelessWidget {
             [espace.orgId, annee['id'], k + 1, lignes[k].libelle, _date(lignes[k].dateLimite), lignes[k].part, c.mois?[k],
               maintenant, maintenant]);
       }
-      // Les échéances de toutes les scolarités de l'année suivent le nouveau calendrier.
-      for (final f in await tx.getAll("SELECT id, montant_gnf FROM frais WHERE annee_id = ? AND type_frais = 'scolarite'", [annee['id']])) {
+      // Les échéances des scolarités (et des autres frais payés par tranches) suivent le nouveau calendrier.
+      for (final f in await tx.getAll(
+          "SELECT id, montant_gnf FROM frais WHERE annee_id = ? AND (type_frais = 'scolarite' "
+          "OR (type_frais = 'optionnel' AND periodicite = 'tranches'))",
+          [annee['id']])) {
         await _refaireEcheances(tx,
             orgId: espace.orgId, fraisId: f['id'] as String, total: f['montant_gnf'] as int, cal: lignes, maintenant: maintenant);
       }
@@ -640,53 +822,149 @@ class _CaseState extends State<_Case> {
   }
 }
 
-/// Les autres frais : cantine, transport, tenue, examen… (au choix des familles).
+/// Les autres frais (internat, cantine, transport…) en grille : une colonne par
+/// frais, une ligne par niveau, comme la scolarité. Les frais d'examen se fixent dans Niveaux.
 class _AutresFrais extends StatelessWidget {
-  const _AutresFrais({required this.annee, required this.site, required this.ajouter});
+  const _AutresFrais({
+    required this.annee,
+    required this.site,
+    required this.modifiable,
+    required this.ajouter,
+    required this.modifier,
+    required this.retirer,
+    required this.fixer,
+  });
 
   final Map<String, Object?> annee;
   final String? site;
-  final VoidCallback? ajouter;
+  final bool modifiable;
+  final VoidCallback ajouter;
+  final void Function(String libelle) modifier;
+  final void Function(String libelle) retirer;
+  final Future<void> Function(String libelle, String niveauId, int? montant) fixer;
 
   @override
   Widget build(BuildContext context) => Requete(
-        'SELECT f.*, n.nom AS niveau, (SELECT count(*) FROM lignes_encaissement l WHERE l.frais_id = f.id) AS payes, '
-        '(SELECT count(*) FROM souscriptions s WHERE s.frais_id = f.id AND s.actif = 1) AS pris '
-        'FROM frais f LEFT JOIN niveaux n ON n.id = f.niveau_id '
-        "WHERE f.annee_id = ? AND f.type_frais = 'optionnel' AND coalesce(f.examen, 0) = 0 AND f.site_id IS ? ORDER BY f.libelle",
-        parametres: [annee['id'], site],
-        builder: (context, frais) {
-          final gris = Theme.of(context).colorScheme.onSurfaceVariant;
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              const Expanded(child: Text('Autres frais', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-              if (ajouter != null) TextButton.icon(onPressed: ajouter, icon: const Icon(Icons.add, size: 16), label: const Text('Ajouter')),
-            ]),
-            Text("Cantine, transport, tenue : la famille choisit de les prendre. Les frais d'examen se fixent dans Niveaux.", style: TextStyle(fontSize: 12, color: gris)),
-            const SizedBox(height: 8),
-            if (frais.isEmpty) Text('Aucun.', style: TextStyle(fontSize: 13, color: gris)),
-            for (final f in frais)
-              Card(
-                child: ListTile(
-                  title: Text('${f['libelle']}'),
-                  subtitle: Text('${f['niveau'] ?? 'Tous les niveaux'} · pris par ${f['pris']} élève(s)'),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text(gnf(f['montant_gnf']), style: styleMono.copyWith(fontSize: 13)),
-                    if (ajouter != null && (f['payes'] as int? ?? 0) == 0 && (f['pris'] as int? ?? 0) == 0)
-                      IconButton(
-                        tooltip: 'Retirer',
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        onPressed: () async {
-                          if (await _confirmer(context, 'Retirer « ${f['libelle']} » ?')) {
-                            await _supprimer('frais', f['id'] as String);
-                          }
-                        },
-                      ),
-                  ]),
+        'SELECT n.id, n.nom, '
+        '(SELECT group_concat(c.id) FROM classes c WHERE c.niveau_id = n.id AND c.annee_id = ? AND c.fermee = 0) AS classes '
+        'FROM niveaux n WHERE n.organisation_id = ? ORDER BY n.ordre, n.nom',
+        parametres: [annee['id'], annee['organisation_id']],
+        builder: (context, niveaux) => Requete(
+          'SELECT f.*, (SELECT count(*) FROM lignes_encaissement l WHERE l.frais_id = f.id) AS payes '
+          "FROM frais f WHERE f.annee_id = ? AND f.type_frais = 'optionnel' AND coalesce(f.examen, 0) = 0 AND f.site_id IS ? "
+          'ORDER BY f.created_at',
+          parametres: [annee['id'], site],
+          builder: (context, frais) {
+            final schema = Theme.of(context).colorScheme;
+            final gris = schema.onSurfaceVariant;
+            // Un frais = un libellé ; ses lignes donnent un montant par niveau (ou pour tous les niveaux).
+            final groupes = <String, List<Map<String, Object?>>>{};
+            for (final f in frais) {
+              groupes.putIfAbsent('${f['libelle']}'.trim().toLowerCase(), () => []).add(f);
+            }
+            String description(Map<String, Object?> f) {
+              final nb = '${f['classes'] ?? ''}'.split(',').where((x) => x.isNotEmpty).length;
+              return [
+                f['obligatoire'] == 1 ? 'Obligatoire' : 'Au choix',
+                f['periodicite'] == 'tranches' ? 'par tranches' : 'en une fois',
+                if (nb > 0) '$nb classe(s)',
+              ].join(' · ');
+            }
+
+            Widget cellule(Map<String, Object?> n, List<Map<String, Object?>> g) {
+              final propre = g.where((f) => f['niveau_id'] == n['id']).firstOrNull;
+              final tous = g.where((f) => f['niveau_id'] == null).firstOrNull;
+              // Réservé à d'autres classes : pas de case à ce niveau.
+              final siennes = '${n['classes'] ?? ''}'.split(',').where((x) => x.isNotEmpty);
+              final reserve = '${g.first['classes'] ?? ''}'.split(',').where((x) => x.isNotEmpty).toSet();
+              if (reserve.isNotEmpty && !siennes.any(reserve.contains)) {
+                return SizedBox(width: 170, child: Text('—', textAlign: TextAlign.right, style: TextStyle(color: gris)));
+              }
+              return SizedBox(
+                width: 170,
+                child: _Case(
+                  key: ValueKey('autre|$site|${g.first['libelle']}|${n['id']}|${propre?['montant_gnf']}'),
+                  valeur: propre?['montant_gnf'] as int?,
+                  herite: tous?['montant_gnf'] as int?,
+                  paye: ((propre?['payes'] as int?) ?? 0) > 0,
+                  modifiable: modifiable,
+                  valider: (m) => fixer('${g.first['libelle']}', n['id'] as String, m),
                 ),
-              ),
-          ]);
-        },
+              );
+            }
+
+            const entete = TextStyle(fontSize: 13, fontWeight: FontWeight.w500);
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                const Expanded(child: Text('Autres frais', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                if (modifiable) TextButton.icon(onPressed: ajouter, icon: const Icon(Icons.add, size: 16), label: const Text('Nouveau frais')),
+              ]),
+              Text(
+                  'Internat, cantine, transport, tenue… Obligatoires (dus par tous les élèves concernés) ou au choix de la famille, '
+                  'pour toutes les classes ou certaines. Un montant par niveau ; case vide : pas ce frais à ce niveau. '
+                  "Les frais d'examen se fixent dans Niveaux.",
+                  style: TextStyle(fontSize: 12, color: gris)),
+              const SizedBox(height: 8),
+              if (groupes.isEmpty)
+                Text('Aucun pour le moment.', style: TextStyle(fontSize: 13, color: gris))
+              else
+                Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: schema.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: schema.outlineVariant),
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: 194 + 170.0 * groupes.length,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
+                          child: Row(children: [
+                            const SizedBox(width: 170, child: Text('Niveau', style: entete)),
+                            for (final g in groupes.values)
+                              SizedBox(
+                                width: 170,
+                                child: Row(children: [
+                                  Expanded(
+                                    child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                                      Text('${g.first['libelle']}', overflow: TextOverflow.ellipsis, style: entete),
+                                      Text(description(g.first), overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: gris)),
+                                    ]),
+                                  ),
+                                  if (modifiable)
+                                    PopupMenuButton<String>(
+                                      tooltip: 'Actions',
+                                      icon: const Icon(Icons.more_vert, size: 16),
+                                      onSelected: (a) => a == 'modifier' ? modifier('${g.first['libelle']}') : retirer('${g.first['libelle']}'),
+                                      itemBuilder: (_) => const [
+                                        PopupMenuItem(value: 'modifier', child: Text('Modifier')),
+                                        PopupMenuItem(value: 'retirer', child: Text('Retirer')),
+                                      ],
+                                    ),
+                                ]),
+                              ),
+                          ]),
+                        ),
+                        for (final n in niveaux)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
+                            child: Row(children: [
+                              SizedBox(width: 170, child: Text('${n['nom']}', style: const TextStyle(fontSize: 14))),
+                              for (final g in groupes.values) cellule(n, g),
+                            ]),
+                          ),
+                      ]),
+                    ),
+                  ),
+                ),
+            ]);
+          },
+        ),
       );
 }
 

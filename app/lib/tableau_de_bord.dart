@@ -133,7 +133,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
 
   // Les inscriptions de l'année.
   final inscriptions = await db.getAll('''
-      SELECT i.id, i.eleve_id, i.site_id, i.type_admission, i.statut, i.date_effective,
+      SELECT i.id, i.eleve_id, i.site_id, i.classe_id, i.type_admission, i.statut, i.date_effective,
              i.arrivee_mode, i.arrivee_retrait_gnf, e.pieces_dossier,
              c.niveau_id, c.nom AS classe, n.nom AS niveau, n.cycle, n.ordre, e.sexe, e.nom, e.prenoms
       FROM inscriptions i JOIN classes c ON c.id = i.classe_id JOIN niveaux n ON n.id = c.niveau_id
@@ -258,7 +258,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
             (f['niveau_id'] == null || f['niveau_id'] == i['niveau_id']) &&
             (f['type_frais'] == entree ||
                 f['type_frais'] == 'scolarite' ||
-                (f['type_frais'] == 'optionnel' && (f['examen'] == 1 || souscrits.contains('${i['id']}|${f['id']}')))))
+                autreFraisDu(f, classeId: i['classe_id'] as String?, souscrit: souscrits.contains('${i['id']}|${f['id']}'))))
           Map<String, Object?>.from(f),
     ]);
     for (final f in siens) {

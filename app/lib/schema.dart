@@ -135,6 +135,8 @@ const schema = Schema([
     Column.text('type_frais'),
     Column.text('motif_correction'),
     Column.integer('examen'),
+    Column.integer('obligatoire'),
+    Column.text('classes'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),

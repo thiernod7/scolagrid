@@ -286,20 +286,33 @@ String enLettres(int n) {
   return parts.join(' ');
 }
 
-/// Parmi les frais qui s'appliquent à un élève, le plus précis l'emporte pour
-/// l'inscription, la réinscription et la scolarité : celui de son niveau (ou de
-/// son site) remplace celui de « tous les niveaux ». Les options s'ajoutent.
+/// Parmi les frais qui s'appliquent à un élève, le plus précis l'emporte : celui
+/// de son niveau (ou de son site) remplace celui de « tous les niveaux ». Pour les
+/// autres frais (internat, cantine…), la règle vaut frais par frais (même libellé).
 List<Map<String, Object?>> fraisRetenus(Iterable<Map<String, Object?>> frais) {
   int precision(Map<String, Object?> f) => (f['niveau_id'] != null ? 2 : 0) + (f['site_id'] != null ? 1 : 0);
+  String cle(Map<String, Object?> f) =>
+      f['type_frais'] == 'optionnel' ? 'optionnel|${'${f['libelle']}'.trim().toLowerCase()}' : '${f['type_frais']}';
   final meilleure = <String, int>{};
   for (final f in frais) {
-    final t = '${f['type_frais']}';
-    if (t == 'optionnel') continue;
     final p = precision(f);
-    if (p > (meilleure[t] ?? -1)) meilleure[t] = p;
+    if (p > (meilleure[cle(f)] ?? -1)) meilleure[cle(f)] = p;
   }
   return [
     for (final f in frais)
-      if ('${f['type_frais']}' == 'optionnel' || precision(f) == meilleure['${f['type_frais']}']) f,
+      if (precision(f) == meilleure[cle(f)]) f,
   ];
 }
+
+/// Un autre frais réservé à certaines classes : la classe de l'élève en fait-elle partie ?
+bool classeConcernee(Map<String, Object?> frais, String? classeId) {
+  final c = '${frais['classes'] ?? ''}';
+  return c.isEmpty || (classeId != null && c.split(',').contains(classeId));
+}
+
+/// Un autre frais est dû par l'élève : frais d'examen, frais obligatoire de sa classe,
+/// ou frais choisi par la famille (souscription active).
+bool autreFraisDu(Map<String, Object?> frais, {required String? classeId, required bool souscrit}) =>
+    frais['type_frais'] == 'optionnel' &&
+    classeConcernee(frais, classeId) &&
+    (frais['examen'] == 1 || frais['obligatoire'] == 1 || souscrit);

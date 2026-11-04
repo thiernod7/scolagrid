@@ -17,6 +17,21 @@ import 'package:scolagrid/schema.dart';
 import 'package:scolagrid/theme.dart';
 
 void main() {
+  test('Autres frais : obligatoires, réservés à des classes, un prix par niveau', () {
+    final internat10 = <String, Object?>{'type_frais': 'optionnel', 'libelle': 'Internat', 'niveau_id': 'n10', 'site_id': null,
+      'obligatoire': 1, 'examen': 0, 'classes': 'c10a,c10b', 'montant_gnf': 900};
+    final internatTous = <String, Object?>{'type_frais': 'optionnel', 'libelle': 'internat ', 'niveau_id': null, 'site_id': null,
+      'obligatoire': 1, 'examen': 0, 'classes': null, 'montant_gnf': 500};
+    final cantine = <String, Object?>{'type_frais': 'optionnel', 'libelle': 'Cantine', 'niveau_id': null, 'site_id': null,
+      'obligatoire': 0, 'examen': 0, 'classes': null, 'montant_gnf': 100};
+    // Le prix du niveau remplace celui de tous les niveaux, frais par frais ; la cantine reste.
+    expect(fraisRetenus([internat10, internatTous, cantine]).map((f) => f['montant_gnf']), [900, 100]);
+    expect(autreFraisDu(internat10, classeId: 'c10a', souscrit: false), isTrue);
+    expect(autreFraisDu(internat10, classeId: 'c10c', souscrit: false), isFalse);
+    expect(autreFraisDu(cantine, classeId: 'c10c', souscrit: false), isFalse);
+    expect(autreFraisDu(cantine, classeId: 'c10c', souscrit: true), isTrue);
+  });
+
   test("La version affichée dans l'app est celle de pubspec.yaml", () {
     final v = RegExp(r'^version: ([0-9.]+)\+', multiLine: true).firstMatch(File('pubspec.yaml').readAsStringSync())![1];
     expect(versionApp, v);

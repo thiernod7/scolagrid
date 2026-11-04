@@ -620,7 +620,9 @@ class _InscrireScreenState extends State<InscrireScreen> {
       for (final f in _frais)
         if ((f['site_id'] == null || f['site_id'] == c['site_id']) &&
             (f['niveau_id'] == null || f['niveau_id'] == c['niveau_id']) &&
-            (f['type_frais'] == entree || f['type_frais'] == 'scolarite' || f['examen'] == 1))
+            (f['type_frais'] == entree ||
+                f['type_frais'] == 'scolarite' ||
+                autreFraisDu(f, classeId: c['id'] as String?, souscrit: false)))
           f,
     ]);
     return [
