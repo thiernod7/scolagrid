@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MODE: "effacer"
+  MODE: "compter"
 
 jobs:
   repartir:
