@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>ScolaGrid — Guide utilisateur</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  :root { --encre: #111; --gris: #555; --doux: #f3f4f6; --vert: #15803d; --bleu: #1e3a8a; --ambre: #b45309; }
+  * { box-sizing: border-box; }
+  body { font-family: "Inter", "Segoe UI", Arial, sans-serif; color: var(--encre); font-size: 11pt; line-height: 1.45; margin: 0; }
+  h1 { font-size: 26pt; margin: 0 0 4mm; letter-spacing: -.5px; }
+  h2 { font-size: 16pt; margin: 0 0 3mm; padding-top: 1mm; color: var(--bleu); }
+  h3 { font-size: 12pt; margin: 5mm 0 2mm; }
+  p { margin: 0 0 2.5mm; }
+  ol, ul { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1.2mm; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .couverture { display: flex; flex-direction: column; justify-content: center; min-height: 250mm; }
+  .couverture img { width: 46mm; margin-bottom: 8mm; }
+  .sous { font-size: 13pt; color: var(--gris); margin-bottom: 10mm; }
+  .capture { width: 100%; border: 1px solid #d1d5db; border-radius: 2mm; margin: 2mm 0 1.5mm; display: block; }
+  .legende { font-size: 9pt; color: var(--gris); margin-bottom: 4mm; }
+  .astuce { background: #ecfdf5; border-left: 3px solid var(--vert); padding: 2.5mm 3.5mm; margin: 3mm 0; font-size: 10pt; }
+  .attention { background: #fffbeb; border-left: 3px solid var(--ambre); padding: 2.5mm 3.5mm; margin: 3mm 0; font-size: 10pt; }
+  .sommaire li { font-size: 12pt; margin-bottom: 2mm; }
+  .bouton { display: inline-block; background: var(--encre); color: #fff; border-radius: 1.2mm; padding: 0 2mm; font-size: 9.5pt; font-weight: 600; }
+  .bouton.clair { background: #fff; color: var(--encre); border: 1px solid #9ca3af; }
+  .deux { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .note { font-size: 9pt; color: var(--gris); }
+  .capture.p80 { width: 80%; margin-left: auto; margin-right: auto; }
+  .capture.p70 { width: 70%; margin-left: auto; margin-right: auto; }
+</style>
+</head>
+<body>
+
+<section class="page couverture">
+  <img src="../../marque/scolagrid-symbole-fond-clair.svg" alt="ScolaGrid">
+  <h1>Guide utilisateur</h1>
+  <div class="sous">Version 0.9 · pour la direction, le secrétariat et la caisse · sur ordinateur (PC)</div>
+  <h3>Ce que vous trouverez ici</h3>
+  <ol class="sommaire">
+    <li>Se connecter</li>
+    <li>Activer le poste (une fois par appareil)</li>
+    <li>L'accueil (tableau de bord)</li>
+    <li>Paramétrer l'école : la « Mise en route »</li>
+    <li>Importer la liste des élèves</li>
+    <li>La liste des élèves et la fiche d'un élève</li>
+    <li>Inscrire un nouvel élève</li>
+    <li>Encaisser et imprimer un reçu</li>
+    <li>Le journal de caisse et la clôture du jour</li>
+    <li>Le personnel et les postes</li>
+    <li>Bon à savoir : sans internet, verrouiller, en cas de problème</li>
+  </ol>
+  <p class="note">Les images de ce guide viennent d'une école de démonstration (noms et numéros inventés). Le ruban rouge « ESSAI » dans le coin
+  n'apparaît pas dans votre application.</p>
+</section>
+
+<section class="page">
+  <h2>1. Se connecter</h2>
+  <p>On se connecte avec son <b>numéro de téléphone</b> : pas de mot de passe à retenir.</p>
+  <ol>
+    <li>Ouvrez ScolaGrid et cliquez sur <span class="bouton clair">Me connecter</span>.
+      <br>La toute première fois, le fondateur clique sur <span class="bouton">Créer l'espace de mon école</span>.</li>
+    <li>Tapez votre numéro, puis <span class="bouton">Recevoir le code</span>.</li>
+    <li>Un <b>code à 6 chiffres</b> arrive par SMS : tapez-le, puis <span class="bouton">Valider</span>.</li>
+  </ol>
+  <img class="capture" src="captures/01-bienvenue.png" alt="">
+  <div class="legende">L'écran d'accueil de ScolaGrid.</div>
+  <div class="deux">
+    <div><img class="capture" src="captures/02-telephone.png" alt=""><div class="legende">Votre numéro.</div></div>
+    <div><img class="capture" src="captures/03-code.png" alt=""><div class="legende">Le code reçu par SMS.</div></div>
+  </div>
+  <div class="astuce">Un membre du personnel reçoit de la direction un <b>code d'invitation</b> (8 signes) : il le tape juste après sa
+  première connexion pour rejoindre l'école.</div>
+</section>
+
+<section class="page">
+  <h2>2. Activer le poste</h2>
+  <p>Chaque ordinateur ou téléphone qui inscrit ou encaisse est un <b>poste</b>. Il reçoit une lettre (A, B, C…) qui figure dans les
+  matricules et les numéros de reçu. <b>À faire une seule fois par appareil, avec internet.</b></p>
+  <ol>
+    <li>Sur l'accueil, dans « À faire », cliquez sur <b>Activer ce poste</b>.</li>
+    <li>Donnez un nom au poste (par exemple « PC du secrétariat ») et choisissez le site.</li>
+    <li>Choisissez votre <b>code PIN</b> (4 à 6 chiffres), deux fois, puis <span class="bouton">Activer ce poste</span>.</li>
+  </ol>
+  <div class="deux">
+    <img class="capture" src="captures/11-activer-poste.png" alt="">
+    <img class="capture" src="captures/12-poste-active.png" alt="">
+  </div>
+  <div class="legende">Le poste reçoit sa lettre. Retenez votre code PIN.</div>
+  <div class="astuce">Le <b>code PIN</b> rouvre l'application sur ce poste, <b>même sans internet</b>. Il reste sur l'appareil : personne d'autre ne le connaît,
+  pas même la direction.</div>
+  <div class="attention">Un poste activé par quelqu'un d'autre que la direction est <b>« À valider »</b> : le fondateur ou le directeur le valide dans
+  <b>Postes</b> (voir partie 10).</div>
+</section>
+
+<section class="page">
+  <h2>3. L'accueil (tableau de bord)</h2>
+  <p>À gauche, le <b>menu</b> : Accueil, Élèves, Caisse, Personnel, Postes, Paramètres (chacun ne voit que ce que sa fonction permet).
+  En haut, la <b>recherche</b> d'un élève et l'état de la connexion (« Connecté »).</p>
+  <img class="capture" src="captures/10-tableau-de-bord.png" alt="">
+  <ul>
+    <li><b>À faire</b> : ce qui attend une action (poste à activer, fiches incomplètes, refus du serveur…).</li>
+    <li><b>Finances</b> : ce qui a été encaissé, le taux de recouvrement, les arriérés et les élèves en retard. Cliquez sur une carte pour le détail.</li>
+    <li>Les boutons <span class="bouton clair">Encaisser</span> et <span class="bouton">Nouvelle inscription</span> en haut à droite mènent directement au travail du jour.</li>
+  </ul>
+  <div class="astuce">En bas du menu, vous voyez la lettre et le nom de votre poste. Dans le menu de votre nom (en haut à droite), la version de l'application
+  (par exemple « ScolaGrid 0.9.2 »).</div>
+</section>
+
+<section class="page">
+  <h2>4. Paramétrer l'école : la « Mise en route »</h2>
+  <p><b>Pour la direction.</b> Menu <b>Paramètres › Mise en route</b> : les étapes dans l'ordre. Chaque étape cochée en vert est faite ;
+  cliquez sur une ligne pour l'ouvrir.</p>
+  <img class="capture" src="captures/20-parametres.png" alt="">
+  <ol>
+    <li><b>L'école</b> : nom officiel, sigle (il entre dans les matricules), contacts, logo.</li>
+    <li><b>Année scolaire</b> : dates, tranches de paiement.</li>
+    <li><b>Niveaux</b> : bouton « Utiliser le modèle guinéen », puis gardez vos niveaux. Au lycée, choisissez le <b>type d'options</b>
+      (Type 1 : SS, SL — Type 2 : SM, SS, SE).</li>
+    <li><b>Classes</b> : par niveau, le nombre de groupes (A, B…).</li>
+    <li><b>Frais scolaires</b> : inscription, réinscription, scolarité par niveau, en tranches.</li>
+    <li><b>Pièces du dossier</b> (facultatif).</li>
+  </ol>
+  <p>Quand tout est vert, le bouton <span class="bouton">Importer les élèves</span> s'active.</p>
+</section>
+
+<section class="page">
+  <h2>5. Importer la liste des élèves</h2>
+  <p>Pour reprendre tous les élèves d'un coup depuis Excel. Menu <b>Élèves › ⋯ › Importer</b> (ou le bouton de la Mise en route).</p>
+  <ol>
+    <li>Cliquez sur <span class="bouton clair">Télécharger le modèle Excel</span>. Il contient déjà vos classes, des listes déroulantes
+      (classe, sexe, type, lien) et deux onglets d'aide : « Guide des classes » et « Aide ».</li>
+    <li>Remplissez une ligne par élève. Seuls <b>NOM, PRÉNOMS et CLASSE</b> sont obligatoires.</li>
+    <li>Cliquez sur <span class="bouton">Choisir le fichier</span> et choisissez votre fichier.</li>
+  </ol>
+  <img class="capture" src="captures/31-import-verifie.png" alt="">
+  <div class="legende">ScolaGrid vérifie le fichier avant d'écrire quoi que ce soit.</div>
+  <p>Le contrôle range les lignes en : <b>Valides</b>, <b>Incomplètes</b> (acceptées, à compléter plus tard), <b>Doublons probables</b>
+  (déjà dans ScolaGrid : non importés) et <b>Rejetées</b> (à corriger dans le fichier). Dépliez chaque groupe pour voir les noms.</p>
+  <ol start="4">
+    <li>Cliquez sur <span class="bouton">Importer … élèves</span>, puis <b>Confirmer</b>.</li>
+  </ol>
+  <div class="attention">Ne cochez « Importer aussi les doublons probables » que s'il s'agit de vrais homonymes. Réimporter le même fichier
+  ne crée pas de doubles : seuls les élèves manquants sont proposés.</div>
+</section>
+
+<section class="page">
+  <h2>6. La liste des élèves et la fiche d'un élève</h2>
+  <p>Menu <b>Élèves</b> : tous les élèves de l'année, avec matricule, classe, tuteur et statut. Filtrez par cycle, classe ou statut, ou
+  cherchez par nom, matricule (ScolaGrid, d'État ou <b>ancien matricule</b>) ou téléphone du parent.</p>
+  <img class="capture" src="captures/41-fiche-eleve.png" alt="">
+  <div class="legende">Cliquez sur un élève : sa fiche s'ouvre à droite.</div>
+  <ul>
+    <li><b>Dossier</b> : identité, matricules, dates, pièces fournies.</li>
+    <li><b>Contacts</b> : parents et tuteurs (qui paie, qui est le tuteur principal).</li>
+    <li><b>Finances</b> : ce qui est dû, payé et en retard ; encaisser d'ici.</li>
+    <li><b>Suivi</b> : l'historique (changements de classe, documents imprimés…).</li>
+  </ul>
+  <p>En bas : <b>Modifier</b>, <b>Changer de classe</b>, <b>Clore l'inscription</b>. Le bouton <b>⋯</b> au bout de chaque ligne de la liste
+  propose aussi Encaisser, Attestation d'inscription, Réinscrire…</p>
+</section>
+
+<section class="page">
+  <h2>7. Inscrire un nouvel élève</h2>
+  <ol>
+    <li>Cliquez sur <span class="bouton">Nouvelle inscription</span>.</li>
+    <li>ScolaGrid demande d'abord de <b>chercher l'élève</b> : s'il est déjà connu, on le réinscrit au lieu d'en créer un second.</li>
+    <li>Sinon, choisissez <b>Nouvelle inscription</b>, <b>Transfert entrant</b> ou <b>Déjà élève avant ScolaGrid</b>.</li>
+    <li>Remplissez dans l'ordre : <b>Identité</b>, <b>Contacts</b> (au moins un parent avec son téléphone ; prénom et nom séparés),
+      <b>Classe</b>, <b>Pièces du dossier</b>, <b>Frais</b>.</li>
+    <li>Terminez par <span class="bouton">Créer et encaisser</span> (paiement tout de suite) ou <span class="bouton clair">Créer, payer plus tard</span>.</li>
+  </ol>
+  <img class="capture" src="captures/43-inscription-formulaire.png" alt="">
+  <div class="legende">Le formulaire ; à droite, le résumé et le total de l'année.</div>
+  <div class="astuce">Si le téléphone du parent est déjà connu, ScolaGrid le retrouve et relie les enfants (fratrie) : on les encaisse ensemble
+  sur un même reçu.</div>
+</section>
+
+<section class="page">
+  <h2>8. Encaisser et imprimer un reçu</h2>
+  <ol>
+    <li>Menu <b>Caisse</b>, puis <span class="bouton">Encaisser</span> (ou « Encaisser » depuis la fiche de l'élève).</li>
+    <li>Dans « Ajouter un élève », tapez le nom ou le matricule et choisissez l'élève. Ses frais dus apparaissent.</li>
+    <li>Tapez le <b>montant versé</b>, ou cliquez sur <b>Solde</b> pour tout payer. Vérifiez le payeur et le mode (espèces, Orange Money…).</li>
+    <li>Cliquez sur <span class="bouton">Enregistrer et imprimer</span>, puis <b>Confirmer</b>.</li>
+  </ol>
+  <img class="capture" src="captures/53-encaisser-montant.png" alt="">
+  <div class="legende">À droite, l'aperçu du reçu tel qu'il sera imprimé.</div>
+  <ul>
+    <li>Plusieurs enfants de la même famille : ajoutez-les sur le même reçu.</li>
+    <li>Une partie en espèces, le reste par mobile money : <b>Second mode de paiement</b>.</li>
+    <li>Le reçu fonctionne <b>sans internet</b> : il part au serveur dès que possible.</li>
+  </ul>
+</section>
+
+<section class="page">
+  <h2>9. Le journal de caisse et la clôture du jour</h2>
+  <p>Menu <b>Caisse</b> : le journal du jour (changez de jour avec les flèches), filtrable par encaisseur et par mode.</p>
+  <img class="capture" src="captures/56-journal-caisse.png" alt="">
+  <ul>
+    <li>Cliquez sur un reçu pour l'ouvrir : <b>Réimprimer (duplicata)</b>, <b>Demander un remboursement</b> ou <b>Annuler ce reçu</b>
+      (avec un motif).</li>
+    <li>En fin de journée : <span class="bouton">Clôturer ma caisse de ce jour</span>. Tapez les espèces comptées dans le tiroir ; s'il y a un écart,
+      une justification est demandée.</li>
+  </ul>
+  <img class="capture p70" src="captures/57-recu.png" alt="">
+  <div class="attention">Après la clôture, la journée est verrouillée : annuler un de ses reçus demande la direction.</div>
+</section>
+
+<section class="page">
+  <h2>10. Le personnel et les postes</h2>
+  <p><b>Pour la direction.</b></p>
+  <h3>Personnel</h3>
+  <ul>
+    <li><span class="bouton">Ajouter une personne</span> : prénom, nom, téléphone et une ou plusieurs <b>fonctions</b> (secrétaire, comptable,
+      enseignant…). Les droits découlent des fonctions.</li>
+    <li>Pour lui donner accès à l'application : ouvrez sa fiche et envoyez-lui son <b>code d'invitation</b>.</li>
+  </ul>
+  <img class="capture p70" src="captures/60-personnel.png" alt="">
+  <h3>Postes</h3>
+  <ul>
+    <li>La liste des appareils, avec leur lettre, qui les a activés et leur dernière synchronisation.</li>
+    <li><b>Valider</b> un poste « À valider ». <b>Bloquer</b> un poste perdu ou volé : à sa prochaine connexion, il efface ses données.</li>
+  </ul>
+  <img class="capture p70" src="captures/60-postes.png" alt="">
+</section>
+
+<section class="page">
+  <h2>11. Bon à savoir</h2>
+  <h3>Sans internet</h3>
+  <p>ScolaGrid fonctionne <b>hors ligne</b> : inscrire, encaisser, imprimer. Tout part au serveur dès que la connexion revient
+  (l'état de la connexion est affiché en haut, à côté de la recherche). Pensez à vous connecter au moins une fois par jour.</p>
+  <h3>Verrouiller ou se déconnecter</h3>
+  <ul>
+    <li><b>Verrouiller</b> (menu de votre nom) : quand vous vous absentez. On rouvre avec le <b>code PIN</b>, même sans internet.</li>
+    <li><b>Se déconnecter</b> : seulement si quelqu'un d'autre va utiliser ce poste avec son propre compte. Il faudra internet pour se reconnecter.</li>
+    <li><b>Code PIN oublié</b> : sur l'écran du code, « Code PIN oublié », puis reconnexion avec le numéro et un nouveau PIN.</li>
+  </ul>
+  <h3>Mettre à jour l'application</h3>
+  <p>Installez la nouvelle version par-dessus l'ancienne, depuis la page de téléchargement. Sur navigateur, rechargez la page avec
+  <b>Ctrl + F5</b>. Vérifiez le numéro de version dans le menu de votre nom.</p>
+  <h3>En cas de problème</h3>
+  <ul>
+    <li>« <b>Refusés par le serveur</b> » sur l'accueil : un changement n'a pas été accepté. Le nom de l'élève et la raison sont indiqués :
+      corrigez puis refaites-le.</li>
+    <li>Une question, un blocage : faites une <b>capture d'écran</b> et envoyez-la au responsable ScolaGrid de l'école.</li>
+  </ul>
+</section>
+
+</body>
+</html>
