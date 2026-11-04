@@ -230,8 +230,10 @@ class _AccueilScreenState extends State<AccueilScreen> {
   List<_Entree> _entrees(Espace e) => [
         for (final x in _toutes)
           if (switch (x.rubrique) {
-            _Rubrique.caisse => _peutEncaisser,
-            _Rubrique.personnel || _Rubrique.postes => e.gestionnaire,
+            // Un lecteur voit la caisse ou le personnel si on le lui a accordé (sans pouvoir agir).
+            _Rubrique.caisse => _peutEncaisser || _droits.contains('voir_caisse'),
+            _Rubrique.personnel => e.gestionnaire || _droits.contains('voir_personnel'),
+            _Rubrique.postes => e.gestionnaire,
             _Rubrique.parametres => e.voitParametres,
             _ => true,
           })

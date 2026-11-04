@@ -75,6 +75,9 @@ void main() {
     for (final f in fonctions.keys.where((f) => f != 'fondateur')) {
       expect(droitsDesFonctions([f]).intersection({'preparer_paie', 'valider_paie', 'verser_paie'}), isEmpty);
     }
+     // Un lecteur ne reçoit rien par défaut : la direction coche ce qu'il voit.
+    expect(droitsDesFonctions(['lecteur']), isEmpty);
+    expect(droitsDesFonctions(['caissier']), containsAll(['voir_familles', 'voir_caisse']));
   });
 
   test("code d'invitation lisible", () {

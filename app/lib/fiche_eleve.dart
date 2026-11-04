@@ -513,6 +513,9 @@ class _FicheEleveState extends State<FicheEleve> {
   bool _peutModifier = false;
   bool _voitCaisse = false;
 
+  /// Inscrire ou encaisser depuis la fiche (un lecteur ne fait que regarder).
+  bool _agitCaisse = false;
+
   @override
   void initState() {
     super.initState();
@@ -530,10 +533,13 @@ class _FicheEleveState extends State<FicheEleve> {
     if (e == null) return;
     final ok = await jAiLeDroit(e['organisation_id'] as String, e['site_id'] as String?, 'gerer_inscriptions');
     final caisse = await jAiLeDroit(e['organisation_id'] as String, e['site_id'] as String?, 'encaisser');
+    final voit = await jAiLeDroit(e['organisation_id'] as String, e['site_id'] as String?, 'voir_caisse') ||
+        await jAiLeDroit(e['organisation_id'] as String, e['site_id'] as String?, 'consulter_tableau_bord');
     if (mounted) {
       setState(() {
         _peutModifier = ok;
-        _voitCaisse = caisse || ok;
+        _agitCaisse = caisse || ok;
+        _voitCaisse = caisse || ok || voit;
       });
     }
   }
@@ -586,7 +592,8 @@ class _FicheEleveState extends State<FicheEleve> {
                   _OngletSuivi(eleve: e),
                 ]),
               ),
-              _pied(context, e, ins),
+              // Un lecteur consulte seulement : pas de pied d'actions.
+              if (_peutModifier || _agitCaisse) _pied(context, e, ins),
             ]),
           );
         },
@@ -660,7 +667,7 @@ class _FicheEleveState extends State<FicheEleve> {
         decoration: decoration,
         child: Row(children: [
           Expanded(
-            child: _voitCaisse && ins != null
+            child: _agitCaisse && ins != null
                 ? FilledButton.icon(
                     onPressed: () => Navigator.of(context)
                         .push(MaterialPageRoute(builder: (_) => EncaisserScreen(espace: widget.espace, eleveId: widget.eleveId))),
@@ -673,7 +680,7 @@ class _FicheEleveState extends State<FicheEleve> {
                     label: const Text('Modifier'),
                   ),
           ),
-          if (_voitCaisse && ins != null) ...[
+          if (_agitCaisse && ins != null) ...[
             const SizedBox(width: 6),
             IconButton.outlined(
               tooltip: 'Modifier',

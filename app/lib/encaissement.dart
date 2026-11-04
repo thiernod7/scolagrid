@@ -1773,11 +1773,13 @@ class _CaisseScreenState extends State<CaisseScreen> {
               label: Text((x.first['n'] as int? ?? 0) > 0 ? 'Remboursements · ${x.first['n']}' : 'Remboursements'),
             ),
           ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EncaisserScreen(espace: widget.espace))),
-            icon: const Icon(Icons.point_of_sale_outlined, size: 16),
-            label: const Text('Encaisser'),
-          ),
+          // Un lecteur consulte le journal sans encaisser.
+          if (widget.espace.fondateur || widget.espace.droits.contains('encaisser'))
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EncaisserScreen(espace: widget.espace))),
+              icon: const Icon(Icons.point_of_sale_outlined, size: 16),
+              label: const Text('Encaisser'),
+            ),
         ]),
       ],
     );

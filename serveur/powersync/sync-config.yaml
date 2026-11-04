@@ -70,6 +70,16 @@ streams:
       - SELECT * FROM personnel WHERE id IN (SELECT personnel_id FROM affectations WHERE site_id IN sites_diriges)
       - SELECT * FROM droits_personnel WHERE personnel_id IN (SELECT id FROM personnel WHERE site_id IN sites_diriges)
 
+  # Liste du personnel en lecture : qui a reçu « voir_personnel » (un lecteur, par exemple).
+  personnel_lu:
+    auto_subscribe: true
+    priority: 3
+    with:
+      orgs_lit_personnel: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_personnel = true
+    queries:
+      - SELECT * FROM personnel WHERE organisation_id IN orgs_lit_personnel
+      - SELECT * FROM affectations WHERE organisation_id IN orgs_lit_personnel
+
   # Postes de travail (étape 4). Chaque poste reçoit sa propre ligne (pour
   # savoir s'il est bloqué), ainsi que qui travaille sur son site (poste partagé) ;
   # le fondateur et les directeurs, ceux de leur périmètre.
@@ -106,23 +116,32 @@ streams:
       - SELECT * FROM impressions_documents WHERE organisation_id IN mes_orgs
       - SELECT * FROM photos_eleves WHERE organisation_id IN mes_orgs
 
-  # Contacts des familles (téléphones) et caisse : seulement les fonctions qui
-  # inscrivent, encaissent ou dirigent. Le serveur vérifie aussi les droits accordés un par un.
+  # Contacts des familles (noms, téléphones) : qui a le droit « voir_familles »
+  # (par défaut : direction, secrétariat, comptabilité, caisse ; un lecteur, si on le lui accorde).
   familles:
     auto_subscribe: true
     priority: 3
     with:
-      orgs_familles: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND (role = 'fondateur' OR role = 'directeur' OR role = 'secretaire' OR role = 'comptable' OR role = 'caissier')
+      orgs_familles: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_familles = true
     queries:
       - SELECT * FROM contacts WHERE organisation_id IN orgs_familles
       - SELECT * FROM eleves_contacts WHERE organisation_id IN orgs_familles
-      - SELECT * FROM encaissements WHERE organisation_id IN orgs_familles
-      - SELECT * FROM lignes_encaissement WHERE organisation_id IN orgs_familles
-      - SELECT * FROM clotures_caisse WHERE organisation_id IN orgs_familles
-      - SELECT * FROM remboursements WHERE organisation_id IN orgs_familles
-      - SELECT * FROM echeances_eleves WHERE organisation_id IN orgs_familles
-      - SELECT * FROM images_ecole WHERE organisation_id IN orgs_familles AND sorte = 'signature'
-      - SELECT * FROM images_ecole WHERE organisation_id IN orgs_familles AND sorte = 'cachet'
+
+  # Caisse : qui a « voir_caisse » ou « consulter_tableau_bord ». Le serveur vérifie
+  # aussi chaque écriture, droit par droit (un lecteur n'écrit rien).
+  caisse:
+    auto_subscribe: true
+    priority: 3
+    with:
+      orgs_caisse: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_caisse = true
+    queries:
+      - SELECT * FROM encaissements WHERE organisation_id IN orgs_caisse
+      - SELECT * FROM lignes_encaissement WHERE organisation_id IN orgs_caisse
+      - SELECT * FROM clotures_caisse WHERE organisation_id IN orgs_caisse
+      - SELECT * FROM remboursements WHERE organisation_id IN orgs_caisse
+      - SELECT * FROM echeances_eleves WHERE organisation_id IN orgs_caisse
+      - SELECT * FROM images_ecole WHERE organisation_id IN orgs_caisse AND sorte = 'signature'
+      - SELECT * FROM images_ecole WHERE organisation_id IN orgs_caisse AND sorte = 'cachet'
 
   # Table de test « Bonjour » (première version de l'app).
   hellos:
