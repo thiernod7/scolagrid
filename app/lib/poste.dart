@@ -6,7 +6,7 @@ part of 'configuration.dart';
 /// Le code PIN, propre à ce poste, rouvre l'app sans réseau.
 
 /// Même numéro que « version » dans pubspec.yaml (un test le vérifie).
-const versionApp = '0.9.2';
+const versionApp = '0.9.3';
 
 /// Ce poste, tel qu'enregistré localement (table locale, jamais synchronisée).
 Future<Map<String, Object?>?> cePoste() => db.getOptional('SELECT * FROM ce_poste LIMIT 1');
@@ -359,6 +359,28 @@ class PostesScreen extends StatelessWidget {
     }
   }
 
+  Future<void> _valider(BuildContext context, Map<String, Object?> p) async {
+    if (await _confirmer(context,
+        'Valider le poste ${p['code']} (${p['nom']}), activé par ${p['par'] ?? 'un membre du personnel'} ? '
+        'Il pourra inscrire et encaisser.')) {
+      await _modifier('postes', p['id'] as String, {'statut': 'actif'});
+    }
+  }
+
+  /// Le nom se change ; la lettre, jamais (elle est dans les matricules et les reçus).
+  Future<void> _renommer(BuildContext context, Map<String, Object?> p) async {
+    final nom = TextEditingController(text: '${p['nom']}');
+    final ok = await _formulaire(context, 'Renommer le poste ${p['code']}', (_) => [
+          TextField(controller: nom, autofocus: true, decoration: _champ('Nom du poste', aide: 'Par exemple : PC du secrétariat')),
+          Text('La lettre ${p['code']} ne change pas : elle figure dans les matricules et les numéros de reçu.',
+              style: const TextStyle(fontSize: 13)),
+        ]);
+    final n = nom.text.trim();
+    if (!ok || n.length < 2 || n == p['nom']) return;
+    await _modifier('postes', p['id'] as String, {'nom': n});
+    if (p['celui_ci'] == 1) await db.execute('UPDATE ce_poste SET nom = ?', [n]);
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         body: Requete(
@@ -368,7 +390,7 @@ class PostesScreen extends StatelessWidget {
                LEFT JOIN sites s ON s.id = p.site_id
                LEFT JOIN personnel pe ON pe.user_id = p.user_id AND pe.organisation_id = p.organisation_id
                WHERE p.organisation_id = ?
-               ORDER BY p.numero''',
+               ORDER BY p.statut <> 'a_valider', p.numero''',
             parametres: [espace.orgId], builder: (context, postes) {
           final gris = Theme.of(context).colorScheme.onSurfaceVariant;
           final largeur = MediaQuery.sizeOf(context).width;
@@ -389,6 +411,19 @@ class PostesScreen extends StatelessWidget {
                     'validation. Un poste perdu ou volé ? Bloquez-le : à sa prochaine connexion, il efface ses données. '
                     'Sa lettre ne sera jamais réutilisée.', style: TextStyle(fontSize: 12, color: gris)),
                 const SizedBox(height: 12),
+                // Les postes en attente, bien visibles en haut : la direction les valide d'un clic.
+                for (final p in postes.where((p) => p['statut'] == 'a_valider' && _gere(p)))
+                  Card(
+                    color: Couleurs.attenteFond,
+                    child: ListTile(
+                      leading: const Icon(Icons.hourglass_top, color: Couleurs.attente),
+                      title: Text('Poste ${p['code']} (${p['nom']}) à valider'),
+                      subtitle: Text('Activé par ${p['par'] ?? 'un membre du personnel'}'
+                          '${p['site'] != null ? ' · ${p['site']}' : ''}. En attendant, il peut consulter mais pas inscrire ni encaisser.'),
+                      trailing: FilledButton(onPressed: () => _valider(context, p), child: const Text('Valider')),
+                    ),
+                  ),
+                if (postes.any((p) => p['statut'] == 'a_valider' && _gere(p))) const SizedBox(height: 12),
                 Tableau(
                   vide: 'Aucun poste activé pour le moment.',
                   colonnes: [
@@ -398,7 +433,7 @@ class PostesScreen extends StatelessWidget {
                     if (largeur >= 1024) const ColonneTableau('Activé par', flex: 2),
                     if (!telephone) const ColonneTableau('Dernier contact', largeur: 170),
                     const ColonneTableau('Statut', largeur: 104),
-                    const ColonneTableau('', largeur: 112, droite: true),
+                    const ColonneTableau('', largeur: 136, droite: true),
                   ],
                   lignes: [
                     for (final p in postes)
@@ -424,23 +459,24 @@ class PostesScreen extends StatelessWidget {
                           'a_valider' => const Etat('À valider', ton: Ton.attente),
                           _ => const Etat('Actif', ton: Ton.regle),
                         },
-                        _gere(p) && p['statut'] == 'a_valider'
-                            ? FilledButton.tonal(
-                                onPressed: () async {
-                                  if (await _confirmer(context,
-                                      'Valider le poste ${p['code']} (${p['nom']}), activé par ${p['par'] ?? 'un membre du personnel'} ? '
-                                      'Il pourra inscrire et encaisser.')) {
-                                    await _modifier('postes', p['id'] as String, {'statut': 'actif'});
-                                  }
-                                },
-                                child: const Text('Valider'),
-                              )
-                            : _gere(p)
-                            ? TextButton(
-                                style: TextButton.styleFrom(foregroundColor: p['statut'] == 'bloque' ? null : Couleurs.retard),
-                                onPressed: () => _basculer(context, p),
-                                child: Text(p['statut'] == 'bloque' ? 'Débloquer' : 'Bloquer'),
-                              )
+                        _gere(p)
+                            ? Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                                if (p['statut'] == 'a_valider')
+                                  FilledButton.tonal(onPressed: () => _valider(context, p), child: const Text('Valider')),
+                                PopupMenuButton<String>(
+                                  tooltip: 'Actions',
+                                  icon: const Icon(Icons.more_horiz, size: 18),
+                                  onSelected: (a) => a == 'renommer' ? _renommer(context, p) : _basculer(context, p),
+                                  itemBuilder: (_) => [
+                                    const PopupMenuItem(value: 'renommer', child: Text('Renommer')),
+                                    PopupMenuItem(
+                                      value: 'bloquer',
+                                      child: Text(p['statut'] == 'bloque' ? 'Débloquer' : 'Bloquer',
+                                          style: TextStyle(color: p['statut'] == 'bloque' ? null : Couleurs.retard)),
+                                    ),
+                                  ],
+                                ),
+                              ])
                             : const SizedBox(),
                       ],
                   ],

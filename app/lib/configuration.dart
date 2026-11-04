@@ -214,7 +214,7 @@ Future<bool> _confirmer(BuildContext context, String question) async =>
     await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        content: Text(question),
+        content: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 460), child: Text(question)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Confirmer')),
@@ -230,10 +230,14 @@ Future<bool> _formulaire(BuildContext context, String titre, List<Widget> Functi
       builder: (context) => StatefulBuilder(
         builder: (context, maj) => AlertDialog(
           title: Text(titre),
-          content: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              for (final c in champs(maj)) Padding(padding: const EdgeInsets.only(bottom: 12), child: c),
-            ]),
+          // Largeur d'un formulaire, pas de l'écran : sur PC la fenêtre ne s'étire plus.
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                for (final c in champs(maj)) Padding(padding: const EdgeInsets.only(bottom: 12), child: c),
+              ]),
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),

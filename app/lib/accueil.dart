@@ -28,6 +28,29 @@ class _Entree {
   final String? groupe;
 }
 
+/// Postes qui attendent la validation de la direction (pastille sur « Postes » dans le menu).
+final _postesAValider = ValueNotifier<int>(0);
+
+/// « Postes » suivi de sa pastille orange quand des postes attendent.
+Widget _libelleMenu(_Entree x, TextStyle? style) {
+  final texte = Text(x.libelle, style: style);
+  if (x.rubrique != _Rubrique.postes) return texte;
+  return ValueListenableBuilder<int>(
+    valueListenable: _postesAValider,
+    builder: (context, n, _) => n == 0
+        ? texte
+        : Row(mainAxisSize: MainAxisSize.min, children: [
+            texte,
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+              decoration: BoxDecoration(color: Couleurs.attente, borderRadius: BorderRadius.circular(10)),
+              child: Text('$n', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white)),
+            ),
+          ]),
+  );
+}
+
 /// « ScolaGrid 0.9.0 · essai » : pour savoir d'un coup d'œil quelle application on a.
 String get versionAffichee => 'ScolaGrid $versionApp${environnement == 'essai' ? ' · essai' : ''}';
 String get _versionCourte => 'v$versionApp${environnement == 'essai' ? '\nessai' : ''}';
@@ -65,6 +88,28 @@ class _AccueilScreenState extends State<AccueilScreen> {
   SyncStatus _statut = db.currentStatus;
   int _enAttente = 0;
   Map<String, Object?>? _cePoste;
+  bool _pinDemande = false;
+
+  /// Un poste sans code PIN s'ouvrirait sans protection : on demande d'en choisir un.
+  void _demanderPin() {
+    if (_pinDemande) return;
+    _pinDemande = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Choisissez un code PIN'),
+          content: const Text("Ce poste n'a pas de code PIN (il a été effacé ou jamais choisi). "
+              "Choisissez-en un nouveau : il protège l'app quand vous la verrouillez, même sans internet."),
+          actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Choisir mon code PIN'))],
+        ),
+      );
+      if (!mounted) return;
+      // Annulé : « À faire » le rappelle, et on redemande à la prochaine ouverture.
+      await definirPinPoste(context);
+    });
+  }
   DateTime? _dernierSignal;
   bool _peutEncaisser = false;
   Set<String> _droits = const {};
@@ -103,6 +148,11 @@ class _AccueilScreenState extends State<AccueilScreen> {
       ..add(db.watch('SELECT c.*, p.statut FROM ce_poste c LEFT JOIN postes p ON p.id = c.poste_id').listen((r) {
         setState(() => _cePoste = r.isEmpty ? null : r.first);
         if (r.isNotEmpty && r.first['statut'] == 'bloque') _posteBloque();
+        // Après « Code PIN oublié » (ou un PIN jamais choisi) : on en demande un tout de suite.
+        if (r.isNotEmpty && r.first['pin_empreinte'] == null && r.first['statut'] != 'bloque') _demanderPin();
+      }))
+      ..add(db.watch("SELECT count(*) AS n FROM postes WHERE statut = 'a_valider'").listen((r) {
+        _postesAValider.value = r.first['n'] as int? ?? 0;
       }))
       // Les droits changent quand une fonction ou une exception est modifiée.
       ..add(db.watch('SELECT (SELECT max(updated_at) FROM affectations) AS a, (SELECT max(updated_at) FROM droits_personnel) AS d')
@@ -462,7 +512,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
                   for (final x in autres)
                     ListTile(
                       leading: Icon(x.icone),
-                      title: Text(x.libelle),
+                      title: _libelleMenu(x, null),
                       onTap: () {
                         Navigator.pop(context);
                         _aller(x.rubrique);
@@ -622,8 +672,9 @@ class _Barre extends StatelessWidget {
                 child: Row(children: [
                   Icon(x.icone, size: 17, color: actif ? schema.onSurface : gris),
                   const SizedBox(width: 12),
-                  Text(x.libelle,
-                      style: TextStyle(
+                  _libelleMenu(
+                      x,
+                      TextStyle(
                           fontSize: 14,
                           fontWeight: actif ? FontWeight.w500 : FontWeight.w400,
                           color: actif ? schema.onSurface : schema.onSurface.withValues(alpha: .85))),
@@ -838,6 +889,8 @@ class _TableauDeBord extends StatelessWidget {
             const _AFaire(Etat('Espace', ton: Ton.info), "En attente d'activation par Scolagrid : vous pouvez déjà tout configurer.", null),
           if (cePoste == null)
             _AFaire(const Etat('Poste', ton: Ton.attente), 'Activer ce poste : sa lettre et son code PIN', activerPoste),
+          if (cePoste != null && cePoste?['pin_empreinte'] == null)
+            _AFaire(const Etat('Poste', ton: Ton.attente), 'Choisir le code PIN de ce poste', () => definirPinPoste(context)),
           if (espace.fondateur && r['sigle'] == null)
             _AFaire(const Etat('Réglage', ton: Ton.attente), "Choisir le sigle de l'école (matricules et reçus)",
                 () => aller(_Rubrique.parametres)),
