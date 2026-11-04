@@ -151,8 +151,21 @@ class _RequeteState extends State<Requete> {
   @override
   Widget build(BuildContext context) => StreamBuilder<Lignes>(
         stream: _flux,
-        builder: (context, s) =>
-            s.hasData ? widget.builder(context, s.data!) : const Center(child: CircularProgressIndicator()),
+        builder: (context, s) {
+          if (s.hasData) return widget.builder(context, s.data!);
+          // Une requête en erreur : on le dit, au lieu de tourner sans fin.
+          if (s.hasError) {
+            debugPrint('Requête en erreur : ${s.error}');
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text("Cet écran n'a pas pu se charger. Signalez-le avec une capture d'écran.\n\n${s.error}",
+                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 13)),
+              ),
+            );
+          }
+          return const Center(child: CircularProgressIndicator());
+        },
       );
 }
 

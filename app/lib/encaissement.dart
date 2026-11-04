@@ -1702,18 +1702,22 @@ class _CaisseScreenState extends State<CaisseScreen> {
         parametres: [widget.espace.orgId, jour],
         builder: (context, recus) => Requete(
           // Sorties du jour : remboursements versés et dépenses sorties de la caisse.
-          '''SELECT 'remboursement' AS genre, r.id, r.montant_gnf, r.mode, r.beneficiaire, r.motif, NULL AS categorie,
-                    r.updated_at, r.updated_at AS created_at, p.nom_complet AS par
+          // Le tri porte sur l'ensemble (SQLite refuse un ORDER BY directement après UNION sur ces vues).
+          '''SELECT * FROM (
+             SELECT 'remboursement' AS genre, r.id AS id, r.montant_gnf AS montant_gnf, r.mode AS mode,
+                    r.beneficiaire AS beneficiaire, r.motif AS motif, NULL AS categorie,
+                    r.updated_at AS updated_at, r.updated_at AS created_at, p.nom_complet AS par
              FROM remboursements r
              LEFT JOIN personnel p ON p.user_id = r.verse_par AND p.organisation_id = r.organisation_id
              WHERE r.organisation_id = ? AND r.statut = 'verse' AND r.verse_le = ?
              UNION ALL
-             SELECT 'depense' AS genre, d.id, d.montant_gnf, 'especes' AS mode, d.beneficiaire, d.motif, d.categorie,
-                    d.updated_at, d.updated_at AS created_at, p.nom_complet AS par
+             SELECT 'depense' AS genre, d.id AS id, d.montant_gnf AS montant_gnf, 'especes' AS mode,
+                    d.beneficiaire AS beneficiaire, d.motif AS motif, d.categorie AS categorie,
+                    d.updated_at AS updated_at, d.updated_at AS created_at, p.nom_complet AS par
              FROM depenses d
              LEFT JOIN personnel p ON p.user_id = d.sortie_par AND p.organisation_id = d.organisation_id
              WHERE d.organisation_id = ? AND d.statut = 'sortie' AND d.sortie_le = ?
-             ORDER BY updated_at''',
+             ) ORDER BY updated_at''',
           parametres: [widget.espace.orgId, jour, widget.espace.orgId, jour],
           builder: (context, sorties) => _contenu(context, recus, sorties),
         ),
