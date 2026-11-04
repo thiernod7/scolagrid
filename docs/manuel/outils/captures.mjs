@@ -91,13 +91,20 @@ if (etape === 'connexion') {
     await photo('04-espace-ecole');
   });
 } else {
+  // Barre latérale (PC 1440 × 900) : positions fixes.
+  const barre = { 'Accueil': 79, 'Élèves': 154, 'Caisse': 229, 'Personnel': 304, 'Postes': 342, 'Paramètres': 380 };
+  const aller = async (r) => { await page.mouse.click(110, barre[r]); await pause(3000); await semantique(); };
+  const retour = async () => {
+    const b = page.getByRole('button', { name: 'Retour' });
+    if (await b.count()) await b.last().click(); else await page.keyboard.press('Escape');
+    await pause(2000); await semantique();
+  };
   await pause(4000); await semantique(); await code('2580');
   await arbre('accueil');
-  await photo('10-tableau-de-bord');
   await etapeSure('poste', async () => {
     if (!(await visible('Activer ce poste'))) return;
+    await photo('10-tableau-de-bord-vide');
     await clic('Activer ce poste'); await pause(2500); await semantique();
-    await arbre('activation');
     await saisir('Code PIN (4 à 6 chiffres)', '2580');
     await saisir('Confirmer le code PIN', '2580');
     await photo('11-activer-poste');
@@ -107,43 +114,44 @@ if (etape === 'connexion') {
     await clic('Compris'); await pause(2000); await semantique();
   });
   await etapeSure('parametres', async () => {
-    await menu('Paramètres'); await arbre('paramètres'); await photo('20-parametres');
-    await clic('Mise en route'); await pause(2500); await semantique(); await photo('21-mise-en-route');
+    await aller('Paramètres'); await arbre('paramètres'); await photo('20-parametres');
+    await clic('Mise en route'); await pause(2500); await semantique(); await arbre('mise en route'); await photo('21-mise-en-route');
+    await retour();
   });
   await etapeSure('import', async () => {
-    await menu('Élèves');
-    if (await visible('0 élève') || !(await visible('DIALLO'))) {
-      await page.getByRole('button', { name: 'Importer, exporter' }).first().click(); await pause(1200); await semantique();
-      await photo('30-menu-importer');
-      await clic('Importer (Excel ou CSV)'); await pause(2500); await semantique();
-      await photo('31-importer');
-      const fichier = fichierDemo();
-      const [choix] = await Promise.all([page.waitForEvent('filechooser'), clic('Choisir le fichier')]);
-      await choix.setFiles(fichier);
-      await pause(6000); await semantique();
-      await arbre('import analysé');
-      await photo('32-import-verifie');
-      await clic('Importer 48'); await pause(1500); await semantique();
-      await clic('Confirmer'); await pause(10000); await semantique();
-      await photo('33-import-termine');
-      await clic('Compris'); await pause(3000); await semantique();
-    }
+    await aller('Accueil');
+    if (!(await visible("Importer ma liste d'élèves"))) return;
+    await clic("Importer ma liste d'élèves"); await pause(2500); await semantique();
+    await photo('30-importer');
+    const fichier = fichierDemo();
+    const [choix] = await Promise.all([page.waitForEvent('filechooser'), clic('Choisir le fichier')]);
+    await choix.setFiles(fichier);
+    await pause(6000); await semantique();
+    await arbre('import analysé');
+    await photo('31-import-verifie');
+    await clic('Importer 48'); await pause(1500); await semantique();
+    await photo('32-import-confirmer');
+    await clic('Confirmer'); await pause(12000); await semantique();
+    await photo('33-import-termine');
+    await clic('Compris'); await pause(3000); await semantique();
   });
+  await etapeSure('tableau', async () => { await aller('Accueil'); await photo('10-tableau-de-bord'); });
   await etapeSure('eleves', async () => {
-    await menu('Élèves'); await arbre('élèves'); await photo('40-eleves');
-    await page.getByText('DIALLO', { exact: false }).first().click(); await pause(3000); await semantique();
+    await aller('Élèves'); await arbre('élèves'); await photo('40-eleves');
+    await page.mouse.click(420, 260); await pause(3000); await semantique();
     await arbre('fiche'); await photo('41-fiche-eleve');
-    await page.keyboard.press('Escape'); await pause(1500);
+    await retour();
   });
   await etapeSure('inscription', async () => {
-    await menu('Élèves'); await clic('Nouvelle inscription'); await pause(3000); await semantique();
+    await aller('Élèves'); await clic('Nouvelle inscription'); await pause(3000); await semantique();
     await arbre('inscription'); await photo('42-nouvelle-inscription');
-    await page.goBack().catch(() => {}); await pause(2000); await semantique(); await code('2580');
+    await retour();
   });
   await etapeSure('encaisser', async () => {
-    await menu('Caisse'); await arbre('caisse'); await photo('50-caisse');
+    await aller('Caisse'); await arbre('caisse'); await photo('50-caisse');
     await clic('Encaisser'); await pause(3000); await semantique(); await arbre('encaisser'); await photo('51-encaisser');
+    await retour();
   });
-  for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await menu(r); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
+  for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
 }
 await ctx.close();
