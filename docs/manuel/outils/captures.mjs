@@ -93,16 +93,24 @@ if (etape === 'connexion') {
 } else {
   // Barre latérale (PC 1440 × 900) : positions fixes.
   const barre = { 'Accueil': 79, 'Élèves': 154, 'Caisse': 229, 'Personnel': 304, 'Postes': 342, 'Paramètres': 380 };
-  const aller = async (r) => { await page.mouse.click(110, barre[r]); await pause(3000); await semantique(); };
+  const attendre = (texte, ms = 12000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
   const retour = async () => {
     const b = page.getByRole('button', { name: 'Retour' });
     if (await b.count()) await b.last().click(); else await page.keyboard.press('Escape');
     await pause(2000); await semantique();
   };
+  const aller = async (r, attendu) => {
+    for (let i = 0; i < 3 && (await page.getByRole('button', { name: 'Retour' }).count()); i++) await retour();
+    for (let i = 0; i < 3; i++) {
+      await page.mouse.click(110, barre[r]); await pause(2500); await semantique();
+      if (!attendu || (await attendre(attendu, 5000))) return;
+    }
+  };
   await pause(4000); await semantique(); await code('2580');
+  await attendre('FINANCES', 20000);
   await arbre('accueil');
   await etapeSure('poste', async () => {
-    if (!(await visible('Activer ce poste'))) return;
+    if (!(await attendre('Activer ce poste', 15000))) return;
     await photo('10-tableau-de-bord-vide');
     await clic('Activer ce poste'); await pause(2500); await semantique();
     await saisir('Code PIN (4 à 6 chiffres)', '2580');
@@ -114,12 +122,13 @@ if (etape === 'connexion') {
     await clic('Compris'); await pause(2000); await semantique();
   });
   await etapeSure('parametres', async () => {
-    await aller('Paramètres'); await arbre('paramètres'); await photo('20-parametres');
-    await clic('Mise en route'); await pause(2500); await semantique(); await arbre('mise en route'); await photo('21-mise-en-route');
+    await aller('Paramètres', 'Mise en route'); await arbre('paramètres'); await photo('20-parametres');
+    await page.getByText('Mise en route', { exact: false }).first().click(); await pause(2500); await semantique();
+    await arbre('mise en route'); await photo('21-mise-en-route');
     await retour();
   });
   await etapeSure('import', async () => {
-    await aller('Accueil');
+    await aller('Accueil', 'FINANCES');
     if (!(await visible("Importer ma liste d'élèves"))) return;
     await clic("Importer ma liste d'élèves"); await pause(2500); await semantique();
     await photo('30-importer');
@@ -127,7 +136,6 @@ if (etape === 'connexion') {
     const [choix] = await Promise.all([page.waitForEvent('filechooser'), clic('Choisir le fichier')]);
     await choix.setFiles(fichier);
     await pause(6000); await semantique();
-    await arbre('import analysé');
     await photo('31-import-verifie');
     await clic('Importer 48'); await pause(1500); await semantique();
     await photo('32-import-confirmer');
@@ -135,23 +143,40 @@ if (etape === 'connexion') {
     await photo('33-import-termine');
     await clic('Compris'); await pause(3000); await semantique();
   });
-  await etapeSure('tableau', async () => { await aller('Accueil'); await photo('10-tableau-de-bord'); });
+  await etapeSure('tableau', async () => { await aller('Accueil', 'FINANCES'); await pause(3000); await photo('10-tableau-de-bord'); });
   await etapeSure('eleves', async () => {
-    await aller('Élèves'); await arbre('élèves'); await photo('40-eleves');
-    await page.mouse.click(420, 260); await pause(3000); await semantique();
+    await aller('Élèves', 'DIALLO'); await arbre('élèves'); await photo('40-eleves');
+    await page.getByText('DIALLO', { exact: false }).first().click(); await pause(3000); await semantique();
     await arbre('fiche'); await photo('41-fiche-eleve');
     await retour();
   });
   await etapeSure('inscription', async () => {
-    await aller('Élèves'); await clic('Nouvelle inscription'); await pause(3000); await semantique();
-    await arbre('inscription'); await photo('42-nouvelle-inscription');
+    await aller('Élèves', 'Nouvelle inscription'); await clic('Nouvelle inscription'); await pause(3000); await semantique();
+    await photo('42-inscription-recherche');
+    await clic('Nouvelle inscription'); await pause(3000); await semantique();
+    await arbre('formulaire'); await photo('43-inscription-formulaire');
     await retour();
   });
   await etapeSure('encaisser', async () => {
-    await aller('Caisse'); await arbre('caisse'); await photo('50-caisse');
-    await clic('Encaisser'); await pause(3000); await semantique(); await arbre('encaisser'); await photo('51-encaisser');
-    await retour();
+    await aller('Caisse', 'Journal de caisse'); await photo('50-caisse-vide');
+    await clic('Encaisser'); await pause(3000); await semantique();
+    const champ = page.getByRole('textbox', { name: 'Ajouter un élève', exact: false }).first();
+    await champ.click(); await pause(300); await page.keyboard.type('DIALLO', { delay: 40 }); await pause(2500); await semantique();
+    await arbre('recherche encaisser'); await photo('51-encaisser-recherche');
+    await page.getByText('DIALLO', { exact: false }).nth(1).click(); await pause(2500); await semantique();
+    await arbre('encaisser élève'); await photo('52-encaisser-eleve');
+    await page.getByRole('button', { name: 'Solde' }).first().click(); await pause(1500);
+    await photo('53-encaisser-montant');
+    const [nouvelle] = await Promise.all([
+      ctx.waitForEvent('page', { timeout: 15000 }).catch(() => null),
+      clic('Enregistrer et imprimer'),
+    ]);
+    await pause(6000);
+    if (nouvelle) { await nouvelle.waitForTimeout(3000); await nouvelle.screenshot({ path: `${dossier}/54-recu.png` }); await nouvelle.close(); }
+    else await photo('54-recu');
+    await page.keyboard.press('Escape'); await pause(2000); await semantique();
+    await aller('Caisse', 'Journal de caisse'); await pause(3000); await photo('55-journal-caisse');
   });
-  for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
+  for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
 }
 await ctx.close();
