@@ -13,6 +13,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:image_picker/image_picker.dart' show CameraDevice, ImagePicker, ImageSource;
 import 'package:printing/printing.dart' show Printing;
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
+import 'package:url_launcher/url_launcher.dart' show launchUrl;
 
 import 'base.dart';
 import 'caisse.dart';
@@ -30,6 +31,7 @@ import 'theme.dart';
 part 'annees.dart';
 part 'depenses.dart';
 part 'eleves.dart';
+part 'familles.dart';
 part 'encaissement.dart';
 part 'fiche_eleve.dart';
 part 'frais.dart';

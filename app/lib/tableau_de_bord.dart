@@ -68,7 +68,14 @@ class _Mesures {
   /// Remboursements autorisés de vive voix : à confirmer, dont en retard.
   int aConfirmer = 0;
   int confirmationsEnRetard = 0;
+
+  /// Par élève (inscription de l'année) : ce qu'il doit, ce qui est payé, ce qui est en retard.
+  final soldes = <String, ({int du, int paye, int retard})>{};
 }
+
+/// Ce que doit chaque élève cette année (mêmes calculs que la caisse) : pour les familles.
+Future<Map<String, ({int du, int paye, int retard})>> soldesDesEleves(String org) async =>
+    (await _mesurer(org, Periode.annee)).soldes;
 
 Future<_Mesures> _mesurer(String o, Periode periode) async {
   final m = _Mesures();
@@ -252,6 +259,8 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
     var plusVieux = 0;
     var retraitNegocie = i['arrivee_mode'] == 'negocie' ? (i['arrivee_retrait_gnf'] as int? ?? 0) : 0;
     var reduitIci = false;
+    var duIci = 0;
+    var payeIci = 0;
     final siens = fraisRetenus([
       for (final f in frais)
         if ((f['site_id'] == null || f['site_id'] == i['site_id']) &&
@@ -299,6 +308,8 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
       m.retraitsArrivee += s.retrait;
       m.du += s.total;
       m.regle += s.paye;
+      duIci += s.total;
+      payeIci += s.paye;
       for (final e in s.echeances) {
         if (!e.enRetard(jour)) continue;
         final jours = jour.difference(e.dateLimite).inDays;
@@ -314,6 +325,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
       }
     }
     if (reduitIci) m.eleveReduits++;
+    m.soldes[i['eleve_id'] as String] = (du: duIci, paye: payeIci, retard: retard);
     if (retard > 0) {
       m.arrieres += retard;
       m.retards.add(_EnRetard(i['eleve_id'] as String, '${i['nom']} ${i['prenoms']}', '${i['classe']}', retard, plusVieux));

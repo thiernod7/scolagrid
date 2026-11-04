@@ -8,7 +8,7 @@ import 'package:scolagrid/caisse.dart';
 import 'package:scolagrid/echeancier.dart';
 import 'package:scolagrid/import_eleves.dart';
 import 'package:scolagrid/matricule.dart';
-import 'package:scolagrid/configuration.dart' show versionApp, decalerDate, empreintePin, gnf, lettresSuivantes, libelleSuivant, nomDeClasse, pinValide;
+import 'package:scolagrid/configuration.dart' show versionApp, famillesEnDouble, decalerDate, empreintePin, gnf, lettresSuivantes, libelleSuivant, nomDeClasse, pinValide;
 import 'package:scolagrid/fonctions.dart';
 import 'package:scolagrid/modele_excel.dart';
 import 'package:scolagrid/modele_guineen.dart';
@@ -17,6 +17,16 @@ import 'package:scolagrid/schema.dart';
 import 'package:scolagrid/theme.dart';
 
 void main() {
+  test('Familles en double : même nom ou même téléphone', () {
+    final d = famillesEnDouble([
+      {'id': 'a', 'nom_complet': 'Mariama SOW', 'telephone': '+224 620 00 00 01'},
+      {'id': 'b', 'nom_complet': 'mariama  sow', 'telephone': '+224620000002'},
+      {'id': 'c', 'nom_complet': 'Fanta BAH', 'telephone2': '620000001'},
+      {'id': 'd', 'nom_complet': 'Ibrahima DIALLO', 'telephone': '+224620000009'},
+    ]);
+    expect(d, {'a', 'b', 'c'});
+  });
+
   test('Bons de sortie manquants dans la suite du carnet', () {
     expect(bonsManquants(['0142', 'B-0144', null, '0141', 'sans numéro']), [143]);
     expect(bonsManquants(['12']), isEmpty);

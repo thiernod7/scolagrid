@@ -16,7 +16,7 @@ import 'theme.dart';
 /// bas sur téléphone. Le menu ne montre que ce que la personne peut faire.
 /// Chaque rubrique garde sa propre pile d'écrans : le menu reste visible.
 
-enum _Rubrique { accueil, eleves, caisse, depenses, personnel, postes, parametres }
+enum _Rubrique { accueil, eleves, caisse, depenses, familles, personnel, postes, parametres }
 
 class _Entree {
   const _Entree(this.rubrique, this.libelle, this.icone, this.iconeActive, this.groupe);
@@ -61,6 +61,7 @@ String get _versionCourte => 'v$versionApp${environnement == 'essai' ? '\nessai'
 const _toutes = [
   _Entree(_Rubrique.accueil, 'Accueil', Icons.home_outlined, Icons.home, null),
   _Entree(_Rubrique.eleves, 'Élèves', Icons.school_outlined, Icons.school, 'ÉLÈVES'),
+  _Entree(_Rubrique.familles, 'Familles', Icons.family_restroom_outlined, Icons.family_restroom, 'ÉLÈVES'),
   _Entree(_Rubrique.caisse, 'Caisse', Icons.point_of_sale_outlined, Icons.point_of_sale, 'FINANCES'),
   _Entree(_Rubrique.depenses, 'Dépenses', Icons.outbox_outlined, Icons.outbox, 'FINANCES'),
   _Entree(_Rubrique.personnel, 'Personnel', Icons.groups_outlined, Icons.groups, 'ÉCOLE'),
@@ -238,6 +239,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
           if (switch (x.rubrique) {
             // Un lecteur voit la caisse ou le personnel si on le lui a accordé (sans pouvoir agir).
             _Rubrique.caisse => _peutEncaisser || _droits.contains('voir_caisse'),
+            // Les familles : qui voit les parents (secrétariat, caisse, direction, lecteur autorisé).
+            _Rubrique.familles => _droits.contains('voir_familles'),
             _Rubrique.depenses => _peutEncaisser || _droits.contains('voir_caisse') || _droits.contains('autoriser_depense'),
             _Rubrique.personnel => e.gestionnaire || _droits.contains('voir_personnel'),
             _Rubrique.postes => e.gestionnaire,
@@ -387,6 +390,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
         _Rubrique.eleves => ElevesScreen(espace: e, rechercheInitiale: _recherche),
         _Rubrique.caisse => CaisseScreen(espace: e),
         _Rubrique.depenses => DepensesScreen(espace: e),
+        _Rubrique.familles => FamillesScreen(espace: e),
         _Rubrique.personnel => PersonnelScreen(espace: e),
         _Rubrique.postes => PostesScreen(espace: e),
         _Rubrique.parametres => ConfigurationScreen(espace: e),
