@@ -16,7 +16,7 @@ import 'theme.dart';
 /// bas sur téléphone. Le menu ne montre que ce que la personne peut faire.
 /// Chaque rubrique garde sa propre pile d'écrans : le menu reste visible.
 
-enum _Rubrique { accueil, eleves, caisse, personnel, postes, parametres }
+enum _Rubrique { accueil, eleves, caisse, depenses, personnel, postes, parametres }
 
 class _Entree {
   const _Entree(this.rubrique, this.libelle, this.icone, this.iconeActive, this.groupe);
@@ -31,12 +31,15 @@ class _Entree {
 /// Postes qui attendent la validation de la direction (pastille sur « Postes » dans le menu).
 final _postesAValider = ValueNotifier<int>(0);
 
+/// Dépenses qui attendent : à autoriser, à sortir ou à confirmer (pastille sur « Dépenses »).
+final _depensesEnAttente = ValueNotifier<int>(0);
+
 /// « Postes » suivi de sa pastille orange quand des postes attendent.
 Widget _libelleMenu(_Entree x, TextStyle? style) {
   final texte = Text(x.libelle, style: style);
-  if (x.rubrique != _Rubrique.postes) return texte;
+  if (x.rubrique != _Rubrique.postes && x.rubrique != _Rubrique.depenses) return texte;
   return ValueListenableBuilder<int>(
-    valueListenable: _postesAValider,
+    valueListenable: x.rubrique == _Rubrique.postes ? _postesAValider : _depensesEnAttente,
     builder: (context, n, _) => n == 0
         ? texte
         : Row(mainAxisSize: MainAxisSize.min, children: [
@@ -59,6 +62,7 @@ const _toutes = [
   _Entree(_Rubrique.accueil, 'Accueil', Icons.home_outlined, Icons.home, null),
   _Entree(_Rubrique.eleves, 'Élèves', Icons.school_outlined, Icons.school, 'ÉLÈVES'),
   _Entree(_Rubrique.caisse, 'Caisse', Icons.point_of_sale_outlined, Icons.point_of_sale, 'FINANCES'),
+  _Entree(_Rubrique.depenses, 'Dépenses', Icons.outbox_outlined, Icons.outbox, 'FINANCES'),
   _Entree(_Rubrique.personnel, 'Personnel', Icons.groups_outlined, Icons.groups, 'ÉCOLE'),
   _Entree(_Rubrique.postes, 'Postes', Icons.devices_other_outlined, Icons.devices_other, 'ÉCOLE'),
   _Entree(_Rubrique.parametres, 'Paramètres', Icons.settings_outlined, Icons.settings, 'ÉCOLE'),
@@ -154,6 +158,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
       ..add(db.watch("SELECT count(*) AS n FROM postes WHERE statut = 'a_valider'").listen((r) {
         _postesAValider.value = r.first['n'] as int? ?? 0;
       }))
+      ..add(db.watch("SELECT count(*) AS n FROM depenses WHERE statut IN ('demande', 'autorisee') OR confirmation = 'attendue'")
+          .listen((r) => _depensesEnAttente.value = r.first['n'] as int? ?? 0))
       // Les droits changent quand une fonction ou une exception est modifiée.
       ..add(db.watch('SELECT (SELECT max(updated_at) FROM affectations) AS a, (SELECT max(updated_at) FROM droits_personnel) AS d')
           .listen((_) => _majDroits()))
@@ -232,6 +238,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
           if (switch (x.rubrique) {
             // Un lecteur voit la caisse ou le personnel si on le lui a accordé (sans pouvoir agir).
             _Rubrique.caisse => _peutEncaisser || _droits.contains('voir_caisse'),
+            _Rubrique.depenses => _peutEncaisser || _droits.contains('voir_caisse') || _droits.contains('autoriser_depense'),
             _Rubrique.personnel => e.gestionnaire || _droits.contains('voir_personnel'),
             _Rubrique.postes => e.gestionnaire,
             _Rubrique.parametres => e.voitParametres,
@@ -379,6 +386,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
           ),
         _Rubrique.eleves => ElevesScreen(espace: e, rechercheInitiale: _recherche),
         _Rubrique.caisse => CaisseScreen(espace: e),
+        _Rubrique.depenses => DepensesScreen(espace: e),
         _Rubrique.personnel => PersonnelScreen(espace: e),
         _Rubrique.postes => PostesScreen(espace: e),
         _Rubrique.parametres => ConfigurationScreen(espace: e),
@@ -904,7 +912,7 @@ class _TableauDeBord extends StatelessWidget {
                 () => aller(_Rubrique.eleves)),
           if ((peutEncaisser || espace.droits.contains('autoriser_depense')) && (r['dep'] as int? ?? 0) > 0)
             _AFaire(Etat('${r['dep']}', ton: Ton.attente), 'dépense(s) à autoriser, à sortir ou à confirmer',
-                () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DepensesScreen(espace: espace)))),
+                () => aller(_Rubrique.depenses)),
           if (peutEncaisser && (r['remb'] as int? ?? 0) > 0)
             _AFaire(Etat('${r['remb']}', ton: Ton.attente), 'remboursement(s) à autoriser ou à verser', () => aller(_Rubrique.caisse)),
           if (incompletes > 0)
