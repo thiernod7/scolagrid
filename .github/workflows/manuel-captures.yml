@@ -1,0 +1,63 @@
+name: Manuel - captures d'écran (essai)
+
+# Prend les captures du manuel utilisateur sur l'application d'ESSAI, avec une
+# école de démonstration aux données fictives (numéro de test 620 00 00 04).
+# Les captures sont rangées dans docs/manuel/captures (sur cette branche).
+
+on:
+  push:
+    paths:
+      - ".github/workflows/manuel-captures.yml"
+      - "docs/manuel/outils/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manuel
+  cancel-in-progress: true
+
+jobs:
+  captures:
+    runs-on: ubuntu-latest
+    if: github.ref_name != github.event.repository.default_branch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Installer Playwright
+        working-directory: docs/manuel/outils
+        run: |
+          npm init -y >/dev/null
+          npm install --silent playwright@1.48.2
+          npx playwright install --with-deps chromium >/dev/null
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Connexion (crée le compte de test si besoin)
+        working-directory: docs/manuel/outils
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: node captures.mjs "https://app-essai.$(echo "$VPS_HOST" | tr . -).sslip.io" connexion ../captures
+      - name: École de démonstration (données fictives)
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres -v tel=224620000004" \
+            < docs/manuel/outils/ecole-demo.sql
+      - name: Écrans
+        working-directory: docs/manuel/outils
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: node captures.mjs "https://app-essai.$(echo "$VPS_HOST" | tr . -).sslip.io" ecrans ../captures
+      - name: Ranger les captures
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/manuel/captures
+          git commit -qm "Manuel : captures d'écran (école de démonstration, essai)" || exit 0
+          git pull -q --rebase origin "$GITHUB_REF_NAME" && git push -q origin "HEAD:$GITHUB_REF_NAME"
