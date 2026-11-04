@@ -4,12 +4,12 @@ part of 'configuration.dart';
 /// encaisser pour toute la famille, l'appeler, corriger ses coordonnées une
 /// seule fois pour tous ses enfants, et fusionner un parent créé deux fois.
 
-typedef _Solde = ({int du, int paye, int retard});
+typedef _SoldeEleve = ({int du, int paye, int retard});
 
 /// Mémoire des soldes, recalculés quand la caisse ou les inscriptions changent.
 String? _versionSoldes;
-Future<Map<String, _Solde>>? _soldesEnCours;
-Future<Map<String, _Solde>> _soldes(String org, String version) {
+Future<Map<String, _SoldeEleve>>? _soldesEnCours;
+Future<Map<String, _SoldeEleve>> _soldes(String org, String version) {
   if (version != _versionSoldes || _soldesEnCours == null) {
     _versionSoldes = version;
     _soldesEnCours = soldesDesEleves(org);
@@ -32,12 +32,12 @@ class _AvecSoldes extends StatelessWidget {
   const _AvecSoldes({required this.orgId, required this.builder});
 
   final String orgId;
-  final Widget Function(BuildContext context, Map<String, _Solde>? soldes) builder;
+  final Widget Function(BuildContext context, Map<String, _SoldeEleve>? soldes) builder;
 
   @override
   Widget build(BuildContext context) => Requete(
         _sqlVersionSoldes,
-        builder: (context, v) => FutureBuilder<Map<String, _Solde>>(
+        builder: (context, v) => FutureBuilder<Map<String, _SoldeEleve>>(
           future: _soldes(orgId, '${v.first}'),
           builder: (context, s) => builder(context, s.data),
         ),
@@ -94,10 +94,10 @@ class _FamillesScreenState extends State<FamillesScreen> {
     );
   }
 
-  Widget _contenu(BuildContext context, Lignes familles, Map<String, _Solde>? soldes) {
+  Widget _contenu(BuildContext context, Lignes familles, Map<String, _SoldeEleve>? soldes) {
     final gris = Theme.of(context).colorScheme.onSurfaceVariant;
     final telephone = MediaQuery.sizeOf(context).width < 640;
-    _Solde total(Map<String, Object?> f) {
+    _SoldeEleve total(Map<String, Object?> f) {
       var du = 0, paye = 0, retard = 0;
       for (final id in '${f['enfants'] ?? ''}'.split(',').where((x) => x.isNotEmpty)) {
         final s = soldes?[id];
@@ -360,7 +360,7 @@ class FicheFamilleScreen extends StatelessWidget {
         },
       );
 
-  Widget _contenu(BuildContext context, Map<String, Object?> c, Lignes enfants, Map<String, _Solde>? soldes) {
+  Widget _contenu(BuildContext context, Map<String, Object?> c, Lignes enfants, Map<String, _SoldeEleve>? soldes) {
     final gris = Theme.of(context).colorScheme.onSurfaceVariant;
     var du = 0, paye = 0, retard = 0;
     for (final e in enfants) {
