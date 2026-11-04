@@ -386,6 +386,12 @@ void main() {
       expect(vieux.single.naissance, isNull);
       expect(vieux.single.etat, EtatLigne.incomplete);
       expect(vieux.single.remarques.first, startsWith('date impossible'));
+      // Fichier réimporté : un élève déjà là, sans date de naissance, est un doublon probable.
+      final re = analyserImport(
+          lignes: lireCsv(utf8.encode('NOM;PRÉNOMS;CLASSE\nBAH;Ali;7ème A\nSOW;Awa;7ème A\n')),
+          classes: classes,
+          existants: const [(nom: 'BAH', prenoms: 'Ali', naissance: null)]);
+      expect(re.map((x) => x.etat), [EtatLigne.doublon, EtatLigne.incomplete]);
       expect(nomPersonne(' Mamadou  Saliou ', 'diallo'), 'Mamadou Saliou DIALLO');
       expect(nomPersonne('Fatoumata', ''), 'Fatoumata');
       expect(cleClasse('PS'), 'PETITE SECTION');

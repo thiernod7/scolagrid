@@ -302,7 +302,11 @@ List<LigneImport> analyserImport({
         if (e.nom[0].toUpperCase() != l.nom[0] && e.prenoms[0].toUpperCase() != l.prenoms[0].toUpperCase()) continue;
         final a = ressemblance(
             nom: l.nom, prenoms: l.prenoms, naissance: l.naissance, autreNom: e.nom, autrePrenoms: e.prenoms, autreNaissance: e.naissance);
-        if (a == Alerte.forte || (a == Alerte.moyenne && l.naissance != null && e.naissance != null)) {
+        // Exactement le même nom, sans dates qui se contredisent : le même enfant (un fichier
+        // réimporté, des élèves sans date de naissance). Un vrai homonyme se coche à part.
+        final memeNom = nomSimplifie('${l.nom} ${l.prenoms}') == nomSimplifie('${e.nom} ${e.prenoms}') &&
+            (l.naissance == null || e.naissance == null || l.naissance == e.naissance);
+        if (memeNom || a == Alerte.forte || (a == Alerte.moyenne && l.naissance != null && e.naissance != null)) {
           l.etat = EtatLigne.doublon;
           l.remarques.add('ressemble à ${e.nom} ${e.prenoms}');
           break;
