@@ -880,8 +880,9 @@ class _TableauDeBord extends StatelessWidget {
            (SELECT count(*) FROM eleves e WHERE e.organisation_id = ? AND (e.date_naissance IS NULL OR e.sexe IS NULL)) AS incompletes,
            (SELECT code FROM organisations WHERE id = ?) AS sigle,
            (SELECT count(*) FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1) AS annee,
-           (SELECT count(*) FROM remboursements WHERE organisation_id = ? AND statut IN ('demande', 'autorise')) AS remb''',
-      parametres: [o, o, o, o, o],
+           (SELECT count(*) FROM remboursements WHERE organisation_id = ? AND statut IN ('demande', 'autorise')) AS remb,
+           (SELECT count(*) FROM depenses WHERE organisation_id = ? AND (statut IN ('demande', 'autorisee') OR confirmation = 'attendue')) AS dep''',
+      parametres: [o, o, o, o, o, o],
       builder: (context, l) {
         final r = l.first;
         final attente = r['attente'] as int? ?? 0;
@@ -901,6 +902,9 @@ class _TableauDeBord extends StatelessWidget {
           if (attente > 0)
             _AFaire(Etat('$attente', ton: Ton.attente), "inscription(s) en attente des frais d'inscription",
                 () => aller(_Rubrique.eleves)),
+          if ((peutEncaisser || espace.droits.contains('autoriser_depense')) && (r['dep'] as int? ?? 0) > 0)
+            _AFaire(Etat('${r['dep']}', ton: Ton.attente), 'dépense(s) à autoriser, à sortir ou à confirmer',
+                () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DepensesScreen(espace: espace)))),
           if (peutEncaisser && (r['remb'] as int? ?? 0) > 0)
             _AFaire(Etat('${r['remb']}', ton: Ton.attente), 'remboursement(s) à autoriser ou à verser', () => aller(_Rubrique.caisse)),
           if (incompletes > 0)

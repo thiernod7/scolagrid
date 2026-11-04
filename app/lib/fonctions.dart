@@ -68,7 +68,7 @@ const droitsParDefaut = <String, Set<String>>{
   'directeur': {
     'valider_remboursement', 'annuler_recu', 'gerer_emploi_du_temps',
     'planifier_evaluations', 'justifier_absence', 'consulter_tableau_bord', 'gerer_inscriptions',
-    'voir_familles', 'voir_caisse', 'voir_personnel',
+    'voir_familles', 'voir_caisse', 'voir_personnel', 'autoriser_depense',
   },
   'directeur_etudes': {'gerer_emploi_du_temps', 'planifier_evaluations', 'justifier_absence'},
   'surveillant': {'faire_appel', 'justifier_absence'},

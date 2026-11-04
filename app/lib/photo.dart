@@ -26,14 +26,15 @@ Future<PhotoPrete> _reduire(Uint8List octets, String type) async {
   return (type: t, base64: base64Encode(donnees));
 }
 
-Future<PhotoPrete?> choisirPhoto(BuildContext context, {required bool camera}) async {
+/// [taille] : côté maximal en pixels (un justificatif doit rester lisible).
+Future<PhotoPrete?> choisirPhoto(BuildContext context, {required bool camera, double taille = 480}) async {
   final messager = ScaffoldMessenger.of(context);
   try {
     final f = await ImagePicker().pickImage(
       source: camera ? ImageSource.camera : ImageSource.gallery,
-      maxWidth: 480,
-      maxHeight: 480,
-      imageQuality: 70,
+      maxWidth: taille,
+      maxHeight: taille,
+      imageQuality: taille > 480 ? 60 : 70,
       preferredCameraDevice: CameraDevice.rear,
     );
     if (f == null) return null;

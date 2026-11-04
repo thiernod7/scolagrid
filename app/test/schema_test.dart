@@ -17,6 +17,12 @@ import 'package:scolagrid/schema.dart';
 import 'package:scolagrid/theme.dart';
 
 void main() {
+  test('Bons de sortie manquants dans la suite du carnet', () {
+    expect(bonsManquants(['0142', 'B-0144', null, '0141', 'sans numéro']), [143]);
+    expect(bonsManquants(['12']), isEmpty);
+    expect(droitsDesFonctions(['directeur']), contains('autoriser_depense'));
+  });
+
   test('Autres frais : obligatoires, réservés à des classes, un prix par niveau', () {
     final internat10 = <String, Object?>{'type_frais': 'optionnel', 'libelle': 'Internat', 'niveau_id': 'n10', 'site_id': null,
       'obligatoire': 1, 'examen': 0, 'classes': 'c10a,c10b', 'montant_gnf': 900};

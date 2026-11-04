@@ -1701,10 +1701,20 @@ class _CaisseScreenState extends State<CaisseScreen> {
            ORDER BY e.created_at''',
         parametres: [widget.espace.orgId, jour],
         builder: (context, recus) => Requete(
-          '''SELECT r.*, p.nom_complet AS par FROM remboursements r
+          // Sorties du jour : remboursements versés et dépenses sorties de la caisse.
+          '''SELECT 'remboursement' AS genre, r.id, r.montant_gnf, r.mode, r.beneficiaire, r.motif, NULL AS categorie,
+                    r.updated_at, r.updated_at AS created_at, p.nom_complet AS par
+             FROM remboursements r
              LEFT JOIN personnel p ON p.user_id = r.verse_par AND p.organisation_id = r.organisation_id
-             WHERE r.organisation_id = ? AND r.statut = 'verse' AND r.verse_le = ? ORDER BY r.updated_at''',
-          parametres: [widget.espace.orgId, jour],
+             WHERE r.organisation_id = ? AND r.statut = 'verse' AND r.verse_le = ?
+             UNION ALL
+             SELECT 'depense' AS genre, d.id, d.montant_gnf, 'especes' AS mode, d.beneficiaire, d.motif, d.categorie,
+                    d.updated_at, d.updated_at AS created_at, p.nom_complet AS par
+             FROM depenses d
+             LEFT JOIN personnel p ON p.user_id = d.sortie_par AND p.organisation_id = d.organisation_id
+             WHERE d.organisation_id = ? AND d.statut = 'sortie' AND d.sortie_le = ?
+             ORDER BY updated_at''',
+          parametres: [widget.espace.orgId, jour, widget.espace.orgId, jour],
           builder: (context, sorties) => _contenu(context, recus, sorties),
         ),
       ),
@@ -1741,7 +1751,7 @@ class _CaisseScreenState extends State<CaisseScreen> {
       carnets.putIfAbsent('${r['carnet'] ?? ''}', () => []).add(r['feuille'] as String);
     }
 
-    // Le livre de caisse : reçus et remboursements, dans l'ordre de la journée.
+    // Le livre de caisse : reçus, remboursements et dépenses, dans l'ordre de la journée.
     final mouvements = <(String, Map<String, Object?>)>[
       for (final r in recus) ('recu', r),
       for (final r in sorties) ('sortie', r),
@@ -1772,6 +1782,11 @@ class _CaisseScreenState extends State<CaisseScreen> {
               icon: const Icon(Icons.currency_exchange, size: 16),
               label: Text((x.first['n'] as int? ?? 0) > 0 ? 'Remboursements · ${x.first['n']}' : 'Remboursements'),
             ),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => DepensesScreen(espace: widget.espace))),
+            icon: const Icon(Icons.outbox_outlined, size: 16),
+            label: const Text('Dépenses'),
           ),
           // Un lecteur consulte le journal sans encaisser.
           if (widget.espace.fondateur || widget.espace.droits.contains('encaisser'))
@@ -1901,7 +1916,12 @@ class _CaisseScreenState extends State<CaisseScreen> {
               cellule(
                 null,
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(sens == 'recu' ? '${m['payeur_nom']}' : 'Remboursement · ${m['beneficiaire'] ?? ''}',
+                  Text(
+                      sens == 'recu'
+                          ? '${m['payeur_nom']}'
+                          : m['genre'] == 'depense'
+                              ? 'Dépense · ${m['categorie']}${m['beneficiaire'] != null ? ' · ${m['beneficiaire']}' : ''}'
+                              : 'Remboursement · ${m['beneficiaire'] ?? ''}',
                       overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
                   if (m['apres_cloture'] == 1)
                     const Text('saisi après la clôture', style: TextStyle(fontSize: 12, color: Couleurs.attente)),
@@ -2082,10 +2102,16 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
                 count(*) AS n
          FROM encaissements WHERE organisation_id = ? AND site_id = ? AND encaisse_par = ? AND date_effective = ? AND statut = 'valide'""",
       [orgId, siteId, monId, jour]);
-  final sorties = (await db.get(
+  final rembourse = (await db.get(
       """SELECT coalesce(sum(montant_gnf), 0) AS s FROM remboursements WHERE organisation_id = ? AND site_id = ?
          AND verse_par = ? AND verse_le = ? AND statut = 'verse' AND mode = 'especes'""",
       [orgId, siteId, monId, jour]))['s'] as int? ?? 0;
+  // Les dépenses que j'ai sorties de ma caisse ce jour-là (même calcul que le serveur).
+  final depense = (await db.get(
+      """SELECT coalesce(sum(montant_gnf), 0) AS s FROM depenses WHERE organisation_id = ? AND site_id = ?
+         AND sortie_par = ? AND sortie_le = ? AND statut = 'sortie'""",
+      [orgId, siteId, monId, jour]))['s'] as int? ?? 0;
+  final sorties = rembourse + depense;
   // Déjà clôturé ce jour-là : on clôture le complément (les reçus venus après).
   final avant = await db.get(
       '''SELECT count(*) AS n, coalesce(sum(attendu_especes), 0) AS attendu, coalesce(sum(nb_recus), 0) AS recus,
@@ -2113,7 +2139,8 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
         Text('La caisse de ce jour est déjà clôturée (clôture n° $rang). Ce complément couvre les '
             '$nbRecus reçu(s) encaissé(s) depuis : comptez seulement les espèces reçues depuis la dernière clôture.'),
       Text('Espèces attendues : ${gnf(attendu)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-      if (sorties > 0) Text('Remboursements versés en espèces déduits : ${gnf(sorties)}'),
+      if (rembourse > 0) Text('Remboursements versés en espèces déduits : ${gnf(rembourse)}'),
+      if (depense > 0) Text('Dépenses sorties de la caisse déduites : ${gnf(depense)}'),
       Text('$nbRecus reçu(s) ; autres modes (Orange Money, MTN, chèques, virements) : ${gnf(autres)}, '
           'non comptés dans le tiroir.'),
       TextField(

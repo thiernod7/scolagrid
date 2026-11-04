@@ -28,6 +28,7 @@ import 'recu_pdf.dart';
 import 'theme.dart';
 
 part 'annees.dart';
+part 'depenses.dart';
 part 'eleves.dart';
 part 'encaissement.dart';
 part 'fiche_eleve.dart';

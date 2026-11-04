@@ -157,7 +157,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
   /// Tables où l'on crée sans jamais modifier (reçus, clôtures, impressions) :
   /// le serveur n'y donne pas le droit de modification, donc l'envoi se fait en
   /// « créer, ou ne rien faire si c'est déjà là » — jamais en « créer ou remplacer ».
-  static const _creationSeule = {'lignes_encaissement', 'clotures_caisse', 'impressions_documents'};
+  static const _creationSeule = {'lignes_encaissement', 'clotures_caisse', 'impressions_documents', 'justificatifs_depenses'};
 
   @override
   Future<PowerSyncCredentials?> fetchCredentials() async {
@@ -179,7 +179,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     'souscriptions': ['actif'],
     'organisations': [
       'reductions_cumul', 'remboursement_aucun', 'remboursable_inscription',
-      'remboursable_reinscription', 'remboursable_scolarite', 'remboursable_optionnel', 'signature_documents',
+      'remboursable_reinscription', 'remboursable_scolarite', 'remboursable_optionnel', 'signature_documents', 'depense_orale',
     ],
     'regles_reduction': ['pourcentage', 'actif'],
     'pieces_dossier': ['obligatoire', 'actif'],
@@ -188,6 +188,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     'inscriptions': ['redoublant'],
     'frais': ['examen', 'obligatoire'],
     'remboursements': ['autorisation_orale'],
+    'depenses': ['autorisation_orale'],
     'reductions_eleves': ['actif'],
   };
 

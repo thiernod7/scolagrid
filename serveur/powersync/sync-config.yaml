@@ -140,6 +140,8 @@ streams:
       - SELECT * FROM clotures_caisse WHERE organisation_id IN orgs_caisse
       - SELECT * FROM remboursements WHERE organisation_id IN orgs_caisse
       - SELECT * FROM echeances_eleves WHERE organisation_id IN orgs_caisse
+      - SELECT * FROM depenses WHERE organisation_id IN orgs_caisse
+      - SELECT * FROM justificatifs_depenses WHERE organisation_id IN orgs_caisse
       - SELECT * FROM images_ecole WHERE organisation_id IN orgs_caisse AND sorte = 'signature'
       - SELECT * FROM images_ecole WHERE organisation_id IN orgs_caisse AND sorte = 'cachet'
 

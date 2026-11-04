@@ -304,6 +304,19 @@ List<Map<String, Object?>> fraisRetenus(Iterable<Map<String, Object?>> frais) {
   ];
 }
 
+/// Bons de sortie manquants dans la suite des numéros d'un carnet (« 0142 », « B-0144 » :
+/// on lit le nombre final). Un trou signale une erreur de saisie ou une sortie non enregistrée.
+List<int> bonsManquants(Iterable<String?> bons) {
+  final n = <int>{
+    for (final b in bons)
+      if (b != null && RegExp(r'(\d+)\s*$').hasMatch(b)) int.parse(RegExp(r'(\d+)\s*$').firstMatch(b)![1]!),
+  }.toList()
+    ..sort();
+  if (n.length < 2 || n.last - n.first > 2000) return const [];
+  final pris = n.toSet();
+  return [for (var i = n.first + 1; i < n.last; i++) if (!pris.contains(i)) i];
+}
+
 /// Un autre frais réservé à certaines classes : la classe de l'élève en fait-elle partie ?
 bool classeConcernee(Map<String, Object?> frais, String? classeId) {
   final c = '${frais['classes'] ?? ''}';
