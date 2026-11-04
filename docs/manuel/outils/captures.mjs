@@ -93,7 +93,7 @@ if (etape === 'connexion') {
   });
 } else {
   // Barre latérale (PC 1440 × 900) : positions fixes.
-  const barre = { 'Accueil': 79, 'Élèves': 154, 'Caisse': 229, 'Personnel': 304, 'Postes': 342, 'Paramètres': 380 };
+  const barre = { 'Accueil': 79, 'Élèves': 154, 'Caisse': 229, 'Dépenses': 267, 'Personnel': 342, 'Postes': 380, 'Paramètres': 418 };
   const attendre = (texte, ms = 12000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
   const retour = async () => {
     const b = page.getByRole('button', { name: 'Retour' });
@@ -186,6 +186,7 @@ if (etape === 'connexion') {
     await page.mouse.click(700, 220); await pause(3000); await semantique(); await arbre('reçu'); await photo('57-recu');
     await retour();
   });
+  await etapeSure('menu-depenses', async () => { await aller('Dépenses', 'Nouvelle dépense'); await photo('58-depenses'); });
   for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
 }
 await ctx.close();
