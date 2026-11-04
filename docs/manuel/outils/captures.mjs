@@ -187,9 +187,12 @@ if (etape === 'connexion') {
     await retour();
   });
   await etapeSure('familles', async () => {
-    await aller('Familles', 'Familles'); await arbre('familles'); await photo('45-familles');
-    await page.mouse.click(700, 260); await pause(3500); await semantique(); await arbre('fiche famille'); await photo('46-fiche-famille');
-    await retour();
+    await aller('Familles', 'Parents & tuteurs'); await pause(3000); await arbre('familles'); await photo('45-familles');
+    const ligne = page.getByRole('button', { name: /payeur|tuteur/ });
+    if (await ligne.count()) await ligne.first().click(); else await page.mouse.click(500, 340);
+    await pause(3500); await semantique(); await arbre('fiche famille'); await photo('46-fiche-famille-panneau');
+    const fermer = page.getByRole('button', { name: 'Fermer' });
+    if (await fermer.count()) { await fermer.first().click(); await pause(1500); }
   });
   await etapeSure('menu-depenses', async () => { await aller('Dépenses', 'Nouvelle dépense'); await photo('58-depenses'); });
   for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
