@@ -83,6 +83,10 @@ Future<String> creerEspaceEcole({
 Future<String> inviterPersonnel(String ficheId) async =>
     await Supabase.instance.client.rpc('inviter_personnel', params: {'fiche': ficheId}) as String;
 
+/// Même chose, et le serveur envoie le code par SMS (NimbaSMS) au numéro de la fiche.
+Future<String> envoyerInvitationSms(String ficheId) async =>
+    await Supabase.instance.client.rpc('envoyer_invitation_sms', params: {'fiche': ficheId}) as String;
+
 /// Relie le compte connecté à sa fiche grâce au code reçu.
 /// Renvoie l'organisation, ou null si le code est faux ou expiré.
 Future<String?> accepterInvitation(String code) async =>

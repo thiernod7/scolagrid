@@ -169,6 +169,9 @@ delete from scolagrid.reglages where cle = 'nimba_expediteur' and trim(valeur) =
 SQL
   ) && echo "NimbaSMS configuré pour l'envoi des codes"
 fi
+# Adresse de l'application (lien envoyé dans les SMS d'invitation).
+sudo docker exec -i "$DB" psql -q -X -v ON_ERROR_STOP=1 -U supabase_admin -d postgres -v url="https://app$SUFFIXE.$HOST" \
+  <<<"insert into scolagrid.reglages (cle, valeur) values ('app_url', :'url') on conflict (cle) do update set valeur = excluded.valeur;"
 
 step "Services"
 dc up -d --quiet-pull --remove-orphans db auth rest meta studio api-gw powersync-storage powersync

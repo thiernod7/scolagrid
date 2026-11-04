@@ -306,9 +306,32 @@ class FicheScreen extends StatelessWidget {
           content: Text('Des changements sont encore en cours d\'envoi. Réessayez dans un instant.')));
       return;
     }
+    // Avec un numéro : le serveur peut envoyer le code par SMS directement.
+    var parSms = false;
+    if (fiche['telephone'] != null) {
+      final choix = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Inviter ${fiche['nom_complet']}'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Text("ScolaGrid peut envoyer le code d'invitation par SMS au ${fiche['telephone']}, avec le lien de "
+                "l'application. Ou bien affichez le code pour le transmettre vous-même."),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+            OutlinedButton(onPressed: () => Navigator.pop(context, 'code'), child: const Text('Afficher le code')),
+            FilledButton.icon(
+                onPressed: () => Navigator.pop(context, 'sms'), icon: const Icon(Icons.sms_outlined, size: 18), label: const Text('Envoyer par SMS')),
+          ],
+        ),
+      );
+      if (choix == null) return;
+      parSms = choix == 'sms';
+    }
     String code;
     try {
-      code = await inviterPersonnel(ficheId);
+      code = parSms ? await envoyerInvitationSms(ficheId) : await inviterPersonnel(ficheId);
     } on PostgrestException catch (e) {
       messager.showSnackBar(SnackBar(content: Text(e.message)));
       return;
@@ -317,6 +340,12 @@ class FicheScreen extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
+    if (parSms) {
+      messager.showSnackBar(SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text('Invitation envoyée par SMS au ${fiche['telephone']} (code ${codeLisible(code)}, valable 7 jours).')));
+      return;
+    }
     final message = 'Bonjour ${fiche['nom_complet']}, vous êtes invité(e) sur Scolagrid. '
         "Installez l'app, connectez-vous avec votre numéro, puis saisissez ce code : ${codeLisible(code)} "
         '(valable 7 jours).';
