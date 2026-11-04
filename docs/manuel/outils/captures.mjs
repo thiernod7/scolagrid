@@ -188,6 +188,7 @@ if (etape === 'connexion') {
   });
   await etapeSure('familles', async () => {
     await aller('Familles', 'Parents & tuteurs'); await pause(3000); await arbre('familles'); await photo('45-familles');
+    // Une ligne de la liste : « Père de … ».
     const ligne = page.getByRole('button', { name: /(Père|Mère|Parent|Oncle|Tante|Tuteur|Grand).* de / });
     if (await ligne.count()) await ligne.first().click(); else await page.mouse.click(500, 340);
     await pause(3500); await semantique(); await arbre('fiche famille'); await photo('46-fiche-famille-panneau');
