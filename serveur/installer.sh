@@ -84,9 +84,10 @@ set_env API_EXTERNAL_URL "https://$API/auth/v1"
 set_env SITE_URL "https://$API"
 if [ "$ENVIRONNEMENT" = essai ]; then
   # Numéros de test : code fixe, aucun SMS envoyé. Publics, donc réservés à l'essai.
+  # Le 224620000009 est réservé aux captures du manuel (école de démonstration fictive).
   set_env ENABLE_PHONE_SIGNUP true
   set_env ENABLE_PHONE_AUTOCONFIRM true
-  set_env SMS_TEST_OTP "224620000001:123456,224620000002:123456,224620000003:123456,224620000004:123456,224620000005:123456"
+  set_env SMS_TEST_OTP "224620000001:123456,224620000002:123456,224620000003:123456,224620000004:123456,224620000005:123456,224620000009:123456"
   set_env ENABLE_ANONYMOUS_USERS false
 elif sudo test -f /opt/scolagrid/sms.env; then
   # Production avec NimbaSMS : les codes partent par le crochet scolagrid.envoyer_sms.
