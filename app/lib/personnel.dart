@@ -177,7 +177,10 @@ class _ListePersonnelState extends State<_ListePersonnel> {
             if (telephone)
               BoutonFiltres(
                 actifs: _fonction == null ? 0 : 1,
-                reinitialiser: () => setState(() => _fonction = null),
+                reinitialiser: () => setState(() {
+                  _fonction = null;
+                  _q.clear();
+                }),
                 menus: (largeurMenu, rafraichir) => [
                   MenuCompact<String>(
                     largeur: largeurMenu,
@@ -198,6 +201,16 @@ class _ListePersonnelState extends State<_ListePersonnel> {
                 tous: 'Toutes les fonctions',
                 choix: {for (final f in presentes) f: fonctions[f] ?? f},
                 onChanged: (v) => setState(() => _fonction = v),
+              ),
+            if (!telephone && (_fonction != null || _q.text.isNotEmpty))
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
+                onPressed: () => setState(() {
+                  _fonction = null;
+                  _q.clear();
+                }),
+                icon: const Icon(Icons.close, size: 14),
+                label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
               ),
           ]),
           const SizedBox(height: 8),

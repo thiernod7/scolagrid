@@ -121,6 +121,10 @@ class _ElevesScreenState extends State<ElevesScreen> {
   String? _cycle;
   String? _classe;
   String? _statut;
+
+  /// Date d'inscription : aujourd'hui, 7 derniers jours, ce mois-ci, ou une période choisie.
+  String? _periode;
+  DateTimeRange? _plage;
   String _tri = 'nom';
   int _ordre = 1;
   int _page = 0;
@@ -156,9 +160,33 @@ class _ElevesScreenState extends State<ElevesScreen> {
           _ordre = -_ordre;
         } else {
           _tri = colonne;
-          _ordre = 1;
+          // Les inscriptions : les plus récentes d'abord.
+          _ordre = colonne == 'inscription' ? -1 : 1;
         }
       });
+
+  /// L'élève a-t-il été inscrit dans la période choisie ?
+  bool _dansLaPeriode(Object? date) {
+    if (_periode == null) return true;
+    final d = DateTime.tryParse('${date ?? ''}');
+    if (d == null) return false;
+    final aujourdhui = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final jour = DateTime(d.year, d.month, d.day);
+    return switch (_periode) {
+      'jour' => jour == aujourdhui,
+      'semaine' => !jour.isBefore(aujourdhui.subtract(const Duration(days: 6))),
+      'mois' => d.year == aujourdhui.year && d.month == aujourdhui.month,
+      _ => _plage == null || (!jour.isBefore(_plage!.start) && !jour.isAfter(_plage!.end)),
+    };
+  }
+
+  String _libellePeriode() => switch (_periode) {
+        'jour' => "Inscrits aujourd'hui",
+        'semaine' => 'Inscrits ces 7 derniers jours',
+        'mois' => 'Inscrits ce mois-ci',
+        'perso' when _plage != null => 'Inscrits du ${_dateLisible(_date(_plage!.start))} au ${_dateLisible(_date(_plage!.end))}',
+        _ => 'Toutes les dates',
+      };
 
   void _ouvrir(String eleveId) {
     final largeur = MediaQuery.sizeOf(context).width;
@@ -272,7 +300,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
         builder: (context, lignesClasses) => Requete(
           '''SELECT e.id, e.nom, e.prenoms, e.matricule, e.matricule_etat, e.ancien_matricule, e.sexe, e.date_naissance, e.quartier,
                e.allergies, e.sante, e.created_at, e.site_id, s.nom AS site,
-               i.statut, i.classe_id, c.nom AS classe, n.cycle,
+               i.statut, i.classe_id, i.date_effective AS inscrit_le, c.nom AS classe, n.cycle,
                (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj,
                (SELECT ct.nom_complet FROM eleves_contacts ec JOIN contacts ct ON ct.id = ec.contact_id
                 WHERE ec.eleve_id = e.id AND ec.tuteur_principal = 1) AS tuteur,
@@ -321,6 +349,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
     final chiffres = _recherche.text.replaceAll(RegExp(r'[^0-9]'), '');
     final eleves = base.where((e) {
       if (_statut != null && (e['statut'] ?? 'non_inscrit') != _statut) return false;
+      if (!_dansLaPeriode(e['inscrit_le'])) return false;
       if (q.isEmpty) return true;
       final texte = nomSimplifie([
         e['nom'], e['prenoms'], e['nom'], e['matricule'], e['matricule_etat'], e['ancien_matricule'], e['classe'], e['familles'],
@@ -335,13 +364,20 @@ class _ElevesScreenState extends State<ElevesScreen> {
             v = '${a['classe'] ?? '￿'}'.compareTo('${b['classe'] ?? '￿'}');
           case 'naissance':
             v = '${a['date_naissance'] ?? '9999'}'.compareTo('${b['date_naissance'] ?? '9999'}');
+          case 'inscription':
+            // Sans inscription cette année : toujours en fin de liste.
+            if (a['inscrit_le'] == null || b['inscrit_le'] == null) {
+              return (a['inscrit_le'] == null ? 1 : 0) - (b['inscrit_le'] == null ? 1 : 0);
+            }
+            v = '${a['inscrit_le']}'.compareTo('${b['inscrit_le']}');
+            if (v == 0) v = nomSimplifie(_nomEleve(a)).compareTo(nomSimplifie(_nomEleve(b))) * _ordre;
           default:
             v = nomSimplifie(_nomEleve(a)).compareTo(nomSimplifie(_nomEleve(b)));
         }
         return v * _ordre;
       });
     final enAttente = base.where((e) => e['statut'] == 'en_attente').length;
-    final filtres = _recherche.text.isNotEmpty || _statut != null || _cycle != null || _classe != null;
+    final filtres = _recherche.text.isNotEmpty || _statut != null || _cycle != null || _classe != null || _periode != null;
     final pages = eleves.isEmpty ? 1 : (eleves.length / _parPage).ceil();
     final page = _page.clamp(0, pages - 1);
     final affiches = eleves.skip(page * _parPage).take(_parPage).toList();
@@ -465,8 +501,40 @@ class _ElevesScreenState extends State<ElevesScreen> {
             filtrer(() => _statut = v);
             apres();
           }),
+          menu<String>(largeurFixe ?? 200, _periode, 'Toutes les dates', {
+            'jour': "Inscrits aujourd'hui",
+            'semaine': 'Ces 7 derniers jours',
+            'mois': 'Ce mois-ci',
+            'perso': _periode == 'perso' && _plage != null ? _libellePeriode() : 'Une période…',
+          }, (v) async {
+            if (v == 'perso') {
+              final p = await showDateRangePicker(
+                context: context,
+                firstDate: DateTime(2020),
+                lastDate: DateTime.now(),
+                initialDateRange: _plage,
+                helpText: "Inscrits entre le… et le…",
+              );
+              if (p == null) return;
+              filtrer(() {
+                _periode = 'perso';
+                _plage = p;
+              });
+            } else {
+              filtrer(() => _periode = v);
+            }
+            apres();
+          }),
         ];
-    final nbFiltres = [_cycle, _classe, _statut].where((x) => x != null).length;
+    void reinitialiser() => filtrer(() {
+          _recherche.clear();
+          _statut = null;
+          _cycle = null;
+          _classe = null;
+          _periode = null;
+          _plage = null;
+        });
+    final nbFiltres = [_cycle, _classe, _statut, _periode].where((x) => x != null).length;
     final barreFiltres = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
       SizedBox(
         width: telephone ? MediaQuery.sizeOf(context).width - 24 - 104 : (panneau ? 260 : 340),
@@ -518,7 +586,17 @@ class _ElevesScreenState extends State<ElevesScreen> {
                         const Text('Filtres', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                         const SizedBox(height: 12),
                         for (final m in menusFiltres(() => maj(() {}), largeurFixe: double.infinity)) ...[m, const SizedBox(height: 10)],
-                        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Voir les élèves')),
+                        Row(children: [
+                          TextButton(
+                            onPressed: () {
+                              reinitialiser();
+                              maj(() {});
+                            },
+                            child: const Text('Réinitialiser'),
+                          ),
+                          const Spacer(),
+                          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Voir les élèves')),
+                        ]),
                       ]),
                     ),
                   ),
@@ -532,12 +610,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
       if (filtres && !telephone)
         TextButton.icon(
           style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
-          onPressed: () => filtrer(() {
-            _recherche.clear();
-            _statut = null;
-            _cycle = null;
-            _classe = null;
-          }),
+          onPressed: reinitialiser,
           icon: const Icon(Icons.close, size: 14),
           label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
         ),
@@ -931,7 +1004,7 @@ class _TableauEleves extends StatelessWidget {
           if (c.tuteur) cellule(null, const Text('Tuteur principal', style: entete), flex: 2),
           if (c.quartier) cellule(128, const Text('Quartier', style: entete)),
         ],
-        cellule(telephone ? 104 : 144, const Text('Statut', style: entete)),
+        cellule(telephone ? 104 : 144, Align(alignment: Alignment.centerLeft, child: triable('Inscription', 'inscription'))),
         const SizedBox(width: 48),
       ]),
     );
@@ -1008,7 +1081,14 @@ class _TableauEleves extends StatelessWidget {
                 if (c.quartier)
                   cellule(128, Text('${e['quartier'] ?? ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
               ],
-              cellule(telephone ? 104 : 144, Align(alignment: Alignment.centerLeft, child: _badgeStatut(e['statut']))),
+              cellule(
+                telephone ? 104 : 144,
+                Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  _badgeStatut(e['statut']),
+                  if (e['inscrit_le'] != null)
+                    Text('le ${_dateLisible(e['inscrit_le'])}', style: TextStyle(fontSize: 11, color: gris)),
+                ]),
+              ),
               SizedBox(
                 width: 48,
                 child: PopupMenuButton<String>(

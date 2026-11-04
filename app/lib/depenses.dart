@@ -456,6 +456,16 @@ class _DepensesScreenState extends State<DepensesScreen> {
           },
           onChanged: (v) => setState(() => _categorie = v),
         ),
+        if (_categorie != null || _mois != DateTime(DateTime.now().year, DateTime.now().month))
+          TextButton.icon(
+            style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
+            onPressed: () => setState(() {
+              _categorie = null;
+              _mois = DateTime(DateTime.now().year, DateTime.now().month);
+            }),
+            icon: const Icon(Icons.close, size: 14),
+            label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
+          ),
       ]),
       const SizedBox(height: 8),
       Card(

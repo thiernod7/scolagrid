@@ -7,7 +7,7 @@ import 'dart:ui' as ui;
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:excel/excel.dart' as xl;
 import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals;
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:image_picker/image_picker.dart' show CameraDevice, ImagePicker, ImageSource;

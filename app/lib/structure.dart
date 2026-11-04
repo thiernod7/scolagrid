@@ -688,6 +688,16 @@ class _ClassesScreenState extends State<ClassesScreen> {
                     selected: _fermees,
                     onSelected: (v) => setState(() => _fermees = v),
                   ),
+                if (niveaux.containsKey(_niveau) || _fermees)
+                  TextButton.icon(
+                    style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
+                    onPressed: () => setState(() {
+                      _niveau = null;
+                      _fermees = false;
+                    }),
+                    icon: const Icon(Icons.close, size: 14),
+                    label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
+                  ),
               ]),
             const SizedBox(height: 10),
             Tableau(

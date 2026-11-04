@@ -946,8 +946,9 @@ class _Parcours extends StatelessWidget {
       );
 }
 
-/// Pièces fournies par la famille : une coche ou un cercle vide. Avec le
-/// droit d'inscrire, on touche une pièce pour la cocher quand elle arrive.
+/// Pièces fournies par la famille : une coche ou un cercle vide, en lecture.
+/// Avec le droit d'inscrire, « Mettre à jour les pièces » ouvre une fenêtre où
+/// l'on coche, puis on enregistre : pas de coche par simple frôlement.
 class _Pieces extends StatelessWidget {
   const _Pieces({required this.eleve, required this.modifiable});
 
@@ -969,10 +970,20 @@ class _Pieces extends StatelessWidget {
             final gris = Theme.of(context).colorScheme.onSurfaceVariant;
             final nb = liste.where((p) => fournies.contains(p.code)).length;
             final manquantes = liste.where((p) => p.obligatoire && !fournies.contains(p.code)).length;
-            Future<void> basculer(String piece) {
-              final p = {...fournies};
-              p.contains(piece) ? p.remove(piece) : p.add(piece);
-              return _modifier('eleves', eleve['id'] as String, {'pieces_dossier': piecesEnTexte(p, s.data ?? piecesStandard)});
+            Future<void> mettreAJour() async {
+              final choisies = {...fournies};
+              final ok = await _formulaire(context, 'Pièces fournies par la famille', (maj) => [
+                    for (final p in liste)
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        value: choisies.contains(p.code),
+                        title: Text(p.obligatoire ? '${p.libelle} (obligatoire)' : p.libelle),
+                        onChanged: (v) => maj(() => v == true ? choisies.add(p.code) : choisies.remove(p.code)),
+                      ),
+                  ]);
+              if (!ok || setEquals(choisies, fournies)) return;
+              await _modifier('eleves', eleve['id'] as String, {'pieces_dossier': piecesEnTexte(choisies, s.data ?? piecesStandard)});
             }
 
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -982,10 +993,7 @@ class _Pieces extends StatelessWidget {
                           fontSize: 12, color: manquantes > 0 ? Couleurs.attente : (nb == liste.length ? Couleurs.regle : gris)))),
               const SizedBox(height: 8),
               for (final p in liste)
-                InkWell(
-                  onTap: modifiable ? () => basculer(p.code) : null,
-                  borderRadius: BorderRadius.circular(4),
-                  child: Padding(
+                Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Row(children: [
                       fournies.contains(p.code)
@@ -997,8 +1005,18 @@ class _Pieces extends StatelessWidget {
                             style: TextStyle(fontSize: 14, color: fournies.contains(p.code) ? null : gris)),
                       ),
                     ]),
+                ),
+              if (modifiable) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: mettreAJour,
+                    icon: const Icon(Icons.checklist, size: 16),
+                    label: const Text('Mettre à jour les pièces'),
                   ),
                 ),
+              ],
             ]);
           },
         ),
