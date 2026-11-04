@@ -220,21 +220,29 @@ class _FamillesScreenState extends State<FamillesScreen> {
   }
 }
 
-/// Parents probablement créés deux fois : même nom, ou même téléphone.
+/// Parents probablement créés deux fois : même téléphone ; ou même nom quand l'un des
+/// deux n'a pas de numéro (deux « Mamadou DIALLO » aux numéros différents sont des homonymes).
 Set<String> famillesEnDouble(Iterable<Map<String, Object?>> familles) {
-  final parNom = <String, List<String>>{};
-  final parTel = <String, List<String>>{};
+  String fin(Object? t) {
+    final n = '${t ?? ''}'.replaceAll(RegExp(r'[^0-9]'), '');
+    return n.length < 8 ? '' : n.substring(n.length > 9 ? n.length - 9 : 0);
+  }
+
+  final parTel = <String, Set<String>>{};
+  final parNom = <String, List<({String id, bool numero})>>{};
   for (final f in familles) {
     final id = f['id'] as String;
-    parNom.putIfAbsent(nomSimplifie('${f['nom_complet']}'), () => []).add(id);
-    for (final t in [f['telephone'], f['telephone2']]) {
-      final n = '${t ?? ''}'.replaceAll(RegExp(r'[^0-9]'), '');
-      if (n.length >= 8) parTel.putIfAbsent(n.substring(n.length - 9 < 0 ? 0 : n.length - 9), () => []).add(id);
+    final numeros = {fin(f['telephone']), fin(f['telephone2'])}..remove('');
+    for (final n in numeros) {
+      parTel.putIfAbsent(n, () => {}).add(id);
     }
+    parNom.putIfAbsent(nomSimplifie('${f['nom_complet']}'), () => []).add((id: id, numero: numeros.isNotEmpty));
   }
   return {
-    for (final l in [...parNom.values, ...parTel.values])
-      if (l.toSet().length > 1) ...l,
+    for (final s in parTel.values)
+      if (s.length > 1) ...s,
+    for (final l in parNom.values)
+      if (l.length > 1 && l.any((x) => !x.numero)) ...l.map((x) => x.id),
   };
 }
 

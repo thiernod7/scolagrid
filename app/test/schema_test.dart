@@ -17,14 +17,15 @@ import 'package:scolagrid/schema.dart';
 import 'package:scolagrid/theme.dart';
 
 void main() {
-  test('Familles en double : même nom ou même téléphone', () {
+  test('Familles en double : même téléphone, ou même nom sans numéro', () {
     final d = famillesEnDouble([
       {'id': 'a', 'nom_complet': 'Mariama SOW', 'telephone': '+224 620 00 00 01'},
-      {'id': 'b', 'nom_complet': 'mariama  sow', 'telephone': '+224620000002'},
-      {'id': 'c', 'nom_complet': 'Fanta BAH', 'telephone2': '620000001'},
+      {'id': 'b', 'nom_complet': 'mariama  sow', 'telephone': '+224620000002'}, // homonyme : autre numéro
+      {'id': 'c', 'nom_complet': 'Fanta BAH', 'telephone2': '620000001'}, // même numéro que a
       {'id': 'd', 'nom_complet': 'Ibrahima DIALLO', 'telephone': '+224620000009'},
+      {'id': 'e', 'nom_complet': 'Ibrahima Diallo'}, // même nom, sans numéro
     ]);
-    expect(d, {'a', 'b', 'c'});
+    expect(d, {'a', 'c', 'd', 'e'});
   });
 
   test('Bons de sortie manquants dans la suite du carnet', () {
