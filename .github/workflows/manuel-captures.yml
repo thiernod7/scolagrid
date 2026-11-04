@@ -1,8 +1,9 @@
 name: Manuel - captures d'écran (essai)
 
-# Prend les captures du manuel utilisateur sur l'application d'ESSAI, avec une
-# école de démonstration aux données fictives (numéro de test 620 00 00 09, réservé).
-# Les captures sont rangées dans docs/manuel/captures (sur cette branche).
+# Parcours de l'application d'ESSAI dans un vrai navigateur, avec une école de
+# démonstration aux données fictives (numéro de test 620 00 00 09, réservé) :
+# sert à VÉRIFIER les écrans. Les captures vont dans docs/verifications/captures,
+# jamais dans le guide utilisateur (docs/manuel), mis à jour seulement sur demande.
 
 on:
   push:
@@ -48,7 +49,7 @@ jobs:
         working-directory: docs/manuel/outils
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
-        run: node captures.mjs "https://app-essai.$(echo "$VPS_HOST" | tr . -).sslip.io" connexion ../captures
+        run: node captures.mjs "https://app-essai.$(echo "$VPS_HOST" | tr . -).sslip.io" connexion ../../verifications/captures
       - name: École de démonstration (données fictives)
         env:
           VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
@@ -59,11 +60,11 @@ jobs:
         working-directory: docs/manuel/outils
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
-        run: node captures.mjs "https://app-essai.$(echo "$VPS_HOST" | tr . -).sslip.io" ecrans ../captures
+        run: node captures.mjs "https://app-essai.$(echo "$VPS_HOST" | tr . -).sslip.io" ecrans ../../verifications/captures
       - name: Ranger les captures
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/manuel/captures
-          git commit -qm "Manuel : captures d'écran (école de démonstration, essai)" || exit 0
+          git add docs/verifications/captures
+          git commit -qm "Vérification : captures d'écran de l'essai (école de démonstration)" || exit 0
           git pull -q --rebase origin "$GITHUB_REF_NAME" && git push -q origin "HEAD:$GITHUB_REF_NAME"
