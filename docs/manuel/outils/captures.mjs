@@ -161,6 +161,9 @@ if (etape === 'connexion') {
   });
   await etapeSure('encaisser', async () => {
     await aller('Caisse', 'Journal de caisse'); await photo('50-caisse-vide');
+    await clic('Dépenses'); await pause(3500); await semantique(); await arbre('dépenses'); await photo('58-depenses');
+    await clic('Nouvelle dépense'); await pause(2500); await semantique(); await photo('59-nouvelle-depense');
+    await page.keyboard.press('Escape'); await pause(1500); await retour();
     await clic('Encaisser'); await pause(3000); await semantique();
     const champ = page.getByRole('textbox', { name: 'Ajouter un élève', exact: false }).first();
     await champ.click(); await pause(300); await page.keyboard.type('DIALLO', { delay: 40 }); await pause(2500); await semantique();
