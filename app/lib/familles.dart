@@ -61,10 +61,13 @@ const _sqlFamilles = '''SELECT c.id, c.organisation_id, c.nom_complet, c.telepho
     sum(CASE WHEN ec.responsable_financier = 1 THEN 1 ELSE 0 END) AS charge,
     group_concat(DISTINCT ec.lien) AS liens,
     group_concat(DISTINCT CASE WHEN ec.responsable_financier = 1 THEN e.id END) AS a_charge,
-    group_concat(DISTINCT e.prenoms) AS prenoms_enfants
+    group_concat(e.prenoms || CASE WHEN cl.nom IS NULL THEN '' ELSE ' (' || cl.nom || ')' END, '|') AS enfants
   FROM contacts c
   JOIN eleves_contacts ec ON ec.contact_id = c.id
   JOIN eleves e ON e.id = ec.eleve_id
+  LEFT JOIN annees_scolaires a ON a.organisation_id = e.organisation_id AND a.en_cours = 1
+  LEFT JOIN inscriptions i ON i.eleve_id = e.id AND i.annee_id = a.id
+  LEFT JOIN classes cl ON cl.id = i.classe_id
   WHERE c.organisation_id = ?
   GROUP BY c.id''';
 
@@ -81,8 +84,23 @@ _SoldeEleve _soldeACharge(Map<String, Object?> f, Map<String, _SoldeEleve>? sold
   return (du: du, paye: paye, retard: retard);
 }
 
-String _liensLisibles(Object? liens) =>
-    '${liens ?? ''}'.split(',').where((x) => x.isNotEmpty).map((l) => liensFamille[l] ?? l).toSet().join(', ');
+String _liensLisibles(Object? liens, {String sep = ', '}) =>
+    '${liens ?? ''}'.split(',').where((x) => x.isNotEmpty).map((l) => liensFamille[l] ?? l).toSet().join(sep);
+
+List<String> _enfantsDe(Map<String, Object?> f) => '${f['enfants'] ?? ''}'.split('|').where((x) => x.isNotEmpty).toList();
+
+/// « 620 00 13 07 » : le numéro tel qu'on le dit, sans l'indicatif guinéen.
+String _telLisible(Object? tel) {
+  var t = '${tel ?? ''}'.replaceAll(RegExp(r'[^0-9]'), '');
+  if (t.isEmpty) return '';
+  if (t.startsWith('224') && t.length == 12) t = t.substring(3);
+  if (t.length != 9) return '${tel ?? ''}';
+  return '${t.substring(0, 3)} ${t.substring(3, 5)} ${t.substring(5, 7)} ${t.substring(7)}';
+}
+
+String _sansUnite(int v) => gnf(v).replaceAll(' GNF', '');
+
+const _chiffres = TextStyle(fontFeatures: [ui.FontFeature.tabularFigures()]);
 
 class FamillesScreen extends StatefulWidget {
   const FamillesScreen({super.key, required this.espace});
@@ -95,12 +113,18 @@ class FamillesScreen extends StatefulWidget {
 
 class _FamillesScreenState extends State<FamillesScreen> {
   final _recherche = TextEditingController();
-  String? _filtre; // tuteurs, payeurs, fratrie, retard, reste, doublons
+  String? _filtre; // retard, fratrie, doublons, tuteurs, payeurs, reste
   String _tri = 'nom';
   int _ordre = 1;
   int _page = 0;
   int _parPage = 50;
   String? _ouvert;
+
+  static const _plus = {
+    'tuteurs': 'Tuteurs principaux',
+    'payeurs': 'Responsables financiers',
+    'reste': 'Avec un reste à payer',
+  };
 
   @override
   void dispose() {
@@ -143,7 +167,7 @@ class _FamillesScreenState extends State<FamillesScreen> {
       final s = _soldeACharge(f, soldes);
       feuille.appendRow([
         t(f['nom_complet']), t(_liensLisibles(f['liens'])), t(f['telephone']), t(f['telephone2']), t(f['profession']),
-        t(f['adresse']), t('${f['prenoms_enfants'] ?? ''}'.replaceAll(',', ', ')), xl.IntCellValue(f['tutelle'] as int? ?? 0),
+        t(f['adresse']), t(_enfantsDe(f).join(', ')), xl.IntCellValue(f['tutelle'] as int? ?? 0),
         xl.IntCellValue(f['charge'] as int? ?? 0), xl.IntCellValue(s.du - s.paye), xl.IntCellValue(s.retard),
       ]);
     }
@@ -174,7 +198,7 @@ class _FamillesScreenState extends State<FamillesScreen> {
               return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Expanded(child: liste),
                 Container(
-                  width: 520,
+                  width: 480,
                   decoration: BoxDecoration(border: Border(left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant))),
                   child: FicheFamille(
                     key: ValueKey(ouvert),
@@ -196,14 +220,9 @@ class _FamillesScreenState extends State<FamillesScreen> {
     final doublons = famillesEnDouble(familles);
     final q = nomSimplifie(_recherche.text);
     final chiffres = _recherche.text.replaceAll(RegExp(r'[^0-9]'), '');
-    final liste = familles.where((f) {
-      if (q.isNotEmpty &&
-          !nomSimplifie('${f['nom_complet']} ${f['prenoms_enfants'] ?? ''}').contains(q) &&
-          !(chiffres.length >= 3 && '${f['telephone'] ?? ''}${f['telephone2'] ?? ''}'.replaceAll(' ', '').contains(chiffres))) {
-        return false;
-      }
+    bool garde(Map<String, Object?> f, String? filtre) {
       final s = _soldeACharge(f, soldes);
-      return switch (_filtre) {
+      return switch (filtre) {
         'tuteurs' => (f['tutelle'] as int? ?? 0) > 0,
         'payeurs' => (f['charge'] as int? ?? 0) > 0,
         'fratrie' => (f['charge'] as int? ?? 0) >= 2,
@@ -212,15 +231,25 @@ class _FamillesScreenState extends State<FamillesScreen> {
         'doublons' => doublons.contains(f['id']),
         _ => true,
       };
-    }).map((f) => Map<String, Object?>.from(f)).toList()
+    }
+
+    final cherches = familles.where((f) =>
+        q.isEmpty ||
+        nomSimplifie('${f['nom_complet']} ${f['enfants'] ?? ''}').contains(q) ||
+        (chiffres.length >= 3 && '${f['telephone'] ?? ''}${f['telephone2'] ?? ''}'.replaceAll(' ', '').contains(chiffres)));
+    int reste(Map<String, Object?> f) {
+      final s = _soldeACharge(f, soldes);
+      return (f['charge'] as int? ?? 0) == 0 ? -1 : s.du - s.paye;
+    }
+
+    final liste = cherches.where((f) => garde(f, _filtre)).map((f) => Map<String, Object?>.from(f)).toList()
       ..sort((a, b) {
-        final v = _tri == 'enfants'
-            ? (a['nb'] as int? ?? 0).compareTo(b['nb'] as int? ?? 0)
+        final v = _tri == 'reste'
+            ? reste(a).compareTo(reste(b))
             : nomSimplifie('${a['nom_complet']}').compareTo(nomSimplifie('${b['nom_complet']}'));
         return v * _ordre;
       });
-    final fratries = familles.where((f) => (f['charge'] as int? ?? 0) >= 2).length;
-    final enRetard = soldes == null ? 0 : familles.where((f) => _soldeACharge(f, soldes).retard > 0).length;
+    int compte(String filtre) => familles.where((f) => garde(f, filtre)).length;
     final pages = liste.isEmpty ? 1 : (liste.length / _parPage).ceil();
     final page = _page.clamp(0, pages - 1);
     final affiches = liste.skip(page * _parPage).take(_parPage).toList();
@@ -229,196 +258,199 @@ class _FamillesScreenState extends State<FamillesScreen> {
           _page = 0;
         });
 
-    Widget triable(String libelle, String cle) => InkWell(
+    Widget puce(String? cle, String libelle) {
+      final choisi = _filtre == cle;
+      return ChoiceChip(
+        label: Text(libelle),
+        selected: choisi,
+        showCheckmark: false,
+        visualDensity: VisualDensity.compact,
+        labelStyle: TextStyle(fontSize: 13, color: choisi ? schema.onSecondaryContainer : gris),
+        side: BorderSide(color: choisi ? Colors.transparent : schema.outlineVariant),
+        onSelected: (_) => filtrer(() => _filtre = cle),
+      );
+    }
+
+    Widget enTete(String libelle, String cle) => InkWell(
           onTap: () => _trier(cle),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(libelle, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-            const SizedBox(width: 4),
-            Icon(_tri == cle ? Icons.swap_vert : Icons.unfold_more, size: 13, color: gris),
+            Text(libelle, style: TextStyle(fontSize: 12, color: gris, letterSpacing: .3)),
+            if (_tri == cle) Icon(_ordre > 0 ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: gris),
           ]),
         );
 
-    Widget roles(Map<String, Object?> f) => Wrap(spacing: 4, runSpacing: 4, children: [
-          if ((f['tutelle'] as int? ?? 0) > 0) Etat('tuteur${(f['tutelle'] as int) > 1 ? ' ×${f['tutelle']}' : ''}', ton: Ton.info),
-          if ((f['charge'] as int? ?? 0) > 0) Etat('payeur${(f['charge'] as int) > 1 ? ' ×${f['charge']}' : ''}', ton: Ton.neutre),
-        ]);
-
-    return ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
-      Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 8, children: [
-        EnTetePage(
-          titre: 'Parents & tuteurs',
-          sousTitre: '${liste.length}${liste.length != familles.length ? ' sur ${familles.length}' : ''} · $fratries fratrie(s)'
-              '${enRetard > 0 ? ' · $enRetard en retard' : ''}',
-        ),
-        OutlinedButton.icon(
+    final nbRetard = soldes == null ? 0 : compte('retard');
+    final nbFratrie = compte('fratrie');
+    return ListView(padding: EdgeInsets.fromLTRB(telephone ? 12 : 24, 16, telephone ? 12 : 24, 24), children: [
+      Row(children: [
+        Text('Parents & tuteurs', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
+        const SizedBox(width: 8),
+        Text('${familles.length}', style: TextStyle(fontSize: 16, color: gris)),
+        const Spacer(),
+        IconButton(
+          tooltip: 'Exporter la liste (Excel)',
           onPressed: liste.isEmpty ? null : () => _exporter(liste, soldes),
-          icon: const Icon(Icons.download_outlined, size: 16),
-          label: const Text('Exporter'),
+          icon: Icon(Icons.download_outlined, size: 20, color: gris),
         ),
       ]),
-      const SizedBox(height: 8),
-      Text('Une ligne par personne. Le reste dû ne compte que les enfants à sa charge (ceux dont elle est responsable financier).',
-          style: TextStyle(fontSize: 12, color: gris)),
       const SizedBox(height: 12),
-      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        SizedBox(
-          width: telephone ? double.infinity : 340,
-          height: 36,
-          child: TextField(
-            controller: _recherche,
-            onChanged: (_) => filtrer(() {}),
-            style: const TextStyle(fontSize: 14),
-            decoration: InputDecoration(
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              prefixIcon: Icon(Icons.search, size: 18, color: gris),
-              prefixIconConstraints: const BoxConstraints(minWidth: 36),
-              hintText: "Parent, téléphone ou prénom d'un enfant",
-              hintStyle: TextStyle(fontSize: 14, color: gris),
-            ),
+      SizedBox(
+        height: 40,
+        child: TextField(
+          controller: _recherche,
+          onChanged: (_) => filtrer(() {}),
+          style: const TextStyle(fontSize: 14),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            prefixIcon: Icon(Icons.search, size: 18, color: gris),
+            prefixIconConstraints: const BoxConstraints(minWidth: 36),
+            suffixIcon: _recherche.text.isEmpty
+                ? null
+                : IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => filtrer(_recherche.clear)),
+            hintText: "Nom, téléphone ou prénom d'un enfant",
+            hintStyle: TextStyle(fontSize: 14, color: gris),
           ),
         ),
-        MenuCompact<String>(
-          largeur: 250,
-          valeur: _filtre,
-          tous: 'Tous les contacts',
-          choix: {
-            'tuteurs': 'Tuteurs principaux',
-            'payeurs': 'Responsables financiers',
-            'fratrie': 'Fratries (2 enfants et plus)',
-            'retard': 'En retard de paiement',
-            'reste': 'Avec un reste à payer',
-            if (doublons.isNotEmpty) 'doublons': 'Doublons probables (${doublons.length})',
-          },
-          onChanged: (v) => filtrer(() => _filtre = v),
+      ),
+      const SizedBox(height: 10),
+      Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        puce(null, 'Tous'),
+        if (nbRetard > 0) puce('retard', 'En retard · $nbRetard'),
+        if (nbFratrie > 0) puce('fratrie', 'Fratries · $nbFratrie'),
+        if (doublons.isNotEmpty) puce('doublons', 'Doublons · ${doublons.length}'),
+        PopupMenuButton<String>(
+          tooltip: "Plus de filtres",
+          onSelected: (v) => filtrer(() => _filtre = v),
+          itemBuilder: (_) => [for (final e in _plus.entries) CheckedPopupMenuItem(value: e.key, checked: _filtre == e.key, child: Text(e.value))],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(_plus[_filtre] ?? 'Plus', style: TextStyle(fontSize: 13, color: _plus.containsKey(_filtre) ? schema.primary : gris)),
+              Icon(Icons.expand_more, size: 16, color: gris),
+            ]),
+          ),
         ),
-        if (telephone)
-          MenuCompact<String>(
-            largeur: 200,
-            valeur: _tri == 'enfants' ? 'enfants' : null,
-            tous: 'Trier par nom',
-            choix: const {'enfants': "Trier par nombre d'enfants"},
-            onChanged: (v) => setState(() {
-              _tri = v ?? 'nom';
-              _ordre = v == null ? 1 : -1;
-            }),
-          ),
-        if (_filtre != null || _recherche.text.isNotEmpty)
-          TextButton.icon(
-            style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
-            onPressed: () => filtrer(() {
-              _filtre = null;
-              _recherche.clear();
-            }),
-            icon: const Icon(Icons.close, size: 14),
-            label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
-          ),
       ]),
-      const SizedBox(height: 12),
       if (_filtre == 'doublons')
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text("Même téléphone, ou même nom quand l'un n'a pas de numéro : sans doute le même parent créé deux fois. "
-              'Ouvrez celui à garder et choisissez « Fusionner avec… ».', style: TextStyle(fontSize: 12, color: gris)),
+          padding: const EdgeInsets.only(top: 8),
+          child: Text("Même téléphone, ou même nom quand l'un n'a pas de numéro : sans doute la même personne créée deux fois. "
+              'Ouvrez celle à garder, puis ⋯ › Fusionner.', style: TextStyle(fontSize: 12, color: gris)),
         ),
-      if (!telephone)
+      const SizedBox(height: 16),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Row(children: [
+          enTete('NOM', 'nom'),
+          const Spacer(),
+          Tooltip(
+            message: 'Ne compte que les enfants à sa charge (dont elle est responsable financier). « — » : ne paie pour aucun enfant.',
+            child: Icon(Icons.info_outline, size: 14, color: gris),
+          ),
+          const SizedBox(width: 6),
+          enTete('RESTE DÛ (GNF)', 'reste'),
+        ]),
+      ),
+      Divider(height: 1, color: schema.outlineVariant),
+      if (affiches.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text('Personne.', style: TextStyle(color: gris))),
+      for (final f in affiches) ...[
+        _ligne(context, f, soldes, doublons.contains(f['id'])),
+        Divider(height: 1, color: schema.outlineVariant.withValues(alpha: .6)),
+      ],
+      if (liste.length > 25)
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+          padding: const EdgeInsets.only(top: 8),
           child: Row(children: [
-            const SizedBox(width: 48),
-            Expanded(flex: 3, child: Align(alignment: Alignment.centerLeft, child: triable('Contact', 'nom'))),
-            const SizedBox(width: 150, child: Text('Rôles', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500))),
-            Expanded(flex: 3, child: Text('Enfants', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: gris))),
-            SizedBox(width: 60, child: Align(alignment: Alignment.centerRight, child: triable('Liés', 'enfants'))),
-            const SizedBox(width: 150, child: Text('Reste dû', textAlign: TextAlign.right, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500))),
-          ]),
-        ),
-      if (affiches.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text('Aucun contact.', style: TextStyle(color: gris))),
-      for (final f in affiches)
-        Builder(builder: (context) {
-          final s = _soldeACharge(f, soldes);
-          final reste = s.du - s.paye;
-          final paie = (f['charge'] as int? ?? 0) > 0;
-          final montant = soldes == null
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              : Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text(!paie ? '—' : (reste > 0 ? gnf(reste) : 'À jour'), style: styleMono.copyWith(fontSize: 13)),
-                  if (s.retard > 0) Etat('${gnf(s.retard)} en retard', ton: Ton.retard),
-                  if (doublons.contains(f['id']) && s.retard == 0) const Etat('Doublon ?', ton: Ton.attente),
-                ]);
-          final sousTitre = [
-            _liensLisibles(f['liens']),
-            if (f['profession'] != null) '${f['profession']}',
-            if (telephone && f['telephone'] != null) '${f['telephone']}',
-          ].where((x) => x.isNotEmpty).join(' · ');
-          return Card(
-            color: _ouvert == f['id'] ? schema.secondaryContainer.withValues(alpha: .4) : null,
-            child: InkWell(
-              onTap: () => _ouvrir(f['id'] as String),
+            Text('${page * _parPage + 1}–${page * _parPage + affiches.length} sur ${liste.length}', style: TextStyle(fontSize: 13, color: gris)),
+            const Spacer(),
+            PopupMenuButton<int>(
+              tooltip: 'Lignes par page',
+              onSelected: (v) => filtrer(() => _parPage = v),
+              itemBuilder: (_) => [for (final n in const [25, 50, 100]) CheckedPopupMenuItem(value: n, checked: n == _parPage, child: Text('$n par page'))],
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: telephone
-                    ? Row(children: [
-                        Initiales('${f['nom_complet']}', taille: 36),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('${f['nom_complet']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500)),
-                            if (sousTitre.isNotEmpty) Text(sousTitre, style: TextStyle(fontSize: 12, color: gris)),
-                            const SizedBox(height: 4),
-                            roles(f),
-                          ]),
-                        ),
-                        montant,
-                      ])
-                    : Row(children: [
-                        Initiales('${f['nom_complet']}', taille: 36),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 3,
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('${f['nom_complet']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500)),
-                            Text([sousTitre, if (f['telephone'] != null) '${f['telephone']}'].where((x) => x.isNotEmpty).join(' · '),
-                                overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
-                          ]),
-                        ),
-                        SizedBox(width: 150, child: roles(f)),
-                        Expanded(
-                          flex: 3,
-                          child: Text('${f['prenoms_enfants'] ?? ''}'.replaceAll(',', ', '),
-                              maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-                        ),
-                        SizedBox(width: 60, child: Text('${f['nb']}', textAlign: TextAlign.right, style: styleMono.copyWith(fontSize: 13))),
-                        SizedBox(width: 150, child: Align(alignment: Alignment.centerRight, child: montant)),
-                      ]),
+                padding: const EdgeInsets.all(6),
+                child: Text('$_parPage par page', style: TextStyle(fontSize: 13, color: gris)),
               ),
             ),
-          );
-        }),
-      const SizedBox(height: 8),
-      Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 8, children: [
-        Text(liste.isEmpty ? 'Aucun résultat' : '${page * _parPage + 1}–${page * _parPage + affiches.length} sur ${liste.length}',
-            style: TextStyle(fontSize: 14, color: gris)),
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          MenuCompact<int>(
-            largeur: 140,
-            valeur: _parPage == 50 ? null : _parPage,
-            tous: '50 par page',
-            choix: const {25: '25 par page', 100: '100 par page'},
-            onChanged: (v) => filtrer(() => _parPage = v ?? 50),
-          ),
-          IconButton(
-              tooltip: 'Page précédente',
-              onPressed: page > 0 ? () => setState(() => _page = page - 1) : null,
-              icon: const Icon(Icons.chevron_left)),
-          Text('${page + 1} / $pages', style: TextStyle(fontSize: 14, color: gris)),
-          IconButton(
-              tooltip: 'Page suivante',
-              onPressed: page < pages - 1 ? () => setState(() => _page = page + 1) : null,
-              icon: const Icon(Icons.chevron_right)),
-        ]),
-      ]),
+            IconButton(
+                tooltip: 'Page précédente',
+                onPressed: page > 0 ? () => setState(() => _page = page - 1) : null,
+                icon: const Icon(Icons.chevron_left, size: 20)),
+            IconButton(
+                tooltip: 'Page suivante',
+                onPressed: page < pages - 1 ? () => setState(() => _page = page + 1) : null,
+                icon: const Icon(Icons.chevron_right, size: 20)),
+          ]),
+        ),
     ]);
+  }
+
+  Widget _ligne(BuildContext context, Map<String, Object?> f, Map<String, _SoldeEleve>? soldes, bool doublon) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final s = _soldeACharge(f, soldes);
+    final reste = s.du - s.paye;
+    final charge = f['charge'] as int? ?? 0;
+    final tutelle = f['tutelle'] as int? ?? 0;
+    final enfants = _enfantsDe(f);
+    final liens = _liensLisibles(f['liens'], sep: ' / ');
+    final qui = '${liens.isEmpty ? 'Parent' : liens} de ${enfants.take(2).join(', ')}${enfants.length > 2 ? ' +${enfants.length - 2}' : ''}';
+    final tel = _telLisible(f['telephone']);
+    final marques = [
+      if (charge >= 2) 'Fratrie de $charge',
+      if (charge == 0) 'ne paie pas',
+      if (charge > 0 && tutelle == 0) 'payeur, pas tuteur',
+      if (doublon) 'Doublon ?',
+    ];
+    final Widget montant;
+    if (soldes == null) {
+      montant = const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2));
+    } else if (charge == 0) {
+      montant = Text('—', style: TextStyle(color: gris));
+    } else if (reste <= 0) {
+      montant = const Text('À jour', style: TextStyle(fontSize: 13, color: Couleurs.regle));
+    } else {
+      montant = Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+        Text(_sansUnite(reste),
+            style: _chiffres.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: s.retard > 0 ? Couleurs.retard : null)),
+        if (s.retard > 0)
+          Text('${_sansUnite(s.retard)} en retard', style: _chiffres.copyWith(fontSize: 11, color: Couleurs.retard)),
+      ]);
+    }
+    return Material(
+      color: _ouvert == f['id'] ? schema.secondaryContainer.withValues(alpha: .5) : Colors.transparent,
+      child: InkWell(
+        onTap: () => _ouvrir(f['id'] as String),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Flexible(
+                    child: Text('${f['nom_complet']}',
+                        overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  ),
+                  for (final m in marques) ...[
+                    const SizedBox(width: 6),
+                    Text(m,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: m == 'Doublon ?' ? Couleurs.attente : (m.startsWith('Fratrie') ? schema.primary : gris))),
+                  ],
+                ]),
+                const SizedBox(height: 2),
+                Text([qui, if (tel.isNotEmpty) tel].join(' · '),
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+              ]),
+            ),
+            const SizedBox(width: 12),
+            montant,
+          ]),
+        ),
+      ),
+    );
   }
 }
 
@@ -563,10 +595,17 @@ class FicheFamille extends StatelessWidget {
         'SELECT * FROM contacts WHERE id = ?',
         parametres: [contactId],
         builder: (context, contacts) {
-          if (contacts.isEmpty) return const Center(child: Text('Contact introuvable.'));
+          if (contacts.isEmpty) {
+            return Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Text('Contact introuvable.'),
+                TextButton(onPressed: fermer, child: const Text('Fermer')),
+              ]),
+            );
+          }
           final c = contacts.first;
           return Requete(
-            '''SELECT e.id, e.nom, e.prenoms, e.matricule, ec.lien, ec.tuteur_principal, ec.responsable_financier,
+            '''SELECT e.id, e.nom, e.prenoms, ec.lien, ec.tuteur_principal, ec.responsable_financier,
                  i.id AS inscription_id, i.statut, cl.nom AS classe
                FROM eleves_contacts ec JOIN eleves e ON e.id = ec.eleve_id
                LEFT JOIN annees_scolaires a ON a.organisation_id = e.organisation_id AND a.en_cours = 1
@@ -583,9 +622,9 @@ class FicheFamille extends StatelessWidget {
       );
 
   Widget _contenu(BuildContext context, Map<String, Object?> c, Lignes enfants, Map<String, _SoldeEleve>? soldes) {
-    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
     final aCharge = enfants.where((e) => e['responsable_financier'] == 1).toList();
-    final tutelle = enfants.where((e) => e['tuteur_principal'] == 1).length;
     var du = 0, paye = 0, retard = 0;
     for (final e in aCharge) {
       final s = soldes?[e['id']];
@@ -594,125 +633,121 @@ class FicheFamille extends StatelessWidget {
       paye += s.paye;
       retard += s.retard;
     }
+    final reste = du - paye;
     final aEncaisser = aCharge.where((e) => e['inscription_id'] != null).toList();
     final peutEncaisser = espace.fondateur || espace.droits.contains('encaisser');
     final gere = espace.fondateur || espace.droits.contains('gerer_inscriptions');
-    Widget chiffre(String libelle, String valeur, {Color? couleur, String? dessous}) => Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(libelle, style: TextStyle(fontSize: 12, color: gris)),
-            Text(valeur, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: couleur)),
-            if (dessous != null) Text(dessous, style: TextStyle(fontSize: 12, color: couleur ?? gris)),
-          ]),
-        );
+    final tel = c['telephone'] == null ? null : '${c['telephone']}';
+    final liens = _liensLisibles(enfants.map((e) => e['lien']).join(','), sep: ' / ');
+    final details = [
+      if (c['telephone2'] != null) 'Autre numéro : ${_telLisible(c['telephone2'])}',
+      if (c['profession'] != null) '${c['profession']}',
+      if (c['adresse'] != null) '${c['adresse']}',
+    ];
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 40), children: [
-      Row(children: [
-        Initiales('${c['nom_complet']}', taille: 44),
-        const SizedBox(width: 12),
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 40), children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${c['nom_complet']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            Text([
-              _liensLisibles(enfants.map((e) => e['lien']).join(',')),
-              if (c['profession'] != null) '${c['profession']}',
-            ].where((x) => x.isNotEmpty).join(' · '), style: TextStyle(fontSize: 12, color: gris)),
-            Text([if (c['telephone'] != null) '${c['telephone']}', if (c['telephone2'] != null) '${c['telephone2']}'].join(' · '),
-                style: TextStyle(fontSize: 13, color: gris)),
-            if (c['adresse'] != null) Text('${c['adresse']}', style: TextStyle(fontSize: 12, color: gris)),
+            const SizedBox(height: 8),
+            Text('${c['nom_complet']}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text([if (liens.isNotEmpty) liens, if (tel != null) _telLisible(tel)].join(' · '), style: TextStyle(fontSize: 13, color: gris)),
+            if (details.isNotEmpty) Text(details.join(' · '), style: TextStyle(fontSize: 12, color: gris)),
           ]),
         ),
-        IconButton(tooltip: 'Fermer', onPressed: fermer, icon: const Icon(Icons.close)),
+        if (gere)
+          PopupMenuButton<String>(
+            tooltip: "Plus d'actions",
+            icon: Icon(Icons.more_horiz, color: gris),
+            onSelected: (v) => v == 'corriger' ? _modifierParent(context, contactId, c) : _fusionner(context, contactId, c),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'corriger', child: Text('Corriger les coordonnées')),
+              PopupMenuItem(value: 'fusionner', child: Text('Fusionner avec…')),
+            ],
+          ),
+        IconButton(tooltip: 'Fermer', onPressed: fermer, icon: Icon(Icons.close, color: gris)),
       ]),
-      const SizedBox(height: 16),
-      Row(children: [
-        chiffre('Tutelle', '$tutelle'),
-        chiffre('À sa charge', '${aCharge.length}'),
-        chiffre(
-          'Reste dû',
-          aCharge.isEmpty ? '—' : (soldes == null ? '…' : (du - paye > 0 ? gnf(du - paye) : 'à jour')),
-          couleur: retard > 0 ? Couleurs.retard : (aCharge.isNotEmpty && soldes != null && du - paye == 0 ? Couleurs.regle : null),
-          dessous: retard > 0 ? '${gnf(retard)} en retard' : null,
-        ),
-      ]),
-      if (aCharge.length >= 2) ...[
+      if (tel != null) ...[
         const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: Couleurs.regle.withValues(alpha: .08), borderRadius: BorderRadius.circular(8)),
-          child: Text.rich(TextSpan(children: [
-            TextSpan(text: 'Fratrie de ${aCharge.length}. ', style: const TextStyle(fontWeight: FontWeight.w600)),
-            TextSpan(text: "La réduction fratrie (si l'école en a une) s'applique sur la scolarité de chacun.", style: TextStyle(color: gris)),
-          ])),
+        Row(children: [
+          IconButton.filledTonal(tooltip: 'Appeler', onPressed: () => _appeler(tel), icon: const Icon(Icons.call_outlined, size: 18)),
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+              tooltip: 'WhatsApp', onPressed: () => _appeler(tel, whatsapp: true), icon: const Icon(Icons.chat_outlined, size: 18)),
+        ]),
+      ],
+      const SizedBox(height: 20),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: schema.surfaceContainerHighest.withValues(alpha: .5), borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Reste dû', style: TextStyle(fontSize: 12, color: gris)),
+          const SizedBox(height: 2),
+          if (aCharge.isEmpty)
+            Text('Ne paie pour aucun enfant', style: TextStyle(fontSize: 16, color: gris))
+          else if (soldes == null)
+            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+          else if (reste <= 0)
+            const Text('À jour', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Couleurs.regle))
+          else ...[
+            Text(gnf(reste), style: _chiffres.copyWith(fontSize: 22, fontWeight: FontWeight.w600)),
+            if (retard > 0) Text('dont ${gnf(retard)} en retard', style: const TextStyle(fontSize: 13, color: Couleurs.retard)),
+          ],
+          if (aCharge.length >= 2) ...[
+            const SizedBox(height: 8),
+            Text('Fratrie de ${aCharge.length} : la réduction s’applique sur la scolarité de chacun.',
+                style: TextStyle(fontSize: 12, color: gris)),
+          ],
+        ]),
+      ),
+      if (peutEncaisser && aEncaisser.isNotEmpty && reste > 0) ...[
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => EncaisserScreen(espace: espace, eleveId: aEncaisser.first['id'] as String))),
+            icon: const Icon(Icons.point_of_sale_outlined, size: 18),
+            label: const Text('Encaisser'),
+          ),
         ),
       ],
-      const SizedBox(height: 16),
-      Text('ÉLÈVES RATTACHÉS', style: TextStyle(fontSize: 12, letterSpacing: .6, fontWeight: FontWeight.w500, color: gris)),
+      const SizedBox(height: 24),
+      Text('ENFANTS', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris)),
       const SizedBox(height: 4),
-      for (final e in enfants)
+      for (final e in enfants) ...[
         Builder(builder: (context) {
           final s = soldes?[e['id']];
+          final paie = e['responsable_financier'] == 1;
           return InkWell(
             onTap: () => Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: espace, eleveId: e['id'] as String))),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: 10),
               child: Row(children: [
-                Initiales('${e['nom']} ${e['prenoms']}', taille: 36),
-                const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('${e['nom']} ${e['prenoms']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    Text('${e['prenoms']} ${e['nom']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     Text([
                       e['classe'] == null ? 'Pas inscrit cette année' : '${e['classe']}',
-                      '${liensFamille[e['lien']] ?? e['lien']}',
-                      if (e['tuteur_principal'] == 1) 'tuteur',
-                      if (e['responsable_financier'] == 1) 'payeur',
+                      if (e['tuteur_principal'] != 1) 'pas tuteur principal',
+                      if (!paie) 'ne paie pas',
                     ].join(' · '), style: TextStyle(fontSize: 12, color: gris)),
                   ]),
                 ),
                 Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  e['statut'] == null ? const Etat('Pas inscrit') : etatInscription('${e['statut']}'),
-                  if (s != null && e['responsable_financier'] == 1)
-                    Text(s.du - s.paye > 0 ? gnf(s.du - s.paye) : 'à jour', style: styleMono.copyWith(fontSize: 12)),
+                  if (e['statut'] != null) etatInscription('${e['statut']}'),
+                  if (s != null && paie)
+                    Text(s.du - s.paye > 0 ? _sansUnite(s.du - s.paye) : 'À jour',
+                        style: _chiffres.copyWith(fontSize: 12, color: s.retard > 0 ? Couleurs.retard : gris)),
                 ]),
               ]),
             ),
           );
         }),
-      const SizedBox(height: 16),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        if (c['telephone'] != null) ...[
-          OutlinedButton.icon(
-              onPressed: () => _appeler('${c['telephone']}'), icon: const Icon(Icons.call_outlined, size: 16), label: const Text('Appeler')),
-          OutlinedButton.icon(
-              onPressed: () => _appeler('${c['telephone']}', whatsapp: true),
-              icon: const Icon(Icons.chat_outlined, size: 16),
-              label: const Text('WhatsApp')),
-        ],
-        if (gere) ...[
-          OutlinedButton.icon(
-              onPressed: () => _modifierParent(context, contactId, c),
-              icon: const Icon(Icons.edit_outlined, size: 16),
-              label: const Text('Corriger les coordonnées')),
-          OutlinedButton.icon(
-              onPressed: () => _fusionner(context, contactId, c),
-              icon: const Icon(Icons.merge_type, size: 16),
-              label: const Text('Fusionner avec…')),
-        ],
-        if (peutEncaisser && aEncaisser.isNotEmpty && du - paye > 0)
-          FilledButton.icon(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => EncaisserScreen(espace: espace, eleveId: aEncaisser.first['id'] as String))),
-            icon: const Icon(Icons.point_of_sale_outlined, size: 16),
-            label: const Text('Encaisser'),
-          ),
-      ]),
-      if (peutEncaisser && aEncaisser.length > 1)
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text('Les autres enfants à sa charge sont proposés sur le même reçu.', style: TextStyle(fontSize: 12, color: gris)),
-        ),
+        Divider(height: 1, color: schema.outlineVariant.withValues(alpha: .6)),
+      ],
     ]);
   }
 }
-
