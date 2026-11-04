@@ -5,7 +5,8 @@ begin;
 select id as moi from auth.users where phone = :'tel' \gset
 select set_config('request.jwt.claims', json_build_object('sub', :'moi', 'role', 'authenticated', 'is_anonymous', false)::text, true) as c1,
        set_config('request.jwt.claim.sub', :'moi', true) as c2 \gset
-select count(*) filter (where nom <> 'Groupe scolaire Les Manguiers') > 0 as autre from public.organisations where cree_par = :'moi' \gset
+select count(*) > 0 as autre from public.rattachements r join public.organisations o on o.id = r.organisation_id
+  where r.user_id = :'moi' and o.nom <> 'Groupe scolaire Les Manguiers' \gset
 \if :autre
   \echo 'Ce numéro de test a déjà une autre école : rien n''est fait.'
   rollback;

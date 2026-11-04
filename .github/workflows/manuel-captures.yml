@@ -1,7 +1,7 @@
 name: Manuel - captures d'écran (essai)
 
 # Prend les captures du manuel utilisateur sur l'application d'ESSAI, avec une
-# école de démonstration aux données fictives (numéro de test 620 00 00 04).
+# école de démonstration aux données fictives (numéro de test 620 00 00 09, réservé).
 # Les captures sont rangées dans docs/manuel/captures (sur cette branche).
 
 on:
@@ -38,6 +38,12 @@ jobs:
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
           echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519
+      - name: Remettre en état le compte de test 0004 (une fois)
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres" \
+            < docs/manuel/outils/reparer-0004.sql
       - name: Connexion (crée le compte de test si besoin)
         working-directory: docs/manuel/outils
         env:
@@ -47,7 +53,7 @@ jobs:
         env:
           VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
         run: |
-          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres -v tel=224620000004" \
+          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres -v tel=224620000009" \
             < docs/manuel/outils/ecole-demo.sql
       - name: Écrans
         working-directory: docs/manuel/outils
