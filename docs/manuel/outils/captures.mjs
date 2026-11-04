@@ -93,7 +93,7 @@ if (etape === 'connexion') {
   });
 } else {
   // Barre latérale (PC 1440 × 900) : positions fixes.
-  const barre = { 'Accueil': 79, 'Élèves': 154, 'Caisse': 229, 'Dépenses': 267, 'Personnel': 342, 'Postes': 380, 'Paramètres': 418 };
+  const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Caisse': 267, 'Dépenses': 305, 'Personnel': 380, 'Postes': 418, 'Paramètres': 456 };
   const attendre = (texte, ms = 12000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
   const retour = async () => {
     const b = page.getByRole('button', { name: 'Retour' });
@@ -184,6 +184,11 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape'); await pause(2000); await semantique();
     await aller('Caisse', 'Journal de caisse'); await pause(4000); await arbre('journal'); await photo('56-journal-caisse');
     await page.mouse.click(700, 220); await pause(3000); await semantique(); await arbre('reçu'); await photo('57-recu');
+    await retour();
+  });
+  await etapeSure('familles', async () => {
+    await aller('Familles', 'Familles'); await arbre('familles'); await photo('45-familles');
+    await page.mouse.click(700, 260); await pause(3500); await semantique(); await arbre('fiche famille'); await photo('46-fiche-famille');
     await retour();
   });
   await etapeSure('menu-depenses', async () => { await aller('Dépenses', 'Nouvelle dépense'); await photo('58-depenses'); });
