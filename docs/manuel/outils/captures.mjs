@@ -9,7 +9,8 @@ const ctx = await chromium.launchPersistentContext('profil', {
   viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, locale: 'fr-FR', colorScheme: 'light',
 });
 const page = ctx.pages()[0] ?? (await ctx.newPage());
-page.on('console', (m) => { if (m.type() === 'error') console.log('console:', m.text().slice(0, 200)); });
+page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') console.log('console:', m.type(), m.text().slice(0, 600)); });
+page.on('pageerror', (e) => console.log('pageerror:', String(e).slice(0, 600)));
 
 const pause = (ms) => page.waitForTimeout(ms);
 async function semantique() {
