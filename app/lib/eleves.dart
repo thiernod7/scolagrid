@@ -954,7 +954,7 @@ class _TableauEleves extends StatelessWidget {
                       Text('${e['classe'] ?? 'Pas inscrit'} · ${e['matricule']}',
                           overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
                       if (e['tuteur'] != null)
-                        Text('${e['tuteur']}${e['tuteur_tel'] != null ? ' · ${e['tuteur_tel']}' : ''}',
+                        Text('${e['tuteur']}${e['tuteur_tel'] != null ? ' · ${_telLisible(e['tuteur_tel'])}' : ''}',
                             overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
                     ]),
                   ),

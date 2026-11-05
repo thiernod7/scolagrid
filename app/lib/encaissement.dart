@@ -882,7 +882,13 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                   },
                 )),
           ),
-          SizedBox(
+          // Sur téléphone : date technique et encaisseur en une ligne, sans champs grisés.
+          if (n < 4)
+            SizedBox(
+              width: c.maxWidth,
+              child: Text('Saisi le $technique · par ${_moi ?? ''}', style: TextStyle(fontSize: 12, color: gris)),
+            ),
+          if (n >= 4) SizedBox(
             width: l,
             child: champ(
                 'Date technique',
@@ -892,7 +898,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                     style: styleChamp.copyWith(color: gris),
                     decoration: fin(actif: false))),
           ),
-          SizedBox(
+          if (n >= 4) SizedBox(
             width: l,
             child: champ(
                 'Encaissé par',

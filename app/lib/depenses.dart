@@ -115,8 +115,11 @@ class _DepensesScreenState extends State<DepensesScreen> {
     String? qui = direction.keys.firstOrNull;
     PhotoPrete? justificatif;
     int? m() => int.tryParse(montant.text.replaceAll(RegExp(r'[^0-9]'), ''));
-    Widget deux(Widget a, Widget b) =>
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: a), const SizedBox(width: 12), Expanded(child: b)]);
+    // Deux champs côte à côte ; sur téléphone l'un sous l'autre (sauf montant et date, courts).
+    final etroit = MediaQuery.sizeOf(context).width < 600;
+    Widget deux(Widget a, Widget b, {bool toujours = false}) => etroit && !toujours
+        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [a, const SizedBox(height: 14), b])
+        : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: a), const SizedBox(width: 12), Expanded(child: b)]);
     final ok = await _formulaire(
       context,
       'Nouvelle dépense',
@@ -141,6 +144,7 @@ class _DepensesScreenState extends State<DepensesScreen> {
                 child: Text(_dateLisible(_date(date))),
               ),
             ),
+            toujours: true,
           ),
           if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
           deux(

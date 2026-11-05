@@ -116,8 +116,8 @@ if (etape === 'connexion') {
   };
   await etapeSure('m-accueil', async () => { await onglet('Accueil'); await photo('m01-accueil'); });
   await etapeSure('m-eleves', async () => {
-    await onglet('Élèves'); await voir('DIALLO'); await photo('m02-eleves');
-    await page.getByText('DIALLO', { exact: false }).first().click(); await pause(3500); await semantique();
+    await onglet('Élèves'); await voir('BAH'); await photo('m02-eleves');
+    await page.getByRole('button', { name: /BAH Djénabou/ }).first().click(); await pause(3500); await semantique();
     await photo('m03-fiche-eleve');
     await clic('Contacts'); await pause(1500); await photo('m04-fiche-contacts');
     await clic('Finances'); await pause(1500); await photo('m05-fiche-finances');

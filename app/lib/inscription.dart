@@ -371,7 +371,8 @@ class _InscrireScreenState extends State<InscrireScreen> {
     final texte = Theme.of(context).textTheme;
     final schema = Theme.of(context).colorScheme;
     Widget choix(IconData icone, String titre, String detail, String type) => SizedBox(
-          width: 280,
+          // Sur téléphone, toute la largeur.
+          width: MediaQuery.sizeOf(context).width < 640 ? double.infinity : 280,
           child: Card(
             margin: EdgeInsets.zero,
             child: InkWell(

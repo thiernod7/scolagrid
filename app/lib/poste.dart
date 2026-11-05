@@ -6,7 +6,7 @@ part of 'configuration.dart';
 /// Le code PIN, propre à ce poste, rouvre l'app sans réseau.
 
 /// Même numéro que « version » dans pubspec.yaml (un test le vérifie).
-const versionApp = '0.9.18';
+const versionApp = '0.9.19';
 
 /// Ce poste, tel qu'enregistré localement (table locale, jamais synchronisée).
 Future<Map<String, Object?>?> cePoste() => db.getOptional('SELECT * FROM ce_poste LIMIT 1');
@@ -432,8 +432,10 @@ class PostesScreen extends StatelessWidget {
                     if (!telephone) const ColonneTableau('Site', flex: 2),
                     if (largeur >= 1024) const ColonneTableau('Activé par', flex: 2),
                     if (!telephone) const ColonneTableau('Dernier contact', largeur: 170),
-                    const ColonneTableau('Statut', largeur: 104),
-                    const ColonneTableau('', largeur: 136, droite: true),
+                    ColonneTableau('Statut', largeur: telephone ? 84 : 104),
+                    // Sur téléphone, la place va au nom du poste : juste le menu (et « Valider » s'il le faut).
+                    ColonneTableau('',
+                        largeur: telephone ? (postes.any((p) => p['statut'] == 'a_valider') ? 128 : 48) : 136, droite: true),
                   ],
                   lignes: [
                     for (final p in postes)

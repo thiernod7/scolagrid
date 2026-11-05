@@ -782,19 +782,23 @@ class _FamillesScreenState extends State<FamillesScreen> {
                     const SizedBox(height: 2),
                     Text('${_liensLisibles(f['liens'], sep: ' / ')} de ${enfants.take(2).join(', ')}${enfants.length > 2 ? ' +${enfants.length - 2}' : ''}',
                         overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
-                    if (f['telephone'] != null) Text(_telLisible(f['telephone']), style: TextStyle(fontSize: 12, color: gris)),
+                    const SizedBox(height: 4),
+                    // Le téléphone à gauche, le reste dû à droite : le nom garde toute la largeur.
+                    Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Expanded(
+                        child: Text(f['telephone'] == null ? '' : _telLisible(f['telephone']),
+                            style: TextStyle(fontSize: 12, color: gris)),
+                      ),
+                      _montant(context, f, soldes),
+                    ]),
                   ]),
                 ),
-                const SizedBox(width: 8),
-                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  _montant(context, f, soldes),
-                  IconButton(
-                    tooltip: 'Actions',
-                    visualDensity: VisualDensity.compact,
-                    icon: const Icon(Icons.more_horiz, size: 18),
-                    onPressed: () => _feuilleGestes(f),
-                  ),
-                ]),
+                IconButton(
+                  tooltip: 'Actions',
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.more_horiz, size: 18),
+                  onPressed: () => _feuilleGestes(f),
+                ),
               ]),
             ),
           ),
