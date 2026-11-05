@@ -240,7 +240,8 @@ Future<bool> _confirmer(BuildContext context, String question) async =>
     false;
 
 /// Boîte de saisie : construit ses champs, renvoie vrai si l'on valide.
-Future<bool> _formulaire(BuildContext context, String titre, List<Widget> Function(StateSetter maj) champs) async =>
+Future<bool> _formulaire(BuildContext context, String titre, List<Widget> Function(StateSetter maj) champs,
+        {String Function()? valider}) async =>
     await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -257,7 +258,7 @@ Future<bool> _formulaire(BuildContext context, String titre, List<Widget> Functi
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Enregistrer')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(valider?.call() ?? 'Enregistrer')),
           ],
         ),
       ),

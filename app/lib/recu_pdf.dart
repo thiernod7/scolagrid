@@ -529,3 +529,50 @@ Future<Uint8List> certificatPdf({
   ));
   return doc.save();
 }
+
+/// Bon de sortie de caisse (A5) : le pendant du reçu. Le reçu prouve ce qui
+/// entre, le bon prouve ce qui sort. Signé par le bénéficiaire et la caisse.
+Future<Uint8List> bonDeSortiePdf({
+  required Map<String, Object?> ecole,
+  required Map<String, Object?> depense,
+  required String autorisation,
+  ImagesEcole images = const ImagesEcole(),
+}) {
+  final d = depense;
+  final doc = pw.Document(title: 'Bon de sortie ${d['bon'] ?? ''}');
+  final montant = d['montant_gnf'] as int;
+  final corps = pw.TextStyle(fontSize: 11, lineSpacing: 3);
+  final gras = pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold);
+  pw.Widget ligne(String a, String b) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 2),
+        child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+          pw.SizedBox(width: 110, child: pw.Text(a, style: corps)),
+          pw.Expanded(child: pw.Text(b, style: gras)),
+        ]),
+      );
+  doc.addPage(pw.Page(
+    pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a5, margin: pw.EdgeInsets.all(28)),
+    build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      _enTete(ecole, images, titre: 13, petit: 8),
+      pw.Divider(),
+      pw.Center(child: pw.Text('BON DE SORTIE DE CAISSE', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold))),
+      if (d['bon'] != null) pw.Center(child: pw.Text('N° ${d['bon']}', style: const pw.TextStyle(fontSize: 10))),
+      pw.SizedBox(height: 14),
+      pw.Center(child: pw.Text(_gnf(montant), style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold))),
+      pw.Center(child: pw.Text('(${enLettres(montant)} francs guinéens)', style: corps)),
+      pw.SizedBox(height: 12),
+      ligne('Date', _date(d['date_effective'] as String?)),
+      ligne('Catégorie', '${d['categorie']}'),
+      ligne('Motif', '${d['motif']}'),
+      ligne('Bénéficiaire', '${d['beneficiaire'] ?? '—'}'),
+      ligne('Autorisation', autorisation),
+      if (d['par'] != null) ligne('Enregistré par', '${d['par']}'),
+      pw.Spacer(),
+      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        pw.Column(children: [pw.Text('Le bénéficiaire', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 40)]),
+        pw.Column(children: [pw.Text('La caisse', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 40)]),
+      ]),
+    ]),
+  ));
+  return doc.save();
+}

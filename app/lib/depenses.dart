@@ -32,13 +32,22 @@ class DepensesScreen extends StatefulWidget {
   State<DepensesScreen> createState() => _DepensesScreenState();
 }
 
+/// Même présentation que les pages Élèves et Familles : en-tête, bandeau de la
+/// caisse du jour, filtres, tableau encadré, et une colonne de contrôle à droite.
 class _DepensesScreenState extends State<DepensesScreen> {
   bool _caisse = false;
   bool _autorise = false;
-  DateTime _mois = DateTime(DateTime.now().year, DateTime.now().month);
+  final _recherche = TextEditingController();
+  String _periode = 'mois'; // jour, semaine, mois, tout, perso
+  DateTimeRange? _plage;
   String? _categorie;
+  int _page = 0;
+  int _parPage = 50;
 
   Espace get _e => widget.espace;
+
+  /// Toute l'école (direction, comptabilité) ou seulement ma caisse.
+  bool get _voitTout => _e.fondateur || _e.droits.contains('voir_caisse') || _autorise;
 
   @override
   void initState() {
@@ -54,6 +63,12 @@ class _DepensesScreenState extends State<DepensesScreen> {
         });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _recherche.dispose();
+    super.dispose();
   }
 
   /// Sites où je peux sortir de l'argent.
@@ -99,70 +114,102 @@ class _DepensesScreenState extends State<DepensesScreen> {
     String? qui = direction.keys.firstOrNull;
     PhotoPrete? justificatif;
     int? m() => int.tryParse(montant.text.replaceAll(RegExp(r'[^0-9]'), ''));
-    final ok = await _formulaire(context, 'Nouvelle dépense', (maj) {
-      final auDessus = (m() ?? 0) > seuil && !_autorise;
-      return [
-        TextField(
-          controller: montant,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          onChanged: (_) => maj(() {}),
-          decoration: _champ('Montant', suffixe: 'GNF', aide: 'Sorti de la caisse, en espèces'),
-        ),
-        if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
-        OutlinedButton.icon(
-          onPressed: () async {
-            final d = await _choisirDate(context, date, premier: DateTime.now().subtract(const Duration(days: 60)));
-            if (d != null) maj(() => date = d);
-          },
-          icon: const Icon(Icons.event_outlined, size: 16),
-          label: Text('Date de la dépense : ${_dateLisible(_date(date))}'),
-        ),
-        _liste('Catégorie', categorie, {
-          for (final c in [...categoriesDepenses, ...dejaUtilisees]) c: c,
-          '…': 'Autre catégorie…',
-        }, (v) => maj(() => categorie = v)),
-        if (categorie == '…')
-          TextField(controller: autreCategorie, decoration: _champ('Nouvelle catégorie', aide: 'Par exemple : Cantine, Sécurité')),
-        TextField(
-          controller: motif,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: _champ('Motif', aide: 'Obligatoire. Par exemple : 3 ramettes A4 pour le secrétariat'),
-        ),
-        TextField(
-          controller: beneficiaire,
-          textCapitalization: TextCapitalization.words,
-          decoration: _champ('Bénéficiaire (facultatif)', aide: "Qui a reçu l'argent : Librairie du Centre, le menuisier…"),
-        ),
-        TextField(controller: bon, decoration: _champ('N° du bon de sortie (facultatif)', aide: 'Si l\'école a un carnet de bons')),
-        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          OutlinedButton.icon(
-            onPressed: () async {
-              final p = await choisirPhoto(context, camera: cameraDisponible, taille: 1000);
-              if (p != null) maj(() => justificatif = p);
-            },
-            icon: Icon(justificatif == null ? Icons.receipt_long_outlined : Icons.check, size: 16),
-            label: Text(justificatif == null ? 'Joindre le reçu du fournisseur (facultatif)' : 'Reçu joint'),
-          ),
-        ]),
-        if (auDessus) ...[
-          Text('Au-dessus de ${gnf(seuil)} : il faut l\'accord de la direction.',
-              style: const TextStyle(fontWeight: FontWeight.w500, color: Couleurs.attente)),
-          if (orale && direction.isNotEmpty)
-            Segments<bool>(
-              valeur: deVive,
-              choix: const {false: "Demander l'autorisation", true: 'Déjà autorisée de vive voix'},
-              onChanged: (v) => maj(() => deVive = v),
+    Widget deux(Widget a, Widget b) =>
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: a), const SizedBox(width: 12), Expanded(child: b)]);
+    final ok = await _formulaire(
+      context,
+      'Nouvelle dépense',
+      (maj) {
+        final auDessus = (m() ?? 0) > seuil && !_autorise;
+        return [
+          deux(
+            TextField(
+              controller: montant,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => maj(() {}),
+              decoration: _champ('Montant', suffixe: 'GNF'),
             ),
-          if (deVive && orale && direction.isNotEmpty) ...[
-            _liste('Autorisée par', qui ?? direction.keys.first, direction, (v) => maj(() => qui = v)),
-            const Text("L'argent sort tout de suite ; la direction confirmera dans l'app (ou signera le bon).",
-                style: TextStyle(fontSize: 12)),
-          ] else
-            const Text("La demande part à la direction ; l'argent sortira une fois autorisée.", style: TextStyle(fontSize: 12)),
-        ],
-      ];
-    });
+            InkWell(
+              onTap: () async {
+                final d = await _choisirDate(context, date, premier: DateTime.now().subtract(const Duration(days: 60)));
+                if (d != null) maj(() => date = d);
+              },
+              child: InputDecorator(
+                decoration: _champ('Date', suffixe: '').copyWith(suffixIcon: const Icon(Icons.event_outlined, size: 18)),
+                child: Text(_dateLisible(_date(date))),
+              ),
+            ),
+          ),
+          if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
+          deux(
+            _liste('Catégorie', categorie, {
+              for (final c in [...categoriesDepenses, ...dejaUtilisees]) c: c,
+              '…': 'Autre catégorie…',
+            }, (v) => maj(() => categorie = v)),
+            TextField(
+              controller: beneficiaire,
+              textCapitalization: TextCapitalization.words,
+              decoration: _champ('Bénéficiaire', aide: "Qui a reçu l'argent"),
+            ),
+          ),
+          if (categorie == '…')
+            TextField(controller: autreCategorie, decoration: _champ('Nouvelle catégorie', aide: 'Par exemple : Cantine, Sécurité')),
+          TextField(
+            controller: motif,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: _champ('Motif', aide: 'Obligatoire. Par exemple : 3 ramettes A4 pour le secrétariat'),
+          ),
+          deux(
+            TextField(controller: bon, decoration: _champ('N° du bon de sortie', aide: 'Facultatif')),
+            SizedBox(
+              height: 56,
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final p = await choisirPhoto(context, camera: cameraDisponible, taille: 1000);
+                  if (p != null) maj(() => justificatif = p);
+                },
+                icon: Icon(justificatif == null ? Icons.receipt_long_outlined : Icons.check, size: 16),
+                label: Text(justificatif == null ? 'Joindre le reçu' : 'Reçu joint'),
+              ),
+            ),
+          ),
+          if (auDessus)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  border: Border.all(color: Theme.of(context).dividerColor), borderRadius: BorderRadius.circular(8)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [
+                  const Expanded(child: Text('Autorisation requise', style: TextStyle(fontWeight: FontWeight.w600))),
+                  Text('seuil ${gnf(seuil)}', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                ]),
+                const SizedBox(height: 8),
+                if (orale && direction.isNotEmpty) ...[
+                  Segments<bool>(
+                    valeur: deVive,
+                    choix: const {false: "Demander l'autorisation", true: 'Déjà accordée de vive voix'},
+                    onChanged: (v) => maj(() => deVive = v),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (deVive && orale && direction.isNotEmpty) ...[
+                  _liste('Accordée par', qui ?? direction.keys.first, direction, (v) => maj(() => qui = v)),
+                  const SizedBox(height: 6),
+                  Text("L'argent sort tout de suite ; la direction confirmera dans l'app "
+                      '(sous ${org['delai_confirmation_heures'] ?? 48} h).', style: const TextStyle(fontSize: 12)),
+                ] else
+                  const Text("La demande part à la direction ; l'argent sortira une fois autorisée.", style: TextStyle(fontSize: 12)),
+              ]),
+            ),
+        ];
+      },
+      valider: () {
+        final v = m() ?? 0;
+        final demande = v > seuil && !_autorise && !(deVive && orale && direction.isNotEmpty);
+        return v <= 0 ? 'Enregistrer' : '${demande ? 'Demander' : 'Enregistrer'} · ${gnf(v)}';
+      },
+    );
     if (!ok) return;
     final montantSaisi = m();
     final cat = categorie == '…' ? autreCategorie.text.trim() : categorie;
@@ -205,19 +252,33 @@ class _DepensesScreenState extends State<DepensesScreen> {
             : 'Demande envoyée à la direction : ${gnf(montantSaisi)}.')));
   }
 
-  /// Une dépense : son détail et ce qu'on peut en faire, selon son étape et mes droits.
+  /// Ce qu'on peut faire d'une dépense, selon son étape et mes droits : (action, icône, libellé).
+  List<(String, IconData, String)> _gestes(Map<String, Object?> d) {
+    final moi = d['cree_par'] == monId;
+    final agit = _caisse || _autorise;
+    return [
+      if (d['statut'] == 'demande' && _autorise) ...[
+        ('autoriser', Icons.check_circle_outline, 'Autoriser'),
+        ('refuser', Icons.block, 'Refuser'),
+      ],
+      if (d['statut'] == 'autorisee' && agit) ('sortir', Icons.payments_outlined, "Sortir l'argent aujourd'hui"),
+      if (d['confirmation'] == 'attendue' && _autorise) ...[
+        ('confirmer', Icons.verified_outlined, "Confirmer l'autorisation"),
+        ('contester', Icons.report_outlined, 'Contester'),
+      ],
+      if (d['statut'] == 'sortie' || d['statut'] == 'autorisee') ('imprimer', Icons.print_outlined, 'Imprimer le bon de sortie'),
+      if (d['bon'] == null && d['statut'] != 'annulee' && agit) ('bon', Icons.tag, 'Ajouter le n° du bon'),
+      if (d['a_justif'] != 1 && d['statut'] != 'annulee' && agit) ('justificatif', Icons.receipt_long_outlined, 'Joindre le reçu'),
+      if (d['statut'] != 'annulee' && d['statut'] != 'refusee' && (_autorise || (moi && d['statut'] != 'sortie')))
+        ('annuler', Icons.cancel_outlined, 'Annuler'),
+    ];
+  }
+
+  /// Une dépense : son détail (avec la photo du reçu) et ce qu'on peut en faire.
   Future<void> _ouvrir(Map<String, Object?> d) async {
     final justificatif = await db.getOptional('SELECT type_image, image FROM justificatifs_depenses WHERE depense_id = ?', [d['id']]);
     if (!mounted) return;
-    final moi = d['cree_par'] == monId;
-    final actions = <(String, String)>[
-      if (d['statut'] == 'demande' && _autorise) ...[('autoriser', 'Autoriser'), ('refuser', 'Refuser')],
-      if (d['statut'] == 'autorisee' && (_caisse || _autorise)) ('sortir', "Sortir l'argent aujourd'hui"),
-      if (d['confirmation'] == 'attendue' && _autorise) ...[('confirmer', "Confirmer l'autorisation"), ('contester', 'Contester')],
-      if (d['bon'] == null && d['statut'] != 'annulee' && (_caisse || _autorise)) ('bon', 'Ajouter le n° du bon'),
-      if (justificatif == null && d['statut'] != 'annulee' && (_caisse || _autorise)) ('justificatif', 'Joindre le reçu'),
-      if (d['statut'] != 'annulee' && d['statut'] != 'refusee' && (_autorise || (moi && d['statut'] != 'sortie'))) ('annuler', 'Annuler'),
-    ];
+    final gestes = _gestes(d);
     final choix = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -236,9 +297,7 @@ class _DepensesScreenState extends State<DepensesScreen> {
                 if (d['bon'] != null) 'bon n° ${d['bon']}',
                 if (d['par'] != null) 'saisie par ${d['par']}',
               ].join(' · ')),
-              if (d['autorisation_orale'] == 1)
-                Text('Autorisée de vive voix par ${d['oral'] ?? 'la direction'}'
-                    '${d['confirmation'] == 'attendue' ? ' : à confirmer' : d['confirmation'] == 'confirmee' ? ' : confirmée' : ' : contestée'}'),
+              Text(_autorisationTexte(d)),
               if (d['motif_refus'] != null) Text('Refus : ${d['motif_refus']}'),
               if (d['motif_contestation'] != null) Text('Contestation : ${d['motif_contestation']}'),
               if (d['motif_annulation'] != null) Text('Annulation : ${d['motif_annulation']}'),
@@ -253,13 +312,25 @@ class _DepensesScreenState extends State<DepensesScreen> {
           ),
         ),
         actions: [
-          for (final a in actions)
-            TextButton(onPressed: () => Navigator.pop(context, a.$1), child: Text(a.$2)),
+          for (final g in gestes) TextButton(onPressed: () => Navigator.pop(context, g.$1), child: Text(g.$3)),
           FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
         ],
       ),
     );
-    if (choix == null || !mounted) return;
+    if (choix != null && mounted) await _agir(choix, d);
+  }
+
+  /// L'autorisation, en clair (fiche, bon de sortie).
+  String _autorisationTexte(Map<String, Object?> d) {
+    if (d['autorisation_orale'] == 1) {
+      final etat = switch (d['confirmation']) { 'confirmee' => 'confirmée', 'contestee' => 'contestée', _ => 'à confirmer' };
+      return 'De vive voix, par ${d['oral'] ?? 'la direction'} ($etat)';
+    }
+    if (d['autorise_par'] != null) return 'Accordée par ${d['autorisateur'] ?? 'la direction'}';
+    return 'Non requise : sous le seuil';
+  }
+
+  Future<void> _agir(String choix, Map<String, Object?> d) async {
     Future<String?> motif(String titre, String aide) async {
       final c = TextEditingController();
       final ok = await _formulaire(context, titre, (_) => [TextField(controller: c, autofocus: true, decoration: _champ(aide))]);
@@ -268,6 +339,13 @@ class _DepensesScreenState extends State<DepensesScreen> {
 
     final id = d['id'] as String;
     switch (choix) {
+      case 'ouvrir':
+        await _ouvrir(d);
+      case 'imprimer':
+        final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [_e.orgId]);
+        final pdf = await bonDeSortiePdf(
+            ecole: Map.of(ecole), depense: d, autorisation: _autorisationTexte(d), images: await _imagesEcole(_e.orgId));
+        await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Bon de sortie ${d['bon'] ?? ''}'.trim());
       case 'autoriser':
         if (await _confirmer(context, 'Autoriser ${gnf(d['montant_gnf'])} pour « ${d['motif']} » ?')) {
           await _modifier('depenses', id, {'statut': 'autorisee', 'autorise_par': monId, 'autorise_le': _maintenant()});
@@ -332,164 +410,770 @@ class _DepensesScreenState extends State<DepensesScreen> {
     await _modifier('organisations', _e.orgId, {'seuil_depense_gnf': s, 'depense_orale': orale ? 1 : 0});
   }
 
+  /// La liste affichée (filtres compris), en fichier Excel.
+  Future<void> _exporter(List<Map<String, Object?>> lignes) async {
+    final messager = ScaffoldMessenger.of(context);
+    final classeur = xl.Excel.createExcel();
+    final feuille = classeur['Dépenses'];
+    classeur.setDefaultSheet('Dépenses');
+    xl.TextCellValue t(Object? v) => xl.TextCellValue(v == null ? '' : '$v');
+    feuille.appendRow([
+      for (final c in const ['Date', 'Catégorie', 'Motif', 'Bénéficiaire', 'Bon', 'Montant (GNF)', 'Étape', 'Autorisation', 'Saisie par'])
+        t(c),
+    ]);
+    for (final d in lignes) {
+      feuille.appendRow([
+        t(_dateLisible(d['date_effective'])), t(d['categorie']), t(d['motif']), t(d['beneficiaire']), t(d['bon']),
+        xl.IntCellValue(d['montant_gnf'] as int? ?? 0), t(_statutsDepense[d['statut']]?.$1 ?? d['statut']),
+        t(_autorisationTexte(d)), t(d['par']),
+      ]);
+    }
+    for (final f in classeur.tables.keys.toList()) {
+      if (f != 'Dépenses') classeur.delete(f);
+    }
+    final octets = classeur.encode();
+    if (octets == null) return;
+    try {
+      await FilePicker.saveFile(dialogTitle: 'Exporter les dépenses', fileName: 'depenses.xlsx', bytes: Uint8List.fromList(octets));
+      messager.showSnackBar(SnackBar(content: Text('${lignes.length} dépense(s) exportée(s).')));
+    } catch (_) {
+      messager.showSnackBar(const SnackBar(content: Text("Impossible d'enregistrer le fichier sur cet appareil.")));
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Requete(
-        'SELECT * FROM organisations WHERE id = ?',
-        parametres: [_e.orgId],
-        builder: (context, orgs) {
-          if (orgs.isEmpty) return const SizedBox.shrink();
-          final org = orgs.first;
-          final debut = _date(_mois);
-          final fin = _date(DateTime(_mois.year, _mois.month + 1, 0));
-          return _Page(
-            titre: 'Dépenses',
-            ajouter: _caisse || _autorise ? () => _nouvelle(org) : null,
-            libelleAjouter: 'Nouvelle dépense',
-            corps: Requete(
-              '''SELECT d.*, p.nom_complet AS par, o.nom_complet AS oral
+  Widget build(BuildContext context) => Scaffold(
+        body: Requete(
+          'SELECT * FROM organisations WHERE id = ?',
+          parametres: [_e.orgId],
+          builder: (context, orgs) {
+            if (orgs.isEmpty) return const SizedBox.shrink();
+            return Requete(
+              '''SELECT d.*, p.nom_complet AS par, o.nom_complet AS oral, pa.nom_complet AS autorisateur,
+                   EXISTS (SELECT 1 FROM justificatifs_depenses j WHERE j.depense_id = d.id) AS a_justif
                  FROM depenses d
                  LEFT JOIN personnel p ON p.user_id = d.cree_par AND p.organisation_id = d.organisation_id
                  LEFT JOIN personnel o ON o.id = d.autorise_oralement_par
+                 LEFT JOIN personnel pa ON pa.user_id = d.autorise_par AND pa.organisation_id = d.organisation_id
                  WHERE d.organisation_id = ?
-                   AND (d.date_effective BETWEEN ? AND ? OR d.statut IN ('demande', 'autorisee') OR d.confirmation = 'attendue')
-                 ORDER BY d.date_effective DESC, d.created_at DESC''',
-              parametres: [_e.orgId, debut, fin],
-              builder: (context, lignes) => _contenu(context, org, lignes, debut, fin),
-            ),
-          );
-        },
+                 ORDER BY d.date_effective DESC, d.created_at DESC
+                 LIMIT 3000''',
+              parametres: [_e.orgId],
+              builder: (context, lignes) => _contenu(context, orgs.first, lignes),
+            );
+          },
+        ),
       );
 
-  Widget _contenu(BuildContext context, Map<String, Object?> org, Lignes lignes, String debut, String fin) {
-    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+  /// Début et fin de la période choisie (dates ISO), ou null pour « tout ».
+  (String, String)? _bornes() {
+    final aujourdhui = DateTime.now();
+    final j = DateTime(aujourdhui.year, aujourdhui.month, aujourdhui.day);
+    return switch (_periode) {
+      'jour' => (_date(j), _date(j)),
+      'semaine' => (_date(j.subtract(const Duration(days: 6))), _date(j)),
+      'mois' => (_date(DateTime(j.year, j.month)), _date(j)),
+      'perso' when _plage != null => (_date(_plage!.start), _date(_plage!.end)),
+      _ => null,
+    };
+  }
+
+  Widget _contenu(BuildContext context, Map<String, Object?> org, Lignes lignes) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final largeur = MediaQuery.sizeOf(context).width;
+    final telephone = largeur < 640;
+    final large = largeur >= 1280;
     final delai = Duration(hours: org['delai_confirmation_heures'] as int? ?? 48);
+    bool enRetard(Map<String, Object?> d) =>
+        d['confirmation'] == 'attendue' &&
+        DateTime.now().difference(DateTime.tryParse('${d['autorise_le'] ?? d['created_at']}') ?? DateTime.now()) > delai;
+
+    // À traiter : quelle que soit la période.
     final aAutoriser = lignes.where((d) => d['statut'] == 'demande').toList();
     final aSortir = lignes.where((d) => d['statut'] == 'autorisee').toList();
     final aConfirmer = lignes.where((d) => d['confirmation'] == 'attendue').toList();
-    final duMois = lignes
-        .where((d) => '${d['date_effective']}'.compareTo(debut) >= 0 && '${d['date_effective']}'.compareTo(fin) <= 0)
-        .where((d) => _categorie == null || d['categorie'] == _categorie)
-        .toList();
-    final sorties = duMois.where((d) => d['statut'] == 'sortie').toList();
-    final parCategorie = <String, int>{};
-    for (final d in sorties) {
-      parCategorie[d['categorie'] as String] = (parCategorie[d['categorie']] ?? 0) + (d['montant_gnf'] as int? ?? 0);
-    }
-    final total = parCategorie.values.fold(0, (s, v) => s + v);
-    final trous = bonsManquants(lignes.where((d) => d['statut'] != 'annulee').map((d) => d['bon'] as String?));
-    const moisNoms = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    final bons = lignes.where((d) => d['statut'] != 'annulee' && d['bon'] != null).map((d) => '${d['bon']}').toList();
+    final trous = bonsManquants(bons);
 
-    Widget ligne(Map<String, Object?> d) {
-      final enRetard = d['confirmation'] == 'attendue' &&
-          DateTime.now().difference(DateTime.tryParse('${d['autorise_le'] ?? d['created_at']}') ?? DateTime.now()) > delai;
-      return Card(
-        child: ListTile(
-          onTap: () => _ouvrir(d),
-          title: Text('${d['categorie']} · ${d['motif']}', maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text([
-            _dateLisible(d['date_effective']),
-            if (d['beneficiaire'] != null) '${d['beneficiaire']}',
-            if (d['bon'] != null) 'bon ${d['bon']}',
-            if (d['confirmation'] == 'attendue') enRetard ? 'confirmation en retard' : 'autorisée de vive voix, à confirmer',
-          ].join(' · ')),
-          trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(gnf(d['montant_gnf']), style: styleMono.copyWith(fontSize: 13)),
-            const SizedBox(height: 2),
-            Etat(_statutsDepense[d['statut']]?.$1.split(' :').first ?? '${d['statut']}',
-                ton: enRetard ? Ton.retard : _statutsDepense[d['statut']]?.$2 ?? Ton.neutre),
-          ]),
+    // Filtres, puis page.
+    final b = _bornes();
+    final q = nomSimplifie(_recherche.text);
+    final periode = lignes.where((d) {
+      final j = '${d['date_effective']}';
+      return b == null || (j.compareTo(b.$1) >= 0 && j.compareTo(b.$2) <= 0);
+    }).toList();
+    final liste = periode.where((d) {
+      if (_categorie != null && d['categorie'] != _categorie) return false;
+      return q.isEmpty || nomSimplifie('${d['motif']} ${d['beneficiaire'] ?? ''} ${d['bon'] ?? ''} ${d['categorie']}').contains(q);
+    }).toList();
+    final sorties = liste.where((d) => d['statut'] == 'sortie').toList();
+    final total = sorties.fold<int>(0, (s, d) => s + (d['montant_gnf'] as int? ?? 0));
+    final filtres = _recherche.text.isNotEmpty || _categorie != null || _periode != 'mois';
+    final pages = liste.isEmpty ? 1 : (liste.length / _parPage).ceil();
+    final page = _page.clamp(0, pages - 1);
+    final affiches = liste.skip(page * _parPage).take(_parPage).toList();
+    void filtrer(VoidCallback f) => setState(() {
+          f();
+          _page = 0;
+        });
+
+    // En-tête ----------------------------------------------------------------
+    Widget pastille(String texte) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(color: Couleurs.doux(context), borderRadius: BorderRadius.circular(4)),
+          child: Text(texte, style: TextStyle(fontSize: 12, color: gris)),
+        );
+    final titre = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, children: [
+        // Ouverte depuis la caisse : un retour.
+        if (Navigator.of(context).canPop())
+          IconButton(
+            tooltip: 'Retour',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back, size: 20),
+          ),
+        const Text('Dépenses', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+        Text('${sorties.length} sortie(s) · ${gnf(total)}', style: TextStyle(fontSize: 14, color: gris)),
+        Tooltip(
+          message: 'Ce qui sort de la caisse en dehors des remboursements et des salaires : fournitures, carburant, '
+              'réparations… Motif obligatoire, reçu facultatif. Au-dessus de ${gnf(org['seuil_depense_gnf'] ?? 100000)}, '
+              "il faut l'accord de la direction.",
+          child: Icon(Icons.info_outline, size: 16, color: gris),
         ),
-      );
-    }
+      ]),
+      if (aAutoriser.isNotEmpty || aConfirmer.isNotEmpty || trous.isNotEmpty) ...[
+        const SizedBox(height: 2),
+        Wrap(spacing: 8, runSpacing: 4, children: [
+          if (aAutoriser.isNotEmpty) pastille('${aAutoriser.length} à autoriser'),
+          if (aConfirmer.isNotEmpty) pastille('${aConfirmer.length} à confirmer'),
+          if (trous.isNotEmpty) pastille('${trous.length} bon(s) manquant(s)'),
+        ]),
+      ],
+    ]);
+    final boutons = Wrap(spacing: 8, runSpacing: 8, children: [
+      if (!telephone || _e.fondateur)
+        PopupMenuButton<String>(
+          tooltip: 'Exporter, règles',
+          icon: const Icon(Icons.more_horiz),
+          onSelected: (v) => v == 'regles' ? _regles(org) : _exporter(liste),
+          itemBuilder: (_) => [
+            if (!telephone)
+              PopupMenuItem(value: 'exporter', enabled: liste.isNotEmpty, child: const _ItemMenu(Icons.download_outlined, 'Exporter en Excel')),
+            if (_e.fondateur) const PopupMenuItem(value: 'regles', child: _ItemMenu(Icons.tune, 'Règles : seuil, vive voix')),
+          ],
+        ),
+      if (_caisse || _autorise)
+        FilledButton.icon(onPressed: () => _nouvelle(org), icon: const Icon(Icons.add, size: 16), label: const Text('Nouvelle dépense')),
+    ]);
 
-    Widget encadre(String titre, List<Map<String, Object?>> liste, Color couleur) => Card(
-          color: couleur.withValues(alpha: .08),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text('$titre · ${liste.length}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              for (final d in liste) ligne(d),
-            ]),
+    // Filtres ------------------------------------------------------------------
+    Widget menu<T>(double largeurMenu, T? valeur, String tous, Map<T, String> choix, ValueChanged<T?> change) => SizedBox(
+          width: largeurMenu,
+          height: 36,
+          child: DropdownButtonHideUnderline(
+            child: Container(
+              padding: const EdgeInsets.only(left: 12, right: 8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Theme.of(context).dividerColor),
+                borderRadius: BorderRadius.circular(6),
+                color: schema.surface,
+              ),
+              child: DropdownButton<T?>(
+                value: valeur,
+                isExpanded: true,
+                isDense: true,
+                icon: Icon(Icons.keyboard_arrow_down, size: 18, color: gris),
+                style: TextStyle(fontFamily: policeTexte, fontSize: 14, color: schema.onSurface),
+                items: [
+                  DropdownMenuItem<T?>(value: null, child: Text(tous, overflow: TextOverflow.ellipsis)),
+                  for (final c in choix.entries)
+                    DropdownMenuItem<T?>(value: c.key, child: Text(c.value, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: change,
+              ),
+            ),
           ),
         );
+    final barreFiltres = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      SizedBox(
+        width: telephone ? double.infinity : 300,
+        height: 36,
+        child: TextField(
+          controller: _recherche,
+          onChanged: (_) => filtrer(() {}),
+          style: const TextStyle(fontSize: 14),
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            prefixIcon: Icon(Icons.search, size: 18, color: gris),
+            prefixIconConstraints: const BoxConstraints(minWidth: 36),
+            hintText: 'Motif, bénéficiaire, n° de bon…',
+            hintStyle: TextStyle(fontSize: 14, color: gris),
+          ),
+        ),
+      ),
+      menu<String>(telephone ? (largeur - 32) / 2 : 200, _periode == 'mois' ? null : _periode, 'Ce mois-ci', {
+        'jour': "Aujourd'hui",
+        'semaine': '7 derniers jours',
+        'tout': 'Toutes les dates',
+        'perso': _periode == 'perso' && _plage != null
+            ? 'Du ${_dateLisible(_date(_plage!.start))} au ${_dateLisible(_date(_plage!.end))}'
+            : 'Une période…',
+      }, (v) async {
+        if (v == 'perso') {
+          final p = await showDateRangePicker(
+            context: context,
+            firstDate: DateTime(2020),
+            lastDate: DateTime.now(),
+            initialDateRange: _plage,
+            helpText: 'Dépenses entre le… et le…',
+          );
+          if (p == null) return;
+          filtrer(() {
+            _periode = 'perso';
+            _plage = p;
+          });
+        } else {
+          filtrer(() => _periode = v ?? 'mois');
+        }
+      }),
+      menu<String>(telephone ? (largeur - 32) / 2 : 220, _categorie, 'Toutes les catégories', {
+        for (final c in {...categoriesDepenses, ...lignes.map((d) => '${d['categorie']}')}) c: c,
+      }, (v) => filtrer(() => _categorie = v)),
+      if (filtres)
+        TextButton.icon(
+          style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
+          onPressed: () => filtrer(() {
+            _recherche.clear();
+            _categorie = null;
+            _periode = 'mois';
+            _plage = null;
+          }),
+          icon: const Icon(Icons.close, size: 14),
+          label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
+        ),
+    ]);
 
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
-      Text("Ce qui sort de la caisse en dehors des remboursements et des salaires : fournitures, carburant, réparations… "
-          "Motif obligatoire, reçu du fournisseur facultatif. Au-dessus de ${gnf(org['seuil_depense_gnf'] ?? 100000)}, "
-          "il faut l'accord de la direction.", style: TextStyle(fontSize: 13, color: gris)),
-      if (_e.fondateur)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-              onPressed: () => _regles(org), icon: const Icon(Icons.tune, size: 16), label: const Text('Règles : seuil, vive voix')),
-        ),
-      const SizedBox(height: 8),
-      if (aAutoriser.isNotEmpty) encadre(_autorise ? 'À autoriser' : 'En attente de la direction', aAutoriser, Couleurs.attente),
-      if (aSortir.isNotEmpty) encadre("Autorisées : l'argent reste à sortir", aSortir, Couleurs.info),
-      if (aConfirmer.isNotEmpty) encadre('Autorisées de vive voix, à confirmer', aConfirmer, Couleurs.attente),
-      if (trous.isNotEmpty)
-        Card(
-          color: Couleurs.retard.withValues(alpha: .08),
-          child: ListTile(
-            leading: const Icon(Icons.warning_amber, color: Couleurs.retard),
-            title: Text('Bons de sortie manquants : ${trous.take(12).join(', ')}${trous.length > 12 ? '…' : ''}'),
-            subtitle: const Text('Un numéro absent : une erreur de saisie, ou une sortie d\'argent non enregistrée.'),
+    // Pied ---------------------------------------------------------------------
+    final pied = Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        Text(liste.isEmpty ? 'Aucun résultat' : '${page * _parPage + 1}–${page * _parPage + affiches.length} sur ${liste.length}',
+            style: TextStyle(fontSize: 14, color: gris)),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          if (!telephone) ...[
+            menu<int>(136, _parPage == 50 ? null : _parPage, '50 par page', {25: '25 par page', 100: '100 par page'},
+                (v) => filtrer(() => _parPage = v ?? 50)),
+            const SizedBox(width: 8),
+          ],
+          _BoutonPage(icone: Icons.chevron_left, onPressed: page == 0 ? null : () => setState(() => _page = page - 1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text('${page + 1} / $pages', style: TextStyle(fontSize: 14, color: gris)),
           ),
-        ),
+          _BoutonPage(icone: Icons.chevron_right, onPressed: page >= pages - 1 ? null : () => setState(() => _page = page + 1)),
+        ]),
+      ],
+    );
+
+    final vide = lignes.isEmpty ? 'Aucune dépense enregistrée pour le moment.' : 'Aucune dépense sur cette période.';
+    final tableau = telephone
+        ? _cartes(context, affiches, enRetard, vide)
+        : _tableau(context, affiches, enRetard, vide, categorie: largeur >= 1024, autorisation: largeur >= 1100);
+    final aTraiter = _aTraiter(context, aAutoriser, aSortir, aConfirmer, enRetard, delai);
+    final controle = [
+      ?aTraiter,
+      if (bons.isNotEmpty) _carnet(context, bons, trous),
+      _parCategorie(context, sorties, total),
+      _parBeneficiaire(context, sorties),
+    ];
+
+    final colonne = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (telephone) ...[titre, const SizedBox(height: 8), boutons]
+      else
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: titre),
+          const SizedBox(width: 8),
+          Flexible(child: Align(alignment: Alignment.topRight, child: boutons)),
+        ]),
+      if (_caisse || _voitTout) ...[const SizedBox(height: 12), _CaisseDuJour(orgId: _e.orgId, toute: _voitTout)],
+      if (!large && aTraiter != null) ...[const SizedBox(height: 12), aTraiter],
+      if (!large && trous.isNotEmpty) ...[const SizedBox(height: 12), _carnet(context, bons, trous)],
       const SizedBox(height: 12),
-      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        IconButton(
-            tooltip: 'Mois précédent',
-            onPressed: () => setState(() => _mois = DateTime(_mois.year, _mois.month - 1)),
-            icon: const Icon(Icons.chevron_left)),
-        Text('${moisNoms[_mois.month - 1]} ${_mois.year}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        IconButton(
-            tooltip: 'Mois suivant',
-            onPressed: () => setState(() => _mois = DateTime(_mois.year, _mois.month + 1)),
-            icon: const Icon(Icons.chevron_right)),
-        MenuCompact<String>(
-          largeur: 230,
-          valeur: _categorie,
-          tous: 'Toutes les catégories',
-          choix: {
-            for (final c in {...categoriesDepenses, ...lignes.map((d) => '${d['categorie']}')}) c: c,
-          },
-          onChanged: (v) => setState(() => _categorie = v),
-        ),
-        if (_categorie != null || _mois != DateTime(DateTime.now().year, DateTime.now().month))
-          TextButton.icon(
-            style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
-            onPressed: () => setState(() {
-              _categorie = null;
-              _mois = DateTime(DateTime.now().year, DateTime.now().month);
-            }),
-            icon: const Icon(Icons.close, size: 14),
-            label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
-          ),
-      ]),
-      const SizedBox(height: 8),
-      Card(
+      barreFiltres,
+      const SizedBox(height: 12),
+      Expanded(child: tableau),
+      const SizedBox(height: 12),
+      pied,
+    ]);
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1600),
         child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              const Expanded(child: Text('Sorti de la caisse ce mois', style: TextStyle(fontWeight: FontWeight.w600))),
-              Text(gnf(total), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            ]),
-            for (final c in parCategorie.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Row(children: [
-                  Expanded(child: Text(c.key, style: TextStyle(color: gris))),
-                  Text(gnf(c.value), style: styleMono.copyWith(fontSize: 13)),
+          padding: EdgeInsets.all(telephone ? 12 : 16),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: colonne),
+            if (large) ...[
+              const SizedBox(width: 16),
+              SizedBox(
+                width: 320,
+                child: ListView(children: [
+                  for (final c in controle) ...[c, const SizedBox(height: 12)],
                 ]),
               ),
+            ],
           ]),
         ),
       ),
-      const SizedBox(height: 8),
-      if (duMois.isEmpty) Text('Aucune dépense ce mois-ci.', style: TextStyle(color: gris)),
-      for (final d in duMois) ligne(d),
+    );
+  }
+
+  /// Encadré de la colonne de droite.
+  Widget _encadre(BuildContext context, {required String titre, IconData? icone, Color? couleur, required List<Widget> enfants}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: couleur?.withValues(alpha: .06) ?? Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: couleur?.withValues(alpha: .4) ?? Theme.of(context).dividerColor),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          if (icone != null) ...[Icon(icone, size: 16, color: couleur), const SizedBox(width: 6)],
+          Expanded(child: Text(titre, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+        ]),
+        const SizedBox(height: 8),
+        ...enfants,
+      ]),
+    );
+  }
+
+  /// Les dépenses qui attendent quelqu'un : autorisation, sortie de l'argent, confirmation.
+  Widget? _aTraiter(BuildContext context, Lignes aAutoriser, Lignes aSortir, Lignes aConfirmer,
+      bool Function(Map<String, Object?>) enRetard, Duration delai) {
+    if (aAutoriser.isEmpty && aSortir.isEmpty && aConfirmer.isEmpty) return null;
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final retard = aConfirmer.any(enRetard);
+    Widget item(Map<String, Object?> d, String detail, (String, String)? action, {bool rouge = false}) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            InkWell(
+              onTap: () => _ouvrir(d),
+              child: Row(children: [
+                Expanded(child: Text('${d['motif']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+                const SizedBox(width: 8),
+                Text(gnf(d['montant_gnf']), style: _chiffresDep.copyWith(fontSize: 13)),
+              ]),
+            ),
+            Text(detail, style: TextStyle(fontSize: 12, color: rouge ? Couleurs.retard : gris)),
+            if (action != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(minimumSize: const Size(0, 30), padding: const EdgeInsets.symmetric(horizontal: 10)),
+                    onPressed: () => _agir(action.$1, d),
+                    child: Text(action.$2, style: const TextStyle(fontSize: 13)),
+                  ),
+                ),
+              ),
+          ]),
+        );
+    String heures(Map<String, Object?> d) {
+      final h = DateTime.now().difference(DateTime.tryParse('${d['autorise_le'] ?? d['created_at']}') ?? DateTime.now()).inHours;
+      return '$h h sur ${delai.inHours} h';
+    }
+
+    return _encadre(context,
+        titre: 'À traiter',
+        icone: retard ? Icons.warning_amber : Icons.pending_actions_outlined,
+        couleur: retard ? Couleurs.retard : Couleurs.attente,
+        enfants: [
+          for (final d in aAutoriser)
+            item(d, 'Demande de ${d['par'] ?? '—'} · à autoriser', _autorise ? ('autoriser', 'Autoriser') : null),
+          for (final d in aSortir)
+            item(d, "Autorisée · l'argent n'est pas encore sorti", _caisse || _autorise ? ('sortir', "Sortir l'argent") : null),
+          for (final d in aConfirmer)
+            item(d, 'Vive voix, ${d['oral'] ?? 'direction'} · ${heures(d)}', _autorise ? ('confirmer', 'Confirmer') : null,
+                rouge: enRetard(d)),
+        ]);
+  }
+
+  Widget _carnet(BuildContext context, List<String> bons, List<int> trous) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final nombres = [
+      for (final b in bons)
+        if (RegExp(r'(\d+)\s*$').hasMatch(b)) int.parse(RegExp(r'(\d+)\s*$').firstMatch(b)![1]!),
+    ]..sort();
+    return _encadre(context,
+        titre: 'Carnet de bons de sortie',
+        icone: trous.isEmpty ? Icons.check_circle_outline : Icons.warning_amber,
+        couleur: trous.isEmpty ? null : Couleurs.retard,
+        enfants: [
+          if (nombres.isNotEmpty)
+            Text('${nombres.first} → ${nombres.last} · ${bons.length} bon(s)', style: styleMono.copyWith(fontSize: 12, color: gris)),
+          const SizedBox(height: 4),
+          if (trous.isEmpty)
+            Text('Aucun numéro manquant.', style: TextStyle(fontSize: 12, color: gris))
+          else ...[
+            Text('Manquant : ${trous.take(12).join(', ')}${trous.length > 12 ? '…' : ''}',
+                style: const TextStyle(fontSize: 14, color: Couleurs.retard)),
+            Text("Erreur de saisie, ou sortie d'argent non enregistrée.", style: TextStyle(fontSize: 12, color: gris)),
+          ],
+        ]);
+  }
+
+  Widget _parCategorie(BuildContext context, Lignes sorties, int total) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final montants = <String, (int, int)>{};
+    for (final d in sorties) {
+      final v = montants['${d['categorie']}'] ?? (0, 0);
+      montants['${d['categorie']}'] = (v.$1 + (d['montant_gnf'] as int? ?? 0), v.$2 + 1);
+    }
+    final tri = montants.entries.toList()..sort((a, b) => b.value.$1.compareTo(a.value.$1));
+    return _encadre(context, titre: 'Par catégorie', enfants: [
+      if (tri.isEmpty) Text('Rien sur cette période.', style: TextStyle(fontSize: 13, color: gris)),
+      for (final c in tri)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(child: Text(c.key, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+              Text(gnf(c.value.$1), style: _chiffresDep.copyWith(fontSize: 13)),
+            ]),
+            const SizedBox(height: 4),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: total == 0 ? 0 : c.value.$1 / total,
+                minHeight: 4,
+                backgroundColor: Couleurs.doux(context),
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .7),
+              ),
+            ),
+            Text('${c.value.$2} sortie(s) · ${total == 0 ? 0 : (c.value.$1 * 100 / total).round()} %',
+                style: TextStyle(fontSize: 12, color: gris)),
+          ]),
+        ),
     ]);
+  }
+
+  Widget _parBeneficiaire(BuildContext context, Lignes sorties) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final montants = <String, int>{};
+    for (final d in sorties) {
+      final b = '${d['beneficiaire'] ?? 'Sans bénéficiaire'}';
+      montants[b] = (montants[b] ?? 0) + (d['montant_gnf'] as int? ?? 0);
+    }
+    final tri = (montants.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).take(6);
+    return _encadre(context, titre: 'Par bénéficiaire', enfants: [
+      if (tri.isEmpty) Text('Rien sur cette période.', style: TextStyle(fontSize: 13, color: gris)),
+      for (final b in tri)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(children: [
+            Expanded(child: Text(b.key, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+            Text(gnf(b.value), style: _chiffresDep.copyWith(fontSize: 13)),
+          ]),
+        ),
+    ]);
+  }
+
+  /// Colonne « Autorisation » : sous le seuil, accordée, de vive voix…
+  Widget _autorisation(BuildContext context, Map<String, Object?> d, bool retard) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final petit = TextStyle(fontSize: 12, color: gris);
+    Widget deux(Widget haut, String? bas, {Color? couleur}) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [haut, if (bas != null) Text(bas, maxLines: 1, overflow: TextOverflow.ellipsis, style: petit.copyWith(color: couleur))],
+        );
+    switch (d['statut']) {
+      case 'demande':
+        return deux(const Etat('À autoriser', ton: Ton.attente), d['par'] == null ? null : 'demandé par ${d['par']}');
+      case 'autorisee':
+        return deux(const Etat('Autorisée', ton: Ton.info), "argent pas encore sorti");
+      case 'refusee':
+        return deux(const Etat('Refusée'), d['motif_refus'] as String?);
+      case 'annulee':
+        return deux(const Etat('Annulée'), d['motif_annulation'] as String?);
+    }
+    if (d['autorisation_orale'] == 1) {
+      return switch (d['confirmation']) {
+        'confirmee' => deux(const Text('Vive voix, confirmée', style: TextStyle(fontSize: 14)), '${d['oral'] ?? ''}'),
+        'contestee' => deux(const Etat('Contestée', ton: Ton.retard), d['motif_contestation'] as String?),
+        _ => deux(
+            Text('Vive voix, à confirmer', style: TextStyle(fontSize: 14, color: retard ? Couleurs.retard : null)),
+            '${d['oral'] ?? ''}',
+            couleur: retard ? Couleurs.retard : null),
+      };
+    }
+    if (d['autorise_par'] != null) {
+      return deux(const Text('Accordée', style: TextStyle(fontSize: 14)), '${d['autorisateur'] ?? 'direction'}');
+    }
+    return Text('Sous le seuil', style: TextStyle(fontSize: 14, color: gris));
+  }
+
+  /// Date effective, et la date de saisie si elle diffère (saisie après coup).
+  Widget _dateCellule(BuildContext context, Map<String, Object?> d) {
+    final saisie = '${d['created_at'] ?? ''}';
+    final jourSaisie = saisie.length >= 10 ? _date(DateTime.tryParse(saisie)?.toLocal() ?? DateTime.now()) : null;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Text(_dateLisible(d['date_effective']), style: _chiffresDep.copyWith(fontSize: 14)),
+      if (jourSaisie != null && jourSaisie != d['date_effective'])
+        Text('saisie le ${_dateLisible(jourSaisie)}', style: const TextStyle(fontSize: 11, color: Couleurs.attente)),
+    ]);
+  }
+
+  Widget _montant(Map<String, Object?> d, {double taille = 14}) {
+    final barre = d['statut'] == 'annulee' || d['statut'] == 'refusee';
+    return Text(gnf(d['montant_gnf']),
+        style: _chiffresDep.copyWith(
+          fontSize: taille,
+          fontWeight: FontWeight.w500,
+          decoration: barre ? TextDecoration.lineThrough : null,
+          color: barre ? Theme.of(context).colorScheme.onSurfaceVariant : null,
+        ));
+  }
+
+  Widget _menuLigne(Map<String, Object?> d, {double taille = 18}) => PopupMenuButton<String>(
+        tooltip: 'Actions',
+        icon: Icon(Icons.more_horiz, size: taille),
+        onSelected: (a) => _agir(a, d),
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: 'ouvrir', child: _ItemMenu(Icons.description_outlined, 'Voir le détail et le reçu')),
+          if (_gestes(d).isNotEmpty) const PopupMenuDivider(),
+          for (final g in _gestes(d))
+            PopupMenuItem(
+                value: g.$1,
+                child: _ItemMenu(g.$2, g.$3, couleur: g.$1 == 'annuler' || g.$1 == 'refuser' ? Couleurs.retard : null)),
+        ],
+      );
+
+  Widget _tableau(BuildContext context, Lignes lignes, bool Function(Map<String, Object?>) enRetard, String vide,
+      {required bool categorie, required bool autorisation}) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final bordure = Theme.of(context).dividerColor;
+    const entete = TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
+    final petit = TextStyle(fontSize: 12, color: gris);
+    Widget cellule(double? largeur, Widget enfant, {int flex = 1, Alignment align = Alignment.centerLeft}) {
+      final contenu = Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Align(alignment: align, child: enfant));
+      return largeur == null ? Expanded(flex: flex, child: contenu) : SizedBox(width: largeur, child: contenu);
+    }
+
+    final enTete = Container(
+      height: 36,
+      decoration: BoxDecoration(color: schema.surface, border: Border(bottom: BorderSide(color: bordure))),
+      child: Row(children: [
+        const SizedBox(width: 8),
+        cellule(112, const Text('Date', style: entete)),
+        cellule(null, const Text('Motif', style: entete), flex: 3),
+        if (categorie) cellule(176, const Text('Catégorie', style: entete)),
+        if (autorisation) cellule(200, const Text('Autorisation', style: entete)),
+        cellule(80, const Text('Bon', style: entete)),
+        cellule(150, const Text('Montant', style: entete), align: Alignment.centerRight),
+        const SizedBox(width: 48),
+      ]),
+    );
+
+    Widget ligne(Map<String, Object?> d) => Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _ouvrir(d),
+            hoverColor: Couleurs.doux(context).withValues(alpha: .5),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 56),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(children: [
+                const SizedBox(width: 8),
+                cellule(112, _dateCellule(context, d)),
+                cellule(
+                  null,
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    Text('${d['motif']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                    Row(children: [
+                      Flexible(
+                        child: Text(
+                            [
+                              if (d['beneficiaire'] != null) '${d['beneficiaire']}',
+                              if (!categorie) '${d['categorie']}',
+                            ].join(' · '),
+                            overflow: TextOverflow.ellipsis,
+                            style: petit),
+                      ),
+                      if (d['a_justif'] == 1) ...[
+                        const SizedBox(width: 6),
+                        Tooltip(message: 'Reçu joint', child: Icon(Icons.attach_file, size: 13, color: gris)),
+                      ],
+                    ]),
+                    if (!autorisation && d['statut'] != 'sortie')
+                      Padding(padding: const EdgeInsets.only(top: 2), child: _autorisation(context, d, enRetard(d))),
+                  ]),
+                  flex: 3,
+                ),
+                if (categorie) cellule(176, Text('${d['categorie']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+                if (autorisation) cellule(200, _autorisation(context, d, enRetard(d))),
+                cellule(80, Text('${d['bon'] ?? '—'}', overflow: TextOverflow.ellipsis, style: styleMono.copyWith(fontSize: 13, color: d['bon'] == null ? gris : null))),
+                cellule(150, _montant(d), align: Alignment.centerRight),
+                SizedBox(width: 48, child: _menuLigne(d)),
+              ]),
+            ),
+          ),
+        );
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        enTete,
+        Expanded(
+          child: lignes.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(vide, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
+                  ),
+                )
+              : ListView.builder(itemCount: lignes.length, itemBuilder: (context, i) => ligne(lignes[i])),
+        ),
+      ]),
+    );
+  }
+
+  /// Téléphone : des cartes, comme la liste des élèves.
+  Widget _cartes(BuildContext context, Lignes lignes, bool Function(Map<String, Object?>) enRetard, String vide) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final bordure = Theme.of(context).dividerColor;
+    if (lignes.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(vide, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 88),
+      itemCount: lignes.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (context, i) {
+        final d = lignes[i];
+        return Material(
+          color: schema.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: bordure)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _ouvrir(d),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${d['motif']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(
+                        [
+                          _dateLisible(d['date_effective']),
+                          '${d['categorie']}',
+                          if (d['beneficiaire'] != null) '${d['beneficiaire']}',
+                          if (d['bon'] != null) 'bon ${d['bon']}',
+                        ].join(' · '),
+                        style: TextStyle(fontSize: 12, color: gris)),
+                    const SizedBox(height: 4),
+                    _autorisation(context, d, enRetard(d)),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  _montant(d),
+                  _menuLigne(d),
+                ]),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+const _chiffresDep = TextStyle(fontFeatures: [ui.FontFeature.tabularFigures()]);
+
+/// Ce que la caisse doit retrouver ce soir : le même calcul que la clôture
+/// (espèces encaissées − remboursements versés − dépenses sorties).
+class _CaisseDuJour extends StatelessWidget {
+  const _CaisseDuJour({required this.orgId, required this.toute});
+
+  final String orgId;
+
+  /// Toute l'école (direction, comptabilité), sinon seulement ma caisse.
+  final bool toute;
+
+  @override
+  Widget build(BuildContext context) {
+    final jour = _date(DateTime.now());
+    final moi = toute ? null : monId;
+    return Requete(
+      '''SELECT
+           (SELECT coalesce(sum(total_gnf), 0) FROM encaissements WHERE organisation_id = ? AND date_effective = ?
+              AND statut = 'valide' AND mode = 'especes' AND (? IS NULL OR encaisse_par = ?)) AS encaisse,
+           (SELECT count(*) FROM encaissements WHERE organisation_id = ? AND date_effective = ?
+              AND statut = 'valide' AND mode = 'especes' AND (? IS NULL OR encaisse_par = ?)) AS nb_recus,
+           (SELECT coalesce(sum(montant_gnf), 0) FROM remboursements WHERE organisation_id = ? AND verse_le = ?
+              AND statut = 'verse' AND mode = 'especes' AND (? IS NULL OR verse_par = ?)) AS rembourse,
+           (SELECT coalesce(sum(montant_gnf), 0) FROM depenses WHERE organisation_id = ? AND sortie_le = ?
+              AND statut = 'sortie' AND (? IS NULL OR sortie_par = ?)) AS depense,
+           (SELECT count(*) FROM depenses WHERE organisation_id = ? AND sortie_le = ?
+              AND statut = 'sortie' AND (? IS NULL OR sortie_par = ?)) AS nb_depenses''',
+      parametres: [for (var i = 0; i < 5; i++) ...[orgId, jour, moi, moi]],
+      builder: (context, l) {
+        final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+        final r = l.isEmpty ? const <String, Object?>{} : l.first;
+        final encaisse = r['encaisse'] as int? ?? 0;
+        final rembourse = r['rembourse'] as int? ?? 0;
+        final depense = r['depense'] as int? ?? 0;
+        final net = encaisse - rembourse - depense;
+        Widget poste(String libelle, String valeur, String aide, {bool attenue = false}) => Tooltip(
+              message: aide,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(libelle, style: TextStyle(fontSize: 12, color: gris)),
+                Text(valeur, style: _chiffresDep.copyWith(fontSize: 14, color: attenue ? gris : null)),
+              ]),
+            );
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Theme.of(context).dividerColor),
+          ),
+          child: Wrap(spacing: 28, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(toute ? 'Caisse du jour · toute l\'école' : 'Ma caisse du jour', style: TextStyle(fontSize: 12, color: gris)),
+              Text(_dateLisible(jour), style: const TextStyle(fontSize: 14)),
+            ]),
+            poste('Encaissé', _sansUnite(encaisse), '${r['nb_recus'] ?? 0} reçu(s) en espèces'),
+            poste('Remboursements', '− ${_sansUnite(rembourse)}', 'Remboursements versés en espèces', attenue: true),
+            poste('Dépenses', '− ${_sansUnite(depense)}', '${r['nb_depenses'] ?? 0} dépense(s) sortie(s) de la caisse', attenue: true),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text('Net en caisse', style: TextStyle(fontSize: 12, color: gris)),
+              Text(gnf(net),
+                  style: _chiffresDep.copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: net < 0 ? Couleurs.retard : null)),
+            ]),
+          ]),
+        );
+      },
+    );
   }
 }
