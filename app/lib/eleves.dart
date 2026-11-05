@@ -655,7 +655,7 @@ class _ElevesScreenState extends State<ElevesScreen> {
       tri: _tri,
       onTrier: _trier,
       colonnes: (
-        matricule: largeur >= 768,
+        matricule: largeur >= 768 && !panneau,
         classe: classe == null,
         site: classe == null && plusieursSites && !panneau && largeur >= 1280,
         naissance: !panneau && largeur >= 1024,

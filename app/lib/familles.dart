@@ -55,7 +55,7 @@ Future<void> _appeler(String telephone, {bool whatsapp = false}) async {
 /// Une personne et ses liens : tuteur principal de combien d'enfants, responsable
 /// financier (payeur) de combien. Le reste dû ne porte que sur les enfants À SA
 /// CHARGE : l'oncle qui paie et le père tuteur ne comptent pas deux fois la même dette.
-const _sqlFamilles = '''SELECT c.id, c.organisation_id, c.nom_complet, c.telephone, c.telephone2, c.profession, c.adresse,
+const _sqlFamilles = '''SELECT c.*,
     count(DISTINCT ec.eleve_id) AS nb,
     sum(CASE WHEN ec.tuteur_principal = 1 THEN 1 ELSE 0 END) AS tutelle,
     sum(CASE WHEN ec.responsable_financier = 1 THEN 1 ELSE 0 END) AS charge,
@@ -111,20 +111,19 @@ class FamillesScreen extends StatefulWidget {
   State<FamillesScreen> createState() => _FamillesScreenState();
 }
 
+/// Même présentation que la page Élèves : en-tête, filtres en menus, tableau
+/// encadré, pied avec les pages, et la fiche qui s'ouvre à droite.
 class _FamillesScreenState extends State<FamillesScreen> {
   final _recherche = TextEditingController();
-  String? _filtre; // retard, fratrie, doublons, tuteurs, payeurs, reste
+  String? _role; // tuteurs, payeurs, fratrie
+  String? _situation; // retard, reste, ajour, doublons
   String _tri = 'nom';
   int _ordre = 1;
   int _page = 0;
   int _parPage = 50;
   String? _ouvert;
 
-  static const _plus = {
-    'tuteurs': 'Tuteurs principaux',
-    'payeurs': 'Responsables financiers',
-    'reste': 'Avec un reste à payer',
-  };
+  bool get _gere => widget.espace.fondateur || widget.espace.droits.contains('gerer_inscriptions');
 
   @override
   void dispose() {
@@ -142,10 +141,42 @@ class _FamillesScreenState extends State<FamillesScreen> {
       });
 
   void _ouvrir(String id) {
-    if (MediaQuery.sizeOf(context).width >= 1280) {
+    final largeur = MediaQuery.sizeOf(context).width;
+    if (largeur >= 1280) {
       setState(() => _ouvert = id);
-    } else {
+    } else if (largeur < 640) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => FicheFamilleScreen(espace: widget.espace, contactId: id)));
+    } else {
+      // Tiroir qui glisse depuis la droite, comme pour un élève.
+      setState(() => _ouvert = id);
+      showGeneralDialog(
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Fermer',
+        barrierColor: Colors.black26,
+        transitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (context, _, _) => Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Theme.of(context).colorScheme.surface,
+            elevation: 8,
+            child: SizedBox(
+              width: largeur < 600 ? largeur : 576,
+              height: double.infinity,
+              child: SafeArea(
+                child: FicheFamille(espace: widget.espace, contactId: id, fermer: () => Navigator.of(context).pop()),
+              ),
+            ),
+          ),
+        ),
+        transitionBuilder: (context, animation, _, enfant) => SlideTransition(
+          position: Tween(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+          child: enfant,
+        ),
+      ).then((_) {
+        if (mounted) setState(() => _ouvert = null);
+      });
     }
   }
 
@@ -177,11 +208,63 @@ class _FamillesScreenState extends State<FamillesScreen> {
     final octets = classeur.encode();
     if (octets == null) return;
     try {
-      await FilePicker.saveFile(dialogTitle: 'Exporter les familles', fileName: 'familles.xlsx', bytes: Uint8List.fromList(octets));
-      messager.showSnackBar(SnackBar(content: Text('${familles.length} famille(s) exportée(s).')));
+      await FilePicker.saveFile(dialogTitle: 'Exporter la liste', fileName: 'familles.xlsx', bytes: Uint8List.fromList(octets));
+      messager.showSnackBar(SnackBar(content: Text('${familles.length} parent(s) exporté(s).')));
     } catch (_) {
       messager.showSnackBar(const SnackBar(content: Text("Impossible d'enregistrer le fichier sur cet appareil.")));
     }
+  }
+
+  Future<void> _action(String action, Map<String, Object?> f) async {
+    final id = f['id'] as String;
+    switch (action) {
+      case 'ouvrir':
+        _ouvrir(id);
+      case 'appeler':
+        await _appeler('${f['telephone']}');
+      case 'whatsapp':
+        await _appeler('${f['telephone']}', whatsapp: true);
+      case 'corriger':
+        await _modifierParent(context, id, f);
+      case 'fusionner':
+        await _fusionner(context, id, f);
+    }
+  }
+
+  /// Les gestes possibles sur une personne : (action, icône, libellé). `null` sépare.
+  List<(String, IconData, String)?> _gestes(Map<String, Object?> f) => [
+        ('ouvrir', Icons.description_outlined, 'Ouvrir la fiche'),
+        if (f['telephone'] != null) ...[
+          null,
+          ('appeler', Icons.call_outlined, 'Appeler'),
+          ('whatsapp', Icons.chat_outlined, 'WhatsApp'),
+        ],
+        if (_gere) ...[
+          null,
+          ('corriger', Icons.edit_outlined, 'Corriger les coordonnées'),
+          ('fusionner', Icons.merge_type, 'Fusionner avec…'),
+        ],
+      ];
+
+  Future<void> _feuilleGestes(Map<String, Object?> f) async {
+    final choix = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text('${f['nom_complet']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ),
+          for (final g in _gestes(f))
+            if (g == null)
+              const Divider(height: 1)
+            else
+              ListTile(leading: Icon(g.$2), title: Text(g.$3), onTap: () => Navigator.pop(context, g.$1)),
+        ]),
+      ),
+    );
+    if (choix != null && mounted) await _action(choix, f);
   }
 
   @override
@@ -191,265 +274,532 @@ class _FamillesScreenState extends State<FamillesScreen> {
           parametres: [widget.espace.orgId],
           builder: (context, familles) => _AvecSoldes(
             orgId: widget.espace.orgId,
-            builder: (context, soldes) {
-              final liste = _liste(context, familles, soldes);
-              final ouvert = _ouvert;
-              if (ouvert == null || MediaQuery.sizeOf(context).width < 1280) return liste;
-              return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Expanded(child: liste),
-                Container(
-                  width: 480,
-                  decoration: BoxDecoration(border: Border(left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant))),
-                  child: FicheFamille(
-                    key: ValueKey(ouvert),
-                    espace: widget.espace,
-                    contactId: ouvert,
-                    fermer: () => setState(() => _ouvert = null),
-                  ),
-                ),
-              ]);
-            },
+            builder: (context, soldes) => _contenu(context, familles, soldes),
           ),
         ),
       );
 
-  Widget _liste(BuildContext context, Lignes familles, Map<String, _SoldeEleve>? soldes) {
+  Widget _contenu(BuildContext context, Lignes familles, Map<String, _SoldeEleve>? soldes) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
-    final telephone = MediaQuery.sizeOf(context).width < 640;
+    final largeur = MediaQuery.sizeOf(context).width;
+    final telephone = largeur < 640;
+    final panneau = largeur >= 1280 && _ouvert != null;
     final doublons = famillesEnDouble(familles);
+
+    // Filtres, puis tri, puis page.
     final q = nomSimplifie(_recherche.text);
     final chiffres = _recherche.text.replaceAll(RegExp(r'[^0-9]'), '');
-    bool garde(Map<String, Object?> f, String? filtre) {
+    bool garde(Map<String, Object?> f, {String? role, String? situation}) {
       final s = _soldeACharge(f, soldes);
-      return switch (filtre) {
+      final charge = f['charge'] as int? ?? 0;
+      final okRole = switch (role) {
         'tuteurs' => (f['tutelle'] as int? ?? 0) > 0,
-        'payeurs' => (f['charge'] as int? ?? 0) > 0,
-        'fratrie' => (f['charge'] as int? ?? 0) >= 2,
+        'payeurs' => charge > 0,
+        'fratrie' => charge >= 2,
+        _ => true,
+      };
+      final okSituation = switch (situation) {
         'retard' => s.retard > 0,
         'reste' => s.du - s.paye > 0,
+        'ajour' => charge > 0 && s.du - s.paye <= 0,
         'doublons' => doublons.contains(f['id']),
         _ => true,
       };
+      return okRole && okSituation;
     }
 
-    final cherches = familles.where((f) =>
-        q.isEmpty ||
-        nomSimplifie('${f['nom_complet']} ${f['enfants'] ?? ''}').contains(q) ||
-        (chiffres.length >= 3 && '${f['telephone'] ?? ''}${f['telephone2'] ?? ''}'.replaceAll(' ', '').contains(chiffres)));
     int reste(Map<String, Object?> f) {
       final s = _soldeACharge(f, soldes);
       return (f['charge'] as int? ?? 0) == 0 ? -1 : s.du - s.paye;
     }
 
-    final liste = cherches.where((f) => garde(f, _filtre)).map((f) => Map<String, Object?>.from(f)).toList()
+    final liste = familles.where((f) {
+      if (!garde(f, role: _role, situation: _situation)) return false;
+      if (q.isEmpty) return true;
+      return nomSimplifie('${f['nom_complet']} ${f['enfants'] ?? ''}').contains(q) ||
+          (chiffres.length >= 3 && '${f['telephone'] ?? ''}${f['telephone2'] ?? ''}'.replaceAll(' ', '').contains(chiffres));
+    }).map((f) => Map<String, Object?>.from(f)).toList()
       ..sort((a, b) {
-        final v = _tri == 'reste'
-            ? reste(a).compareTo(reste(b))
-            : nomSimplifie('${a['nom_complet']}').compareTo(nomSimplifie('${b['nom_complet']}'));
+        final v = switch (_tri) {
+          'reste' => reste(a).compareTo(reste(b)),
+          'enfants' => (a['nb'] as int? ?? 0).compareTo(b['nb'] as int? ?? 0),
+          _ => nomSimplifie('${a['nom_complet']}').compareTo(nomSimplifie('${b['nom_complet']}')),
+        };
         return v * _ordre;
       });
-    int compte(String filtre) => familles.where((f) => garde(f, filtre)).length;
+    final nbRetard = soldes == null ? 0 : familles.where((f) => garde(f, situation: 'retard')).length;
+    final nbFratries = familles.where((f) => garde(f, role: 'fratrie')).length;
+    final filtres = _recherche.text.isNotEmpty || _role != null || _situation != null;
     final pages = liste.isEmpty ? 1 : (liste.length / _parPage).ceil();
     final page = _page.clamp(0, pages - 1);
     final affiches = liste.skip(page * _parPage).take(_parPage).toList();
+
     void filtrer(VoidCallback f) => setState(() {
           f();
           _page = 0;
         });
 
-    Widget puce(String? cle, String libelle) {
-      final choisi = _filtre == cle;
-      return ChoiceChip(
-        label: Text(libelle),
-        selected: choisi,
-        showCheckmark: false,
-        visualDensity: VisualDensity.compact,
-        labelStyle: TextStyle(fontSize: 13, color: choisi ? schema.onSecondaryContainer : gris),
-        side: BorderSide(color: choisi ? Colors.transparent : schema.outlineVariant),
-        onSelected: (_) => filtrer(() => _filtre = cle),
-      );
-    }
-
-    Widget enTete(String libelle, String cle) => InkWell(
-          onTap: () => _trier(cle),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(libelle, style: TextStyle(fontSize: 12, color: gris, letterSpacing: .3)),
-            if (_tri == cle) Icon(_ordre > 0 ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: gris),
-          ]),
+    // En-tête ----------------------------------------------------------------
+    Widget pastille(String texte, VoidCallback auClic) => InkWell(
+          onTap: auClic,
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(color: Couleurs.doux(context), borderRadius: BorderRadius.circular(4)),
+            child: Text(texte, style: TextStyle(fontSize: 12, color: gris)),
+          ),
         );
-
-    final nbRetard = soldes == null ? 0 : compte('retard');
-    final nbFratrie = compte('fratrie');
-    return ListView(padding: EdgeInsets.fromLTRB(telephone ? 12 : 24, 16, telephone ? 12 : 24, 24), children: [
-      Row(children: [
-        Text('Parents & tuteurs', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600)),
-        const SizedBox(width: 8),
-        Text('${familles.length}', style: TextStyle(fontSize: 16, color: gris)),
-        const Spacer(),
-        IconButton(
-          tooltip: 'Exporter la liste (Excel)',
-          onPressed: liste.isEmpty ? null : () => _exporter(liste, soldes),
-          icon: Icon(Icons.download_outlined, size: 20, color: gris),
+    final titre = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 12, children: [
+        const Text('Parents & tuteurs', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text('${liste.length}${liste.length != familles.length ? ' sur ${familles.length}' : ''}',
+              style: TextStyle(fontSize: 14, color: gris)),
         ),
       ]),
-      const SizedBox(height: 12),
+      if (nbRetard > 0 || nbFratries > 0 || doublons.isNotEmpty) ...[
+        const SizedBox(height: 2),
+        Wrap(spacing: 8, runSpacing: 4, children: [
+          if (nbRetard > 0) pastille('$nbRetard en retard', () => filtrer(() => _situation = 'retard')),
+          if (nbFratries > 0) pastille('$nbFratries fratrie(s)', () => filtrer(() => _role = 'fratrie')),
+          if (doublons.isNotEmpty) pastille('${doublons.length} doublon(s) probable(s)', () => filtrer(() => _situation = 'doublons')),
+        ]),
+      ],
+    ]);
+    final boutons = telephone
+        ? const SizedBox.shrink()
+        : PopupMenuButton<String>(
+            tooltip: 'Exporter',
+            icon: const Icon(Icons.more_horiz),
+            onSelected: (_) => _exporter(liste, soldes),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'exporter', enabled: liste.isNotEmpty, child: const _ItemMenu(Icons.download_outlined, 'Exporter en Excel')),
+            ],
+          );
+
+    // Filtres ------------------------------------------------------------------
+    Widget menu<T>(double largeurMenu, T? valeur, String tous, Map<T, String> choix, ValueChanged<T?> change) => SizedBox(
+          width: largeurMenu,
+          height: 36,
+          child: DropdownButtonHideUnderline(
+            child: Container(
+              padding: const EdgeInsets.only(left: 12, right: 8),
+              decoration: BoxDecoration(
+                border: Border.all(color: Theme.of(context).dividerColor),
+                borderRadius: BorderRadius.circular(6),
+                color: schema.surface,
+              ),
+              child: DropdownButton<T?>(
+                value: valeur,
+                isExpanded: true,
+                isDense: true,
+                icon: Icon(Icons.keyboard_arrow_down, size: 18, color: gris),
+                style: TextStyle(fontFamily: policeTexte, fontSize: 14, color: schema.onSurface),
+                items: [
+                  DropdownMenuItem<T?>(value: null, child: Text(tous, overflow: TextOverflow.ellipsis)),
+                  for (final c in choix.entries)
+                    DropdownMenuItem<T?>(value: c.key, child: Text(c.value, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: change,
+              ),
+            ),
+          ),
+        );
+    List<Widget> menusFiltres(VoidCallback apres, {double? largeurFixe}) => [
+          menu<String>(largeurFixe ?? 200, _role, 'Tous les rôles', const {
+            'tuteurs': 'Tuteurs principaux',
+            'payeurs': 'Responsables financiers',
+            'fratrie': 'Fratries (2 enfants et +)',
+          }, (v) {
+            filtrer(() => _role = v);
+            apres();
+          }),
+          menu<String>(largeurFixe ?? 200, _situation, 'Toutes les situations', {
+            'retard': 'En retard de paiement',
+            'reste': 'Avec un reste à payer',
+            'ajour': 'À jour',
+            if (doublons.isNotEmpty || _situation == 'doublons') 'doublons': 'Doublons probables',
+          }, (v) {
+            filtrer(() => _situation = v);
+            apres();
+          }),
+        ];
+    void reinitialiser() => filtrer(() {
+          _recherche.clear();
+          _role = null;
+          _situation = null;
+        });
+    final nbFiltres = [_role, _situation].where((x) => x != null).length;
+    final barreFiltres = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
       SizedBox(
-        height: 40,
+        width: telephone ? largeur - 24 - 52 : (panneau ? 260 : 340),
+        height: 36,
         child: TextField(
           controller: _recherche,
           onChanged: (_) => filtrer(() {}),
           style: const TextStyle(fontSize: 14),
           decoration: InputDecoration(
             isDense: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
             prefixIcon: Icon(Icons.search, size: 18, color: gris),
             prefixIconConstraints: const BoxConstraints(minWidth: 36),
-            suffixIcon: _recherche.text.isEmpty
-                ? null
-                : IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => filtrer(_recherche.clear)),
-            hintText: "Nom, téléphone ou prénom d'un enfant",
+            hintText: "Nom, téléphone, prénom d'un enfant…",
             hintStyle: TextStyle(fontSize: 14, color: gris),
           ),
         ),
       ),
-      const SizedBox(height: 10),
-      Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        puce(null, 'Tous'),
-        if (nbRetard > 0) puce('retard', 'En retard · $nbRetard'),
-        if (nbFratrie > 0) puce('fratrie', 'Fratries · $nbFratrie'),
-        if (doublons.isNotEmpty) puce('doublons', 'Doublons · ${doublons.length}'),
-        PopupMenuButton<String>(
-          tooltip: "Plus de filtres",
-          onSelected: (v) => filtrer(() => _filtre = v),
-          itemBuilder: (_) => [for (final e in _plus.entries) CheckedPopupMenuItem(value: e.key, checked: _filtre == e.key, child: Text(e.value))],
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(_plus[_filtre] ?? 'Plus', style: TextStyle(fontSize: 13, color: _plus.containsKey(_filtre) ? schema.primary : gris)),
-              Icon(Icons.expand_more, size: 16, color: gris),
-            ]),
-          ),
-        ),
-      ]),
-      if (_filtre == 'doublons')
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text("Même téléphone, ou même nom quand l'un n'a pas de numéro : sans doute la même personne créée deux fois. "
-              'Ouvrez celle à garder, puis ⋯ › Fusionner.', style: TextStyle(fontSize: 12, color: gris)),
-        ),
-      const SizedBox(height: 16),
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: Row(children: [
-          enTete('NOM', 'nom'),
-          const Spacer(),
-          Tooltip(
-            message: 'Ne compte que les enfants à sa charge (dont elle est responsable financier). « — » : ne paie pour aucun enfant.',
-            child: Icon(Icons.info_outline, size: 14, color: gris),
-          ),
-          const SizedBox(width: 6),
-          enTete('RESTE DÛ (GNF)', 'reste'),
-        ]),
-      ),
-      Divider(height: 1, color: schema.outlineVariant),
-      if (affiches.isEmpty) Padding(padding: const EdgeInsets.all(16), child: Text('Personne.', style: TextStyle(color: gris))),
-      for (final f in affiches) ...[
-        _ligne(context, f, soldes, doublons.contains(f['id'])),
-        Divider(height: 1, color: schema.outlineVariant.withValues(alpha: .6)),
-      ],
-      if (liste.length > 25)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Row(children: [
-            Text('${page * _parPage + 1}–${page * _parPage + affiches.length} sur ${liste.length}', style: TextStyle(fontSize: 13, color: gris)),
-            const Spacer(),
-            PopupMenuButton<int>(
-              tooltip: 'Lignes par page',
-              onSelected: (v) => filtrer(() => _parPage = v),
-              itemBuilder: (_) => [for (final n in const [25, 50, 100]) CheckedPopupMenuItem(value: n, checked: n == _parPage, child: Text('$n par page'))],
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Text('$_parPage par page', style: TextStyle(fontSize: 13, color: gris)),
+      if (telephone)
+        SizedBox(
+          width: 44,
+          height: 36,
+          child: Badge(
+            isLabelVisible: nbFiltres > 0,
+            label: Text('$nbFiltres'),
+            child: IconButton.outlined(
+              tooltip: 'Filtres',
+              padding: EdgeInsets.zero,
+              icon: const Icon(Icons.tune, size: 18),
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                showDragHandle: true,
+                builder: (context) => StatefulBuilder(
+                  builder: (context, maj) => SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        const Text('Filtres', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 12),
+                        for (final m in menusFiltres(() => maj(() {}), largeurFixe: double.infinity)) ...[m, const SizedBox(height: 10)],
+                        Row(children: [
+                          TextButton(
+                            onPressed: () {
+                              reinitialiser();
+                              maj(() {});
+                            },
+                            child: const Text('Réinitialiser'),
+                          ),
+                          const Spacer(),
+                          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Voir la liste')),
+                        ]),
+                      ]),
+                    ),
+                  ),
+                ),
               ),
             ),
-            IconButton(
-                tooltip: 'Page précédente',
-                onPressed: page > 0 ? () => setState(() => _page = page - 1) : null,
-                icon: const Icon(Icons.chevron_left, size: 20)),
-            IconButton(
-                tooltip: 'Page suivante',
-                onPressed: page < pages - 1 ? () => setState(() => _page = page + 1) : null,
-                icon: const Icon(Icons.chevron_right, size: 20)),
+          ),
+        )
+      else
+        ...menusFiltres(() {}),
+      if (filtres && !telephone)
+        TextButton.icon(
+          style: TextButton.styleFrom(foregroundColor: gris, minimumSize: const Size(36, 36)),
+          onPressed: reinitialiser,
+          icon: const Icon(Icons.close, size: 14),
+          label: const Text('Réinitialiser', style: TextStyle(fontSize: 14)),
+        ),
+    ]);
+
+    // Pied : position et pages -----------------------------------------------------
+    final pied = Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        Text(liste.isEmpty ? 'Aucun résultat' : '${page * _parPage + 1}–${page * _parPage + affiches.length} sur ${liste.length}',
+            style: TextStyle(fontSize: 14, color: gris)),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          if (!telephone) ...[
+            menu<int>(136, _parPage == 50 ? null : _parPage, '50 par page', {25: '25 par page', 100: '100 par page'},
+                (v) => filtrer(() => _parPage = v ?? 50)),
+            const SizedBox(width: 8),
+          ],
+          _BoutonPage(icone: Icons.chevron_left, onPressed: page == 0 ? null : () => setState(() => _page = page - 1)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text('${page + 1} / $pages', style: TextStyle(fontSize: 14, color: gris)),
+          ),
+          _BoutonPage(icone: Icons.chevron_right, onPressed: page >= pages - 1 ? null : () => setState(() => _page = page + 1)),
+        ]),
+      ],
+    );
+
+    final vide = familles.isEmpty
+        ? 'Aucun parent pour le moment : ils sont créés en inscrivant les élèves.'
+        : 'Personne ne correspond.';
+    final tableau = telephone
+        ? _cartes(context, affiches, soldes, doublons, vide)
+        : _tableau(context, affiches, soldes, doublons, vide,
+            telephoneCol: !panneau && largeur >= 1024, enfants: !panneau, roles: !panneau && largeur >= 1366);
+
+    final colonne = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (telephone)
+        titre
+      else
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: titre), boutons]),
+      const SizedBox(height: 12),
+      barreFiltres,
+      if (_situation == 'doublons') ...[
+        const SizedBox(height: 8),
+        Text("Même téléphone, ou même nom quand l'un n'a pas de numéro : sans doute la même personne créée deux fois. "
+            'Ouvrez celle à garder, puis « Fusionner avec… ».', style: TextStyle(fontSize: 12, color: gris)),
+      ],
+      const SizedBox(height: 12),
+      Expanded(child: tableau),
+      const SizedBox(height: 12),
+      pied,
+    ]);
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1600),
+        child: Padding(
+          padding: EdgeInsets.all(telephone ? 12 : 16),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(child: colonne),
+            if (panneau) ...[
+              const SizedBox(width: 16),
+              _PanneauLateral(
+                key: const ValueKey('panneau'),
+                child: FicheFamille(
+                  key: ValueKey(_ouvert),
+                  espace: widget.espace,
+                  contactId: _ouvert!,
+                  fermer: () => setState(() => _ouvert = null),
+                ),
+              ),
+            ],
           ]),
         ),
+      ),
+    );
+  }
+
+  /// Reste dû d'une personne, à la façon de la colonne « Inscription » des élèves.
+  Widget _montant(BuildContext context, Map<String, Object?> f, Map<String, _SoldeEleve>? soldes) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final s = _soldeACharge(f, soldes);
+    final reste = s.du - s.paye;
+    if (soldes == null) return const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2));
+    if ((f['charge'] as int? ?? 0) == 0) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Text('—', style: TextStyle(fontSize: 14, color: gris)),
+        Text('ne paie pas', style: TextStyle(fontSize: 11, color: gris)),
+      ]);
+    }
+    if (reste <= 0) return const Etat('À jour', ton: Ton.regle);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Text(gnf(reste), style: _chiffres.copyWith(fontSize: 14, color: s.retard > 0 ? Couleurs.retard : null)),
+      if (s.retard > 0) Text('dont ${_sansUnite(s.retard)} en retard', style: const TextStyle(fontSize: 11, color: Couleurs.retard)),
     ]);
   }
 
-  Widget _ligne(BuildContext context, Map<String, Object?> f, Map<String, _SoldeEleve>? soldes, bool doublon) {
+  List<Widget> _marques(Map<String, Object?> f, bool doublon) {
+    final charge = f['charge'] as int? ?? 0;
+    return [
+      if (charge >= 2) ...[const SizedBox(width: 8), Etat('Fratrie de $charge', ton: Ton.info)],
+      if (doublon) ...[const SizedBox(width: 8), const Etat('Doublon ?', ton: Ton.attente)],
+    ];
+  }
+
+  Widget _tableau(BuildContext context, Lignes familles, Map<String, _SoldeEleve>? soldes, Set<String> doublons, String vide,
+      {required bool telephoneCol, required bool enfants, required bool roles}) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
-    final s = _soldeACharge(f, soldes);
-    final reste = s.du - s.paye;
-    final charge = f['charge'] as int? ?? 0;
-    final tutelle = f['tutelle'] as int? ?? 0;
-    final enfants = _enfantsDe(f);
-    final liens = _liensLisibles(f['liens'], sep: ' / ');
-    final qui = '${liens.isEmpty ? 'Parent' : liens} de ${enfants.take(2).join(', ')}${enfants.length > 2 ? ' +${enfants.length - 2}' : ''}';
-    final tel = _telLisible(f['telephone']);
-    final marques = [
-      if (charge >= 2) 'Fratrie de $charge',
-      if (charge == 0) 'ne paie pas',
-      if (charge > 0 && tutelle == 0) 'payeur, pas tuteur',
-      if (doublon) 'Doublon ?',
-    ];
-    final Widget montant;
-    if (soldes == null) {
-      montant = const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2));
-    } else if (charge == 0) {
-      montant = Text('—', style: TextStyle(color: gris));
-    } else if (reste <= 0) {
-      montant = const Text('À jour', style: TextStyle(fontSize: 13, color: Couleurs.regle));
-    } else {
-      montant = Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
-        Text(_sansUnite(reste),
-            style: _chiffres.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: s.retard > 0 ? Couleurs.retard : null)),
-        if (s.retard > 0)
-          Text('${_sansUnite(s.retard)} en retard', style: _chiffres.copyWith(fontSize: 11, color: Couleurs.retard)),
-      ]);
+    final bordure = Theme.of(context).dividerColor;
+    const entete = TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
+    final petit = TextStyle(fontSize: 12, color: gris);
+
+    Widget triable(String libelle, String cle) => InkWell(
+          onTap: () => _trier(cle),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(libelle, style: entete),
+            const SizedBox(width: 4),
+            Icon(_tri == cle ? Icons.swap_vert : Icons.unfold_more, size: 13, color: gris.withValues(alpha: _tri == cle ? 1 : .6)),
+          ]),
+        );
+    Widget cellule(double? largeur, Widget enfant, {int flex = 1}) {
+      final contenu = Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: enfant);
+      return largeur == null ? Expanded(flex: flex, child: contenu) : SizedBox(width: largeur, child: contenu);
     }
-    return Material(
-      color: _ouvert == f['id'] ? schema.secondaryContainer.withValues(alpha: .5) : Colors.transparent,
-      child: InkWell(
-        onTap: () => _ouvrir(f['id'] as String),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-          child: Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Flexible(
-                    child: Text('${f['nom_complet']}',
-                        overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                  ),
-                  for (final m in marques) ...[
-                    const SizedBox(width: 6),
-                    Text(m,
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: m == 'Doublon ?' ? Couleurs.attente : (m.startsWith('Fratrie') ? schema.primary : gris))),
-                  ],
+
+    final enTete = Container(
+      height: 36,
+      decoration: BoxDecoration(color: schema.surface, border: Border(bottom: BorderSide(color: bordure))),
+      child: Row(children: [
+        const SizedBox(width: 72),
+        cellule(null, Align(alignment: Alignment.centerLeft, child: triable('Parent', 'nom')), flex: 3),
+        if (telephoneCol) cellule(152, const Text('Téléphone', style: entete)),
+        if (enfants) cellule(null, Align(alignment: Alignment.centerLeft, child: triable('Enfants', 'enfants')), flex: 3),
+        if (roles) cellule(160, const Text('Rôles', style: entete)),
+        cellule(176, Align(alignment: Alignment.centerLeft, child: triable('Reste dû', 'reste'))),
+        const SizedBox(width: 48),
+      ]),
+    );
+
+    Widget ligne(Map<String, Object?> f) {
+      final id = f['id'] as String;
+      final liste = _enfantsDe(f);
+      final tutelle = f['tutelle'] as int? ?? 0;
+      final charge = f['charge'] as int? ?? 0;
+      final sous = [
+        _liensLisibles(f['liens'], sep: ' / '),
+        if (!telephoneCol && f['telephone'] != null) _telLisible(f['telephone']),
+        if (telephoneCol && f['profession'] != null) '${f['profession']}',
+      ].where((x) => x.isNotEmpty).join(' · ');
+      return Material(
+        color: id == _ouvert ? Couleurs.doux(context) : Colors.transparent,
+        child: InkWell(
+          onTap: () => _ouvrir(id),
+          hoverColor: Couleurs.doux(context).withValues(alpha: .5),
+          child: Container(
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(children: [
+              Padding(padding: const EdgeInsets.only(left: 8), child: Initiales('${f['nom_complet']}', taille: 56)),
+              cellule(
+                null,
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Flexible(
+                      child: Text('${f['nom_complet']}',
+                          overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    ),
+                    ..._marques(f, doublons.contains(id)),
+                  ]),
+                  if (sous.isNotEmpty) Text(sous, overflow: TextOverflow.ellipsis, style: petit),
                 ]),
-                const SizedBox(height: 2),
-                Text([qui, if (tel.isNotEmpty) tel].join(' · '),
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                flex: 3,
+              ),
+              if (telephoneCol)
+                cellule(
+                  152,
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(f['telephone'] == null ? '—' : _telLisible(f['telephone']), style: _chiffres.copyWith(fontSize: 14)),
+                    if (f['telephone2'] != null) Text(_telLisible(f['telephone2']), style: _chiffres.merge(petit)),
+                  ]),
+                ),
+              if (enfants)
+                cellule(
+                  null,
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    for (final e in liste.take(2)) Text(e, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                    if (liste.length > 2) Text('+ ${liste.length - 2} autre(s)', style: petit),
+                  ]),
+                  flex: 3,
+                ),
+              if (roles)
+                cellule(
+                  160,
+                  Wrap(spacing: 4, runSpacing: 4, children: [
+                    if (tutelle > 0) Etat('tuteur${tutelle > 1 ? ' ×$tutelle' : ''}', ton: Ton.info),
+                    if (charge > 0) Etat('payeur${charge > 1 ? ' ×$charge' : ''}'),
+                  ]),
+                ),
+              cellule(176, Align(alignment: Alignment.centerLeft, child: _montant(context, f, soldes))),
+              SizedBox(
+                width: 48,
+                child: PopupMenuButton<String>(
+                  tooltip: 'Actions',
+                  icon: const Icon(Icons.more_horiz, size: 18),
+                  onSelected: (a) => _action(a, f),
+                  itemBuilder: (_) => [
+                    for (final g in _gestes(f))
+                      if (g == null) const PopupMenuDivider() else PopupMenuItem(value: g.$1, child: _ItemMenu(g.$2, g.$3)),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        enTete,
+        Expanded(
+          child: familles.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(vide, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
+                  ),
+                )
+              : ListView.builder(itemCount: familles.length, itemBuilder: (context, i) => ligne(familles[i])),
+        ),
+      ]),
+    );
+  }
+
+  /// Téléphone : des cartes, comme la liste des élèves.
+  Widget _cartes(BuildContext context, Lignes familles, Map<String, _SoldeEleve>? soldes, Set<String> doublons, String vide) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final bordure = Theme.of(context).dividerColor;
+    if (familles.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(vide, textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: gris)),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 88),
+      itemCount: familles.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (context, i) {
+        final f = familles[i];
+        final enfants = _enfantsDe(f);
+        return Material(
+          color: schema.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: bordure)),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _ouvrir(f['id'] as String),
+            onLongPress: () => _feuilleGestes(f),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(children: [
+                Initiales('${f['nom_complet']}', taille: 44),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Flexible(
+                        child: Text('${f['nom_complet']}',
+                            overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                      ),
+                      ..._marques(f, doublons.contains(f['id'])),
+                    ]),
+                    const SizedBox(height: 2),
+                    Text('${_liensLisibles(f['liens'], sep: ' / ')} de ${enfants.take(2).join(', ')}${enfants.length > 2 ? ' +${enfants.length - 2}' : ''}',
+                        overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: gris)),
+                    if (f['telephone'] != null) Text(_telLisible(f['telephone']), style: TextStyle(fontSize: 12, color: gris)),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  _montant(context, f, soldes),
+                  IconButton(
+                    tooltip: 'Actions',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.more_horiz, size: 18),
+                    onPressed: () => _feuilleGestes(f),
+                  ),
+                ]),
               ]),
             ),
-            const SizedBox(width: 12),
-            montant,
-          ]),
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -570,7 +920,8 @@ Future<void> _fusionner(BuildContext context, String contactId, Map<String, Obje
 }
 
 
-/// La fiche d'une personne, en plein écran (téléphone) ou à droite de la liste (PC).
+/// La fiche d'une personne, en plein écran (téléphone) ou à droite de la liste (PC),
+/// présentée comme la fiche d'un élève : en-tête, rubriques, pied d'actions.
 class FicheFamilleScreen extends StatelessWidget {
   const FicheFamilleScreen({super.key, required this.espace, required this.contactId});
 
@@ -579,7 +930,15 @@ class FicheFamilleScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: SafeArea(child: FicheFamille(espace: espace, contactId: contactId, fermer: () => Navigator.of(context).maybePop())),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 720),
+              child: FicheFamille(espace: espace, contactId: contactId, fermer: () => Navigator.of(context).maybePop()),
+            ),
+          ),
+        ),
       );
 }
 
@@ -598,7 +957,7 @@ class FicheFamille extends StatelessWidget {
           if (contacts.isEmpty) {
             return Center(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Text('Contact introuvable.'),
+                const Text('Contact introuvable sur ce poste.'),
                 TextButton(onPressed: fermer, child: const Text('Fermer')),
               ]),
             );
@@ -606,6 +965,7 @@ class FicheFamille extends StatelessWidget {
           final c = contacts.first;
           return Requete(
             '''SELECT e.id, e.nom, e.prenoms, ec.lien, ec.tuteur_principal, ec.responsable_financier,
+                 (SELECT p.updated_at FROM photos_eleves p WHERE p.eleve_id = e.id) AS photo_maj,
                  i.id AS inscription_id, i.statut, cl.nom AS classe
                FROM eleves_contacts ec JOIN eleves e ON e.id = ec.eleve_id
                LEFT JOIN annees_scolaires a ON a.organisation_id = e.organisation_id AND a.en_cours = 1
@@ -624,7 +984,9 @@ class FicheFamille extends StatelessWidget {
   Widget _contenu(BuildContext context, Map<String, Object?> c, Lignes enfants, Map<String, _SoldeEleve>? soldes) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
+    final telephone = MediaQuery.sizeOf(context).width < 640;
     final aCharge = enfants.where((e) => e['responsable_financier'] == 1).toList();
+    final tutelle = enfants.where((e) => e['tuteur_principal'] == 1).length;
     var du = 0, paye = 0, retard = 0;
     for (final e in aCharge) {
       final s = soldes?[e['id']];
@@ -639,115 +1001,167 @@ class FicheFamille extends StatelessWidget {
     final gere = espace.fondateur || espace.droits.contains('gerer_inscriptions');
     final tel = c['telephone'] == null ? null : '${c['telephone']}';
     final liens = _liensLisibles(enfants.map((e) => e['lien']).join(','), sep: ' / ');
-    final details = [
-      if (c['telephone2'] != null) 'Autre numéro : ${_telLisible(c['telephone2'])}',
-      if (c['profession'] != null) '${c['profession']}',
-      if (c['adresse'] != null) '${c['adresse']}',
-    ];
 
-    return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 40), children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    // En-tête, comme la fiche d'un élève.
+    final entete = Container(
+      padding: EdgeInsets.all(telephone ? 12 : 16),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Initiales('${c['nom_complet']}', taille: telephone ? 52 : 72),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const SizedBox(height: 8),
-            Text('${c['nom_complet']}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 2),
-            Text([if (liens.isNotEmpty) liens, if (tel != null) _telLisible(tel)].join(' · '), style: TextStyle(fontSize: 13, color: gris)),
-            if (details.isNotEmpty) Text(details.join(' · '), style: TextStyle(fontSize: 12, color: gris)),
+            Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('${c['nom_complet']}', style: TextStyle(fontSize: telephone ? 16 : 18, fontWeight: FontWeight.w600)),
+              if (aCharge.length >= 2) Etat('Fratrie de ${aCharge.length}', ton: Ton.info),
+            ]),
+            const SizedBox(height: 4),
+            Wrap(spacing: 12, runSpacing: 2, children: [
+              if (liens.isNotEmpty) Text(liens, style: TextStyle(fontSize: telephone ? 13 : 14, color: gris)),
+              if (tel != null) Text(_telLisible(tel), style: _chiffres.copyWith(fontSize: telephone ? 13 : 14, color: gris)),
+            ]),
           ]),
         ),
-        if (gere)
-          PopupMenuButton<String>(
-            tooltip: "Plus d'actions",
-            icon: Icon(Icons.more_horiz, color: gris),
-            onSelected: (v) => v == 'corriger' ? _modifierParent(context, contactId, c) : _fusionner(context, contactId, c),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'corriger', child: Text('Corriger les coordonnées')),
-              PopupMenuItem(value: 'fusionner', child: Text('Fusionner avec…')),
-            ],
-          ),
-        IconButton(tooltip: 'Fermer', onPressed: fermer, icon: Icon(Icons.close, color: gris)),
+        IconButton(tooltip: 'Fermer', visualDensity: VisualDensity.compact, icon: const Icon(Icons.close, size: 18), onPressed: fermer),
       ]),
-      if (tel != null) ...[
+    );
+
+    final String resteTexte;
+    if (aCharge.isEmpty) {
+      resteTexte = 'ne paie pour aucun enfant';
+    } else if (soldes == null) {
+      resteTexte = '…';
+    } else {
+      resteTexte = reste > 0 ? gnf(reste) : 'à jour';
+    }
+
+    final corps = ListView(padding: const EdgeInsets.all(16), children: [
+      _rubrique(context, 'Situation'),
+      const SizedBox(height: 12),
+      _deuxColonnes([
+        _ChampLu('Tuteur principal de', '$tutelle enfant(s)'),
+        _ChampLu('Responsable financier de', '${aCharge.length} enfant(s)'),
+        _ChampLu('Reste dû (enfants à sa charge)', resteTexte, attenue: aCharge.isEmpty),
+        _ChampLu('Dont en retard', retard > 0 ? gnf(retard) : '—'),
+      ]),
+      if (aCharge.length >= 2) ...[
         const SizedBox(height: 12),
-        Row(children: [
-          IconButton.filledTonal(tooltip: 'Appeler', onPressed: () => _appeler(tel), icon: const Icon(Icons.call_outlined, size: 18)),
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-              tooltip: 'WhatsApp', onPressed: () => _appeler(tel, whatsapp: true), icon: const Icon(Icons.chat_outlined, size: 18)),
-        ]),
-      ],
-      const SizedBox(height: 20),
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: schema.surfaceContainerHighest.withValues(alpha: .5), borderRadius: BorderRadius.circular(12)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Reste dû', style: TextStyle(fontSize: 12, color: gris)),
-          const SizedBox(height: 2),
-          if (aCharge.isEmpty)
-            Text('Ne paie pour aucun enfant', style: TextStyle(fontSize: 16, color: gris))
-          else if (soldes == null)
-            const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-          else if (reste <= 0)
-            const Text('À jour', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Couleurs.regle))
-          else ...[
-            Text(gnf(reste), style: _chiffres.copyWith(fontSize: 22, fontWeight: FontWeight.w600)),
-            if (retard > 0) Text('dont ${gnf(retard)} en retard', style: const TextStyle(fontSize: 13, color: Couleurs.retard)),
-          ],
-          if (aCharge.length >= 2) ...[
-            const SizedBox(height: 8),
-            Text('Fratrie de ${aCharge.length} : la réduction s’applique sur la scolarité de chacun.',
-                style: TextStyle(fontSize: 12, color: gris)),
-          ],
-        ]),
-      ),
-      if (peutEncaisser && aEncaisser.isNotEmpty && reste > 0) ...[
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => EncaisserScreen(espace: espace, eleveId: aEncaisser.first['id'] as String))),
-            icon: const Icon(Icons.point_of_sale_outlined, size: 18),
-            label: const Text('Encaisser'),
-          ),
-        ),
+        Text('Fratrie de ${aCharge.length} : la réduction s’applique sur la scolarité de chacun.', style: TextStyle(fontSize: 12, color: gris)),
       ],
       const SizedBox(height: 24),
-      Text('ENFANTS', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris)),
+      _rubrique(context, 'Enfants', droite: Text('${enfants.length}', style: TextStyle(fontSize: 12, color: gris))),
       const SizedBox(height: 4),
-      for (final e in enfants) ...[
+      for (final e in enfants)
         Builder(builder: (context) {
           final s = soldes?[e['id']];
           final paie = e['responsable_financier'] == 1;
+          final nom = '${e['nom']} ${e['prenoms']}';
           return InkWell(
             onTap: () => Navigator.of(context)
                 .push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: espace, eleveId: e['id'] as String))),
-            child: Padding(
+            child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
               child: Row(children: [
+                PhotoEleve(eleveId: e['id'] as String, nom: nom, version: e['photo_maj'] as String?, taille: 40),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('${e['prenoms']} ${e['nom']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                    Text(nom, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
                     Text([
                       e['classe'] == null ? 'Pas inscrit cette année' : '${e['classe']}',
-                      if (e['tuteur_principal'] != 1) 'pas tuteur principal',
-                      if (!paie) 'ne paie pas',
+                      '${liensFamille[e['lien']] ?? e['lien']}',
+                      if (e['tuteur_principal'] == 1) 'tuteur',
+                      if (paie) 'payeur',
                     ].join(' · '), style: TextStyle(fontSize: 12, color: gris)),
                   ]),
                 ),
                 Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  if (e['statut'] != null) etatInscription('${e['statut']}'),
+                  if (e['statut'] != null) etatInscription('${e['statut']}') else const Etat('Pas inscrit'),
                   if (s != null && paie)
-                    Text(s.du - s.paye > 0 ? _sansUnite(s.du - s.paye) : 'À jour',
+                    Text(s.du - s.paye > 0 ? gnf(s.du - s.paye) : 'à jour',
                         style: _chiffres.copyWith(fontSize: 12, color: s.retard > 0 ? Couleurs.retard : gris)),
                 ]),
               ]),
             ),
           );
         }),
-        Divider(height: 1, color: schema.outlineVariant.withValues(alpha: .6)),
+      const SizedBox(height: 24),
+      _rubrique(context, 'Coordonnées'),
+      const SizedBox(height: 12),
+      _deuxColonnes([
+        _ChampLu('Téléphone', tel == null ? null : _telLisible(tel)),
+        _ChampLu('Deuxième téléphone', c['telephone2'] == null ? null : _telLisible(c['telephone2'])),
+        _ChampLu('Profession', c['profession'] as String?),
+        _ChampLu('Adresse', c['adresse'] as String?),
+      ]),
+    ]);
+
+    // Pied d'actions, comme la fiche d'un élève.
+    final encaisser = peutEncaisser && aEncaisser.isNotEmpty && reste > 0
+        ? () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => EncaisserScreen(espace: espace, eleveId: aEncaisser.first['id'] as String)))
+        : null;
+    final gestes = <(String, IconData, VoidCallback)>[
+      if (tel != null) ('WhatsApp', Icons.chat_outlined, () => _appeler(tel, whatsapp: true)),
+      if (gere) ...[
+        ('Corriger les coordonnées', Icons.edit_outlined, () => _modifierParent(context, contactId, c)),
+        ('Fusionner avec…', Icons.merge_type, () => _fusionner(context, contactId, c)),
       ],
+    ];
+    final decoration =
+        BoxDecoration(color: schema.surface, border: Border(top: BorderSide(color: Theme.of(context).dividerColor)));
+    final Widget pied;
+    if (telephone) {
+      pied = Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: decoration,
+        child: Row(children: [
+          Expanded(
+            child: encaisser != null
+                ? FilledButton.icon(
+                    onPressed: encaisser,
+                    icon: const Icon(Icons.account_balance_wallet_outlined, size: 16),
+                    label: const Text('Encaisser'))
+                : FilledButton.icon(
+                    onPressed: tel == null ? null : () => _appeler(tel),
+                    icon: const Icon(Icons.call_outlined, size: 16),
+                    label: const Text('Appeler')),
+          ),
+          if (encaisser != null && tel != null) ...[
+            const SizedBox(width: 6),
+            IconButton.outlined(tooltip: 'Appeler', onPressed: () => _appeler(tel), icon: const Icon(Icons.call_outlined, size: 18)),
+          ],
+          if (gestes.isNotEmpty)
+            PopupMenuButton<int>(
+              tooltip: 'Autres actions',
+              icon: const Icon(Icons.more_horiz),
+              onSelected: (i) => gestes[i].$3(),
+              itemBuilder: (_) => [
+                for (var i = 0; i < gestes.length; i++) PopupMenuItem(value: i, child: _ItemMenu(gestes[i].$2, gestes[i].$1)),
+              ],
+            ),
+        ]),
+      );
+    } else {
+      pied = Container(
+        padding: const EdgeInsets.all(12),
+        decoration: decoration,
+        child: Wrap(spacing: 8, runSpacing: 8, children: [
+          if (encaisser != null)
+            FilledButton.icon(
+                onPressed: encaisser, icon: const Icon(Icons.account_balance_wallet_outlined, size: 15), label: const Text('Encaisser')),
+          if (tel != null)
+            OutlinedButton.icon(onPressed: () => _appeler(tel), icon: const Icon(Icons.call_outlined, size: 15), label: const Text('Appeler')),
+          for (final g in gestes) OutlinedButton.icon(onPressed: g.$3, icon: Icon(g.$2, size: 15), label: Text(g.$1)),
+        ]),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      entete,
+      Expanded(child: corps),
+      if (encaisser != null || tel != null || gestes.isNotEmpty) pied,
     ]);
   }
 }
