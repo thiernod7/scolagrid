@@ -1,0 +1,41 @@
+name: VPS - Compter les jours de caisse (lecture seule)
+
+# Compte, SANS RIEN MODIFIER, les reçus et dépenses rangés dans la caisse de leur
+# date effective alors qu'ils ont été saisis un autre jour (avant la version 0.9.17).
+# Production et essai. Le journal est public : il n'affiche que des nombres.
+# Voir serveur/outils/compter-jours-caisse.sql.
+
+on:
+  push:
+    paths:
+      - ".github/workflows/vps-compter-jours-caisse.yml"
+      - "serveur/outils/compter-jours-caisse.sql"
+  workflow_dispatch:
+
+concurrency:
+  group: vps
+  cancel-in-progress: false
+
+jobs:
+  compter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Compter (production)
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i supabase-db psql -X -q -U supabase_admin -d postgres" \
+            < serveur/outils/compter-jours-caisse.sql
+      - name: Compter (essai)
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres" \
+            < serveur/outils/compter-jours-caisse.sql
