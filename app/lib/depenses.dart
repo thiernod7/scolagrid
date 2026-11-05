@@ -684,7 +684,11 @@ class _DepensesScreenState extends State<DepensesScreen> {
     final vide = lignes.isEmpty ? 'Aucune dépense enregistrée pour le moment.' : 'Aucune dépense sur cette période.';
     final tableau = telephone
         ? _cartes(context, affiches, enRetard, vide)
-        : _tableau(context, affiches, enRetard, vide, categorie: largeur >= 1024, autorisation: largeur >= 1100);
+        : LayoutBuilder(
+            // Les colonnes selon la place réelle (la colonne de droite en prend).
+            builder: (context, c) => _tableau(context, affiches, enRetard, vide,
+                categorie: c.maxWidth >= 820, autorisation: c.maxWidth >= 1020),
+          );
     final aTraiter = _aTraiter(context, aAutoriser, aSortir, aConfirmer, enRetard, delai);
     final controle = [
       ?aTraiter,
@@ -975,12 +979,12 @@ class _DepensesScreenState extends State<DepensesScreen> {
       decoration: BoxDecoration(color: schema.surface, border: Border(bottom: BorderSide(color: bordure))),
       child: Row(children: [
         const SizedBox(width: 8),
-        cellule(112, const Text('Date', style: entete)),
+        cellule(104, const Text('Date', style: entete)),
         cellule(null, const Text('Motif', style: entete), flex: 3),
-        if (categorie) cellule(176, const Text('Catégorie', style: entete)),
+        if (categorie) cellule(160, const Text('Catégorie', style: entete)),
         if (autorisation) cellule(200, const Text('Autorisation', style: entete)),
-        cellule(80, const Text('Bon', style: entete)),
-        cellule(150, const Text('Montant', style: entete), align: Alignment.centerRight),
+        cellule(72, const Text('Bon', style: entete)),
+        cellule(136, const Text('Montant', style: entete), align: Alignment.centerRight),
         const SizedBox(width: 48),
       ]),
     );
@@ -996,7 +1000,7 @@ class _DepensesScreenState extends State<DepensesScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(children: [
                 const SizedBox(width: 8),
-                cellule(112, _dateCellule(context, d)),
+                cellule(104, _dateCellule(context, d)),
                 cellule(
                   null,
                   Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -1016,15 +1020,15 @@ class _DepensesScreenState extends State<DepensesScreen> {
                         Tooltip(message: 'Reçu joint', child: Icon(Icons.attach_file, size: 13, color: gris)),
                       ],
                     ]),
-                    if (!autorisation && d['statut'] != 'sortie')
+                    if (!autorisation && (d['statut'] != 'sortie' || d['autorisation_orale'] == 1 || d['autorise_par'] != null))
                       Padding(padding: const EdgeInsets.only(top: 2), child: _autorisation(context, d, enRetard(d))),
                   ]),
                   flex: 3,
                 ),
-                if (categorie) cellule(176, Text('${d['categorie']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
+                if (categorie) cellule(160, Text('${d['categorie']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14))),
                 if (autorisation) cellule(200, _autorisation(context, d, enRetard(d))),
-                cellule(80, Text('${d['bon'] ?? '—'}', overflow: TextOverflow.ellipsis, style: styleMono.copyWith(fontSize: 13, color: d['bon'] == null ? gris : null))),
-                cellule(150, _montant(d), align: Alignment.centerRight),
+                cellule(72, Text('${d['bon'] ?? '—'}', overflow: TextOverflow.ellipsis, style: styleMono.copyWith(fontSize: 13, color: d['bon'] == null ? gris : null))),
+                cellule(136, _montant(d), align: Alignment.centerRight),
                 SizedBox(width: 48, child: _menuLigne(d)),
               ]),
             ),

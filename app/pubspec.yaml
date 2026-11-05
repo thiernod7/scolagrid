@@ -1,7 +1,7 @@
 name: scolagrid
 description: Scolagrid, gestion scolaire hors ligne d'abord.
 publish_to: none
-version: 0.9.15+42
+version: 0.9.16+43
 
 environment:
   sdk: ^3.10.0
