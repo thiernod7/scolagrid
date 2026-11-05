@@ -27,6 +27,9 @@ select 'Reçus' as quoi, cas, count(*) as nombre,
        count(distinct organisation_id) as ecoles
 from c group by cas order by cas;
 
+-- Les dépenses n'existent qu'à partir de la version 0.9.7.
+select to_regclass('public.depenses') is not null as avec_depenses \gset
+\if :avec_depenses
 with d as (
   select d.organisation_id, d.site_id, d.sortie_par as qui, d.sortie_le as actuel,
          (d.created_at at time zone 'UTC')::date as saisie
@@ -46,6 +49,9 @@ with d as (
 )
 select 'Dépenses sorties' as quoi, cas, count(*) as nombre, count(distinct organisation_id) as ecoles
 from c group by cas order by cas;
+\else
+\echo 'Dépenses : pas encore sur ce serveur.'
+\endif
 
 -- Écart entre date effective et saisie, pour les reçus (en jours) : ordre de grandeur.
 select 'Reçus : écart saisie - date effective' as quoi,
