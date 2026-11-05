@@ -27,7 +27,7 @@ do $$ begin
   begin
     insert into public.encaissements (organisation_id, site_id, annee_id, numero, payeur_nom, mode, total_gnf, date_effective, poste_id)
       values (current_setting('test.org')::uuid, current_setting('test.site')::uuid, current_setting('test.annee')::uuid,
-              'REC-ALPHA-DONKA-2026-Z0001', 'Essai', 'especes', 1000, '2026-11-07', current_setting('test.poste_s')::uuid);
+              'REC-ALPHA-DONKA-2026-Z0001', 'Essai', 'especes', 1000, '2026-10-07', current_setting('test.poste_s')::uuid);
     raise exception 'Un poste en attente a encaissé';
   exception when insufficient_privilege then null;
   end;
@@ -59,26 +59,26 @@ begin;
 select pg_temp.connecte(:'s');
 set local role authenticated;
 insert into public.encaissements (id, organisation_id, site_id, annee_id, numero, payeur_nom, mode, total_gnf, date_effective)
-  values ('20000000-0000-0000-0000-000000000261', :'org_a', :'site_1', :'annee', 'REC-ALPHA-DONKA-2026-Z0261', 'Essai', 'especes', 1000, '2026-11-07');
+  values ('20000000-0000-0000-0000-000000000261', :'org_a', :'site_1', :'annee', 'REC-ALPHA-DONKA-2026-Z0261', 'Essai', 'especes', 1000, '2026-10-07');
 insert into public.clotures_caisse (organisation_id, site_id, encaisse_par, jour, compte_especes)
-  values (:'org_a', :'site_1', :'s', '2026-11-07', 1000);
+  values (:'org_a', :'site_1', :'s', '2026-10-07', 1000);
 insert into public.encaissements (id, organisation_id, site_id, annee_id, numero, payeur_nom, mode, total_gnf, date_effective)
-  values ('20000000-0000-0000-0000-000000000262', :'org_a', :'site_1', :'annee', 'REC-ALPHA-DONKA-2026-Z0262', 'Essai', 'especes', 500, '2026-11-07');
+  values ('20000000-0000-0000-0000-000000000262', :'org_a', :'site_1', :'annee', 'REC-ALPHA-DONKA-2026-Z0262', 'Essai', 'especes', 500, '2026-10-07');
 insert into public.clotures_caisse (organisation_id, site_id, encaisse_par, jour, compte_especes)
-  values (:'org_a', :'site_1', :'s', '2026-11-07', 500);
+  values (:'org_a', :'site_1', :'s', '2026-10-07', 500);
 do $$ begin
   begin
     insert into public.clotures_caisse (organisation_id, site_id, encaisse_par, jour, compte_especes)
-      values (current_setting('test.org')::uuid, current_setting('test.site')::uuid, '88888888-8888-8888-8888-888888888888', '2026-11-07', 0);
+      values (current_setting('test.org')::uuid, current_setting('test.site')::uuid, '88888888-8888-8888-8888-888888888888', '2026-10-07', 0);
     raise exception 'Clôture sans rien de nouveau';
   exception when unique_violation then null;
   end;
 end $$;
 commit;
 do $$ begin
-  assert (select attendu_especes from public.clotures_caisse where jour = '2026-11-07' and rang = 1) = 1000, 'Première clôture : 1 000';
-  assert (select attendu_especes from public.clotures_caisse where jour = '2026-11-07' and rang = 2) = 500, 'Complément : 500';
-  assert (select nb_recus from public.clotures_caisse where jour = '2026-11-07' and rang = 2) = 1, 'Complément : un reçu';
+  assert (select attendu_especes from public.clotures_caisse where jour = '2026-10-07' and rang = 1) = 1000, 'Première clôture : 1 000';
+  assert (select attendu_especes from public.clotures_caisse where jour = '2026-10-07' and rang = 2) = 500, 'Complément : 500';
+  assert (select nb_recus from public.clotures_caisse where jour = '2026-10-07' and rang = 2) = 1, 'Complément : un reçu';
   begin
     insert into public.tranches_annee (organisation_id, annee_id, ordre, libelle, date_limite, part, mois)
       values (current_setting('test.org')::uuid, current_setting('test.annee')::uuid, 20, 'Trop', '2027-01-31', 10, 13);
@@ -88,7 +88,7 @@ do $$ begin
 end $$;
 
 -- Ménage.
-delete from public.clotures_caisse where jour = '2026-11-07';
+delete from public.clotures_caisse where jour = '2026-10-07';
 delete from public.encaissements where id in ('20000000-0000-0000-0000-000000000261', '20000000-0000-0000-0000-000000000262');
 delete from public.postes where nom in ('Téléphone de la secrétaire', 'PC du directeur');
 \echo 'Test 026 : tout est conforme.'

@@ -405,12 +405,22 @@ const schema = Schema([
     Column.text('annule_le'),
     Column.integer('impressions'),
     Column.integer('apres_cloture'),
+    // Jour où l'argent est entré dans la caisse (journal, clôture) ; la date effective
+    // est celle du paiement par le parent (reçu, échéancier).
+    Column.text('jour_caisse'),
+    Column.text('recu_serveur_le'),
+    Column.integer('date_douteuse'),
+    Column.text('date_initiale'),
+    Column.text('motif_correction_date'),
+    Column.text('date_corrigee_par'),
+    Column.text('date_corrigee_le'),
     Column.text('poste_id'),
     Column.text('encaisse_par'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [
     Index('par_jour', [IndexedColumn('date_effective')]),
+    Index('par_caisse', [IndexedColumn('jour_caisse')]),
   ]),
   Table('lignes_encaissement', [
     Column.text('organisation_id'),
@@ -452,6 +462,7 @@ const schema = Schema([
     Column.text('verse_le'),
     Column.text('decharge'),
     Column.text('poste_id'),
+    Column.text('recu_serveur_le'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [
@@ -484,6 +495,7 @@ const schema = Schema([
     Column.text('annule_par'),
     Column.text('annule_le'),
     Column.text('poste_id'),
+    Column.text('recu_serveur_le'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [

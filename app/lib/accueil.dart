@@ -125,9 +125,15 @@ class _AccueilScreenState extends State<AccueilScreen> {
   String? _recherche;
   final _champRecherche = TextEditingController();
 
+  Timer? _horloge;
+
   @override
   void initState() {
     super.initState();
+    // La date de l'appareil range l'argent dans sa journée de caisse : on la vérifie
+    // au démarrage puis toutes les dix minutes.
+    unawaited(verifierHorloge());
+    _horloge = Timer.periodic(const Duration(minutes: 10), (_) => verifierHorloge());
     final moi = monId;
     _abonnements
       ..add(db.watch('SELECT * FROM rattachements WHERE user_id = ? AND actif = 1 '
@@ -219,6 +225,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
 
   @override
   void dispose() {
+    _horloge?.cancel();
     for (final a in _abonnements) {
       a.cancel();
     }
@@ -433,18 +440,18 @@ class _AccueilScreenState extends State<AccueilScreen> {
       ),
     );
 
-    // Poste en attente de validation : on le dit en haut de chaque écran.
-    final corps = _cePoste?['statut'] == 'a_valider'
-        ? Column(children: [
-            Container(
-              width: double.infinity,
-              color: Couleurs.attenteFond,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: const Text(messagePosteEnAttente, style: TextStyle(color: Couleurs.attente, fontSize: 13)),
-            ),
-            Expanded(child: contenu),
-          ])
-        : contenu;
+    // Poste en attente de validation, date de l'appareil fausse : on le dit en haut de chaque écran.
+    final corps = Column(children: [
+      const BandeauHorloge(),
+      if (_cePoste?['statut'] == 'a_valider')
+        Container(
+          width: double.infinity,
+          color: Couleurs.attenteFond,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: const Text(messagePosteEnAttente, style: TextStyle(color: Couleurs.attente, fontSize: 13)),
+        ),
+      Expanded(child: contenu),
+    ]);
 
     return LayoutBuilder(builder: (context, c) {
       final largeur = c.maxWidth;

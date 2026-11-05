@@ -92,6 +92,16 @@ Future<String> envoyerInvitationSms(String ficheId) async =>
 Future<String?> accepterInvitation(String code) async =>
     await Supabase.instance.client.rpc('accepter_invitation', params: {'code_saisi': code}) as String?;
 
+/// L'heure du serveur (pour vérifier celle de l'ordinateur) ; null hors ligne.
+Future<DateTime?> heureServeur() async {
+  try {
+    final r = await Supabase.instance.client.rpc('heure_serveur').timeout(const Duration(seconds: 15));
+    return DateTime.tryParse('$r')?.toLocal();
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Étape 4 : active ce poste. Le serveur lui donne la lettre suivante de
 /// l'organisation (A, B, C…), jamais réutilisée. Nécessite le réseau.
 Future<({String id, String code})> activerPoste({
@@ -177,6 +187,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     'droits_personnel': ['accorde'],
     'eleves_contacts': ['tuteur_principal', 'responsable_financier'],
     'souscriptions': ['actif'],
+    'encaissements': ['date_douteuse'],
     'organisations': [
       'reductions_cumul', 'remboursement_aucun', 'remboursable_inscription',
       'remboursable_reinscription', 'remboursable_scolarite', 'remboursable_optionnel', 'signature_documents', 'depense_orale',

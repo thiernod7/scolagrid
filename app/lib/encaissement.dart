@@ -635,6 +635,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     final messager = ScaffoldMessenger.of(context);
     void erreur(String m) => messager.showSnackBar(SnackBar(content: Text(m)));
     if (await posteEnAttente()) return erreur(messagePosteEnAttente);
+    if (await horlogeBloque(context)) return;
     if (_nonClos.isNotEmpty) return erreur("Clôturez d'abord votre caisse du ${_dateLisible(_nonClos.first['jour'])}.");
     final recus = _recus.where((b) => b.lignes.any((l) => l.total > 0)).toList();
     if (_recus.every((b) => b.lignes.isEmpty)) return erreur('Ajoutez au moins un élève.');
@@ -729,12 +730,14 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
           ids.add(id);
           await tx.execute(
               '''INSERT INTO encaissements (id, organisation_id, site_id, annee_id, numero, carnet, feuille, payeur_nom, mode,
-                   reference, date_effective, total_gnf, confirmation, statut, impressions, poste_id, encaisse_par, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'valide', 0, ?, ?, ?, ?)''',
+                   reference, date_effective, jour_caisse, total_gnf, confirmation, statut, impressions, poste_id, encaisse_par,
+                   created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'valide', 0, ?, ?, ?, ?)''',
               [
                 id, o, site, x['annee_id'], numero, carnet, b.feuille.text.trim().isEmpty ? null : b.feuille.text.trim(),
                 _payeur.text.trim(), b.mode, b.reference.text.trim().isEmpty ? null : b.reference.text.trim(),
-                _date(_jourPaiement), total, _sousReserve.contains(b.mode) ? 'en_attente' : 'confirme',
+                // Payé le jour choisi ; entré dans la caisse aujourd'hui.
+                _date(_jourPaiement), _date(DateTime.now()), total, _sousReserve.contains(b.mode) ? 'en_attente' : 'confirme',
                 poste['poste_id'], monId, maintenant, maintenant,
               ]);
           for (final l in b.lignes) {
@@ -1583,6 +1586,57 @@ class RecuScreen extends StatelessWidget {
     });
   }
 
+  /// Corriger la date d'un reçu mal daté (horloge de l'ordinateur fausse, erreur de saisie) :
+  /// réservé au droit « annuler un reçu », motivé, tracé ; impossible sur une journée clôturée.
+  Future<void> _corrigerDate(BuildContext context, Map<String, Object?> r) async {
+    final messager = ScaffoldMessenger.of(context);
+    var paye = DateTime.tryParse('${r['date_effective']}') ?? DateTime.now();
+    var caisse = DateTime.tryParse('${r['jour_caisse'] ?? r['date_effective']}') ?? DateTime.now();
+    final motif = TextEditingController();
+    Widget choix(String libelle, DateTime valeur, ValueChanged<DateTime> change) => InkWell(
+          onTap: () async {
+            final d = await _choisirDate(context, valeur,
+                premier: DateTime.now().subtract(const Duration(days: 365)), dernier: DateTime.now());
+            if (d != null) change(d);
+          },
+          child: InputDecorator(
+            decoration: _champ(libelle).copyWith(suffixIcon: const Icon(Icons.event_outlined, size: 18)),
+            child: Text(_dateLisible(_date(valeur))),
+          ),
+        );
+    final ok = await _formulaire(context, 'Corriger la date du reçu ${r['numero']}', (maj) => [
+          const Text("Pour un reçu mal daté (ordinateur qui n'était pas à la bonne date, erreur de saisie). "
+              "La date d'origine reste dans l'historique du reçu."),
+          Row(children: [
+            Expanded(child: choix('Payé le', paye, (d) => maj(() => paye = d))),
+            const SizedBox(width: 12),
+            Expanded(child: choix('Entré en caisse le', caisse, (d) => maj(() => caisse = d))),
+          ]),
+          TextField(
+              controller: motif,
+              decoration: _champ('Motif', aide: "Obligatoire. Par exemple : l'ordinateur indiquait le 20/10")),
+        ]);
+    if (!ok) return;
+    if (motif.text.trim().length < 3) {
+      messager.showSnackBar(const SnackBar(content: Text('Le motif est obligatoire.')));
+      return;
+    }
+    if (paye.isAfter(caisse)) {
+      messager.showSnackBar(const SnackBar(content: Text("Le paiement ne peut pas être après son entrée en caisse.")));
+      return;
+    }
+    final close = await db.getOptional(
+        '''SELECT 1 FROM clotures_caisse WHERE organisation_id = ? AND site_id = ? AND encaisse_par = ? AND jour IN (?, ?)''',
+        [r['organisation_id'], r['site_id'], r['encaisse_par'], r['jour_caisse'] ?? r['date_effective'], _date(caisse)]);
+    if (close != null) {
+      messager.showSnackBar(const SnackBar(content: Text('Cette journée de caisse est clôturée : la date ne peut plus être corrigée.')));
+      return;
+    }
+    await _modifier('encaissements', encaissementId,
+        {'date_effective': _date(paye), 'jour_caisse': _date(caisse), 'motif_correction_date': motif.text.trim()});
+    messager.showSnackBar(const SnackBar(content: Text('Date du reçu corrigée.')));
+  }
+
   @override
   Widget build(BuildContext context) => Requete(
         'SELECT * FROM encaissements WHERE id = ?',
@@ -1616,6 +1670,11 @@ class RecuScreen extends StatelessWidget {
                       title: Text('${gnf(r['total_gnf'])} · ${modesPaiement[r['mode']]}'),
                       subtitle: Text([
                         'Reçu de ${r['payeur_nom']}, le ${_dateLisible(r['date_effective'])}',
+                        if (r['jour_caisse'] != null && r['jour_caisse'] != r['date_effective'])
+                          'Entré en caisse le ${_dateLisible(r['jour_caisse'])}',
+                        if (r['date_initiale'] != null)
+                          'Date corrigée (au départ : ${_dateLisible(r['date_initiale'])}) : ${r['motif_correction_date'] ?? ''}',
+                        if (r['date_douteuse'] == 1) "Date à vérifier : l'ordinateur n'était pas à la bonne date",
                         if (r['feuille'] != null) 'Reçu papier : ${r['carnet'] ?? ''} n° ${r['feuille']}',
                         if (r['reference'] != null) 'Réf. ${r['reference']}',
                         if (r['confirmation'] == 'en_attente') "Sous réserve d'encaissement",
@@ -1648,6 +1707,13 @@ class RecuScreen extends StatelessWidget {
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
                         onPressed: () => _annuler(context, r), icon: const Icon(Icons.block), label: const Text('Annuler ce reçu')),
+                  ],
+                  if (!annule && s.data![1] as bool) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                        onPressed: () => _corrigerDate(context, r),
+                        icon: const Icon(Icons.edit_calendar_outlined),
+                        label: const Text('Corriger la date')),
                   ],
                 ]);
               },
@@ -1697,7 +1763,7 @@ class _CaisseScreenState extends State<CaisseScreen> {
               WHERE l.encaissement_id = e.id LIMIT 1) AS eleve
            FROM encaissements e
            LEFT JOIN personnel p ON p.user_id = e.encaisse_par AND p.organisation_id = e.organisation_id
-           WHERE e.organisation_id = ? AND e.date_effective = ?
+           WHERE e.organisation_id = ? AND e.jour_caisse = ?
            ORDER BY e.created_at''',
         parametres: [widget.espace.orgId, jour],
         builder: (context, recus) => Requete(
@@ -1927,6 +1993,10 @@ class _CaisseScreenState extends State<CaisseScreen> {
                               ? 'Dépense · ${m['categorie']}${m['beneficiaire'] != null ? ' · ${m['beneficiaire']}' : ''}'
                               : 'Remboursement · ${m['beneficiaire'] ?? ''}',
                       overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                  if (sens == 'recu' && m['jour_caisse'] != null && m['date_effective'] != m['jour_caisse'])
+                    Text('payé le ${_dateLisible(m['date_effective'])}', style: const TextStyle(fontSize: 12, color: Couleurs.attente)),
+                  if (m['date_douteuse'] == 1)
+                    const Text("date à vérifier : horloge de l'ordinateur", style: TextStyle(fontSize: 12, color: Couleurs.retard)),
                   if (m['apres_cloture'] == 1)
                     const Text('saisi après la clôture', style: TextStyle(fontSize: 12, color: Couleurs.attente)),
                   if (m['confirmation'] == 'en_attente')
@@ -2104,7 +2174,7 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
       """SELECT coalesce(sum(total_gnf) FILTER (WHERE mode = 'especes'), 0) AS especes,
                 coalesce(sum(total_gnf) FILTER (WHERE mode <> 'especes'), 0) AS autres,
                 count(*) AS n
-         FROM encaissements WHERE organisation_id = ? AND site_id = ? AND encaisse_par = ? AND date_effective = ? AND statut = 'valide'""",
+         FROM encaissements WHERE organisation_id = ? AND site_id = ? AND encaisse_par = ? AND jour_caisse = ? AND statut = 'valide'""",
       [orgId, siteId, monId, jour]);
   final rembourse = (await db.get(
       """SELECT coalesce(sum(montant_gnf), 0) AS s FROM remboursements WHERE organisation_id = ? AND site_id = ?
@@ -2192,12 +2262,12 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
 /// Jours passés où la personne connectée a encaissé sans clôturer (le plus ancien d'abord).
 Future<List<Map<String, Object?>>> joursNonClotures(String orgId) async => [
       for (final r in await db.getAll(
-          """SELECT e.date_effective AS jour, e.site_id FROM encaissements e
-             WHERE e.organisation_id = ? AND e.encaisse_par = ? AND e.statut = 'valide' AND e.date_effective < ?
-             GROUP BY e.date_effective, e.site_id
+          """SELECT e.jour_caisse AS jour, e.site_id FROM encaissements e
+             WHERE e.organisation_id = ? AND e.encaisse_par = ? AND e.statut = 'valide' AND e.jour_caisse < ?
+             GROUP BY e.jour_caisse, e.site_id
              HAVING count(*) > (SELECT coalesce(sum(c.nb_recus), 0) FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
-                 AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.date_effective)
-             ORDER BY e.date_effective""",
+                 AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.jour_caisse)
+             ORDER BY e.jour_caisse""",
           [orgId, monId, _date(DateTime.now())]))
         Map.of(r),
     ];
@@ -2219,12 +2289,12 @@ class _ClotureDuJour extends StatelessWidget {
           // Mes sites de la journée qui restent à clôturer.
           """SELECT e.site_id,
                  (SELECT count(*) FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id AND c.site_id = e.site_id
-                   AND c.encaisse_par = e.encaisse_par AND c.jour = e.date_effective) AS deja
+                   AND c.encaisse_par = e.encaisse_par AND c.jour = e.jour_caisse) AS deja
                FROM encaissements e WHERE e.organisation_id = ? AND e.encaisse_par = ?
-               AND e.date_effective = ? AND e.statut = 'valide'
+               AND e.jour_caisse = ? AND e.statut = 'valide'
                GROUP BY e.site_id
                HAVING count(*) > (SELECT coalesce(sum(c.nb_recus), 0) FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
-                 AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.date_effective)""",
+                 AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.jour_caisse)""",
           parametres: [espace.orgId, monId, jour],
           builder: (context, aClore) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             for (final s in aClore)

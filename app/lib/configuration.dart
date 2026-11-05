@@ -35,6 +35,7 @@ part 'familles.dart';
 part 'encaissement.dart';
 part 'fiche_eleve.dart';
 part 'frais.dart';
+part 'horloge.dart';
 part 'identite.dart';
 part 'import_ecran.dart';
 part 'inscription.dart';

@@ -205,6 +205,8 @@ class _RemboursementsScreenState extends State<RemboursementsScreen> {
   }
 
   Future<void> _verser(Map<String, Object?> r) async {
+    if (await horlogeBloque(context)) return;
+    if (!mounted) return;
     final decharge = TextEditingController();
     final ok = await _formulaire(context, 'Verser ${gnf(r['montant_gnf'])}', (_) => [
           Text('Remettez l\'argent à ${r['beneficiaire']} et faites-lui signer la décharge.'),

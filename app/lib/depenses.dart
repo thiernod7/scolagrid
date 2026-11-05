@@ -81,6 +81,7 @@ class _DepensesScreenState extends State<DepensesScreen> {
 
   Future<void> _nouvelle(Map<String, Object?> org) async {
     final messager = ScaffoldMessenger.of(context);
+    if (await horlogeBloque(context)) return;
     final sites = await _mesSites();
     if (sites.isEmpty) {
       messager.showSnackBar(const SnackBar(content: Text("Enregistrer une dépense demande le droit d'encaisser ou d'autoriser une dépense.")));
@@ -236,7 +237,8 @@ class _DepensesScreenState extends State<DepensesScreen> {
             id, _e.orgId, site, montantSaisi, jour, cat, motif.text.trim(), val(beneficiaire), val(bon),
             sortie ? 'sortie' : 'demande', monId, auDessus && _autorise ? monId : null, auDessus && sortie ? m0 : null,
             vive ? 1 : 0, vive ? qui : null, vive ? 'attendue' : null,
-            sortie ? monId : null, sortie ? jour : null, poste?['poste_id'], m0, m0,
+            // L'argent sort de la caisse du jour de la saisie, quelle que soit la date de la dépense.
+            sortie ? monId : null, sortie ? _date(DateTime.now()) : null, poste?['poste_id'], m0, m0,
           ]);
       final j = justificatif;
       if (j != null) {
@@ -354,6 +356,8 @@ class _DepensesScreenState extends State<DepensesScreen> {
         final m = await motif('Refuser la dépense', 'Motif du refus');
         if (m != null) await _modifier('depenses', id, {'statut': 'refusee', 'autorise_par': monId, 'motif_refus': m});
       case 'sortir':
+        if (await horlogeBloque(context)) return;
+        if (!mounted) return;
         if (await _confirmer(context, 'Remettre ${gnf(d['montant_gnf'])} aujourd\'hui ? La somme sort de votre caisse du jour.')) {
           final j = _date(DateTime.now());
           await _modifier('depenses', id, {'statut': 'sortie', 'sortie_par': monId, 'sortie_le': j, 'date_effective': j});
@@ -1130,9 +1134,9 @@ class _CaisseDuJour extends StatelessWidget {
     final moi = toute ? null : monId;
     return Requete(
       '''SELECT
-           (SELECT coalesce(sum(total_gnf), 0) FROM encaissements WHERE organisation_id = ? AND date_effective = ?
+           (SELECT coalesce(sum(total_gnf), 0) FROM encaissements WHERE organisation_id = ? AND jour_caisse = ?
               AND statut = 'valide' AND mode = 'especes' AND (? IS NULL OR encaisse_par = ?)) AS encaisse,
-           (SELECT count(*) FROM encaissements WHERE organisation_id = ? AND date_effective = ?
+           (SELECT count(*) FROM encaissements WHERE organisation_id = ? AND jour_caisse = ?
               AND statut = 'valide' AND mode = 'especes' AND (? IS NULL OR encaisse_par = ?)) AS nb_recus,
            (SELECT coalesce(sum(montant_gnf), 0) FROM remboursements WHERE organisation_id = ? AND verse_le = ?
               AND statut = 'verse' AND mode = 'especes' AND (? IS NULL OR verse_par = ?)) AS rembourse,
