@@ -63,6 +63,11 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: node captures.mjs "https://app-essai.$(echo "$VPS_HOST" | tr . -).sslip.io" ecrans ../../verifications/captures
+      - name: Écrans sur téléphone
+        working-directory: docs/manuel/outils
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: node captures.mjs "https://app-essai.$(echo "$VPS_HOST" | tr . -).sslip.io" mobile ../../verifications/captures/telephone
       - name: Ranger les captures
         run: |
           git config user.name "github-actions[bot]"

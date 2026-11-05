@@ -91,6 +91,50 @@ if (etape === 'connexion') {
     await arbre('après connexion');
     await photo('04-espace-ecole');
   });
+} else if (etape === 'mobile') {
+  // Revue des écrans sur téléphone (390 × 844) : chaque écran principal, ouvert tel quel.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await pause(4000); await semantique(); await code('2580');
+  const voir = (texte, ms = 8000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
+  const fermer = async () => {
+    for (let i = 0; i < 3; i++) {
+      const b = page.getByRole('button', { name: /Retour|Fermer|Annuler/ });
+      if (!(await b.count())) break;
+      await b.last().click().catch(() => {}); await pause(1500); await semantique();
+    }
+  };
+  const onglet = async (nom) => { await fermer(); await page.getByText(nom, { exact: true }).last().click(); await pause(3000); await semantique(); };
+  const plus = async (nom) => { await onglet('Plus'); await page.getByText(nom, { exact: true }).last().click(); await pause(3000); await semantique(); };
+  await etapeSure('m-accueil', async () => { await onglet('Accueil'); await photo('m01-accueil'); });
+  await etapeSure('m-eleves', async () => {
+    await onglet('Élèves'); await voir('DIALLO'); await photo('m02-eleves');
+    await page.getByText('DIALLO', { exact: false }).first().click(); await pause(3500); await semantique();
+    await photo('m03-fiche-eleve');
+    await clic('Contacts'); await pause(1500); await photo('m04-fiche-contacts');
+    await clic('Finances'); await pause(1500); await photo('m05-fiche-finances');
+  });
+  await etapeSure('m-inscription', async () => {
+    await onglet('Élèves'); await clic('Nouvelle inscription'); await pause(3000); await semantique(); await photo('m06-inscription');
+  });
+  await etapeSure('m-caisse', async () => {
+    await onglet('Caisse'); await photo('m07-caisse');
+    await clic('Encaisser'); await pause(3000); await semantique(); await photo('m08-encaisser');
+  });
+  await etapeSure('m-familles', async () => {
+    await plus('Familles'); await photo('m09-familles');
+    await page.getByRole('button', { name: /Père|Mère|Oncle|Tante/ }).first().click(); await pause(3000); await semantique();
+    await photo('m10-fiche-famille');
+  });
+  await etapeSure('m-depenses', async () => {
+    await plus('Dépenses'); await photo('m11-depenses');
+    await clic('Nouvelle dépense'); await pause(2500); await semantique(); await photo('m12-nouvelle-depense');
+  });
+  await etapeSure('m-personnel', async () => { await plus('Personnel'); await photo('m13-personnel'); });
+  await etapeSure('m-postes', async () => { await plus('Postes'); await photo('m14-postes'); });
+  await etapeSure('m-parametres', async () => {
+    await plus('Paramètres'); await photo('m15-parametres');
+    await page.getByText('Frais', { exact: false }).first().click(); await pause(3000); await semantique(); await photo('m16-frais');
+  });
 } else {
   // Barre latérale (PC 1440 × 900) : positions fixes.
   const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Caisse': 267, 'Dépenses': 305, 'Personnel': 380, 'Postes': 418, 'Paramètres': 456 };
