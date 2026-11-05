@@ -117,7 +117,7 @@ if (etape === 'connexion') {
   await etapeSure('m-accueil', async () => { await onglet('Accueil'); await photo('m01-accueil'); });
   await etapeSure('m-eleves', async () => {
     await onglet('Élèves'); await voir('BAH'); await photo('m02-eleves');
-    await page.getByRole('button', { name: /BAH Djénabou/ }).first().click(); await pause(3500); await semantique();
+    await page.mouse.click(200, 215); await pause(3500); await semantique();
     await photo('m03-fiche-eleve');
     await clic('Contacts'); await pause(1500); await photo('m04-fiche-contacts');
     await clic('Finances'); await pause(1500); await photo('m05-fiche-finances');
@@ -131,7 +131,7 @@ if (etape === 'connexion') {
   });
   await etapeSure('m-familles', async () => {
     await plus('Familles'); await photo('m09-familles');
-    await page.getByRole('button', { name: /Père|Mère|Oncle|Tante/ }).first().click(); await pause(3000); await semantique();
+    await page.mouse.click(200, 140); await pause(3000); await semantique();
     await photo('m10-fiche-famille');
   });
   await etapeSure('m-depenses', async () => {
