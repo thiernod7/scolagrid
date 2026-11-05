@@ -10,6 +10,7 @@ on:
     paths:
       - ".github/workflows/manuel-captures.yml"
       - "docs/manuel/outils/**"
+  workflow_dispatch:
 
 permissions:
   contents: write
