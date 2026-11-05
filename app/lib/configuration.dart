@@ -241,30 +241,72 @@ Future<bool> _confirmer(BuildContext context, String question) async =>
     false;
 
 /// Boîte de saisie : construit ses champs, renvoie vrai si l'on valide.
+/// Un formulaire dans une fenêtre. Sur téléphone, il prend tout l'écran (titre et
+/// « Enregistrer » en haut) : les champs gardent toute la largeur.
 Future<bool> _formulaire(BuildContext context, String titre, List<Widget> Function(StateSetter maj) champs,
-        {String Function()? valider}) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, maj) => AlertDialog(
-          title: Text(titre),
-          // Largeur d'un formulaire, pas de l'écran : sur PC la fenêtre ne s'étire plus.
-          content: SizedBox(
-            width: 520,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                for (final c in champs(maj)) Padding(padding: const EdgeInsets.only(bottom: 12), child: c),
-              ]),
+    {String Function()? valider}) async {
+  if (MediaQuery.sizeOf(context).width < 600) {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => StatefulBuilder(
+            builder: (context, maj) => Dialog.fullscreen(
+              child: Scaffold(
+                appBar: AppBar(
+                  leading: IconButton(
+                      tooltip: 'Annuler', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context, false)),
+                  title: Text(titre, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                  titleSpacing: 0,
+                ),
+                body: SafeArea(
+                  child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
+                    for (final c in champs(maj)) Padding(padding: const EdgeInsets.only(bottom: 14), child: c),
+                  ]),
+                ),
+                bottomNavigationBar: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: Row(children: [
+                      Expanded(
+                        child: OutlinedButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton(
+                            onPressed: () => Navigator.pop(context, true), child: Text(valider?.call() ?? 'Enregistrer')),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
             ),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(valider?.call() ?? 'Enregistrer')),
-          ],
+        ) ??
+        false;
+  }
+  return await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, maj) => AlertDialog(
+            title: Text(titre),
+            // Largeur d'un formulaire, pas de l'écran : sur PC la fenêtre ne s'étire plus.
+            content: SizedBox(
+              width: 520,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  for (final c in champs(maj)) Padding(padding: const EdgeInsets.only(bottom: 12), child: c),
+                ]),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(valider?.call() ?? 'Enregistrer')),
+            ],
+          ),
         ),
-      ),
-    ) ??
-    false;
+      ) ??
+      false;
+}
 
 InputDecoration _champ(String label, {String? aide, String? suffixe}) =>
     InputDecoration(labelText: label, helperText: aide, suffixText: suffixe, border: const OutlineInputBorder());

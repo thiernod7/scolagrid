@@ -146,6 +146,78 @@ class _PhotoEleveState extends State<PhotoEleve> {
   }
 }
 
+/// La photo d'un élève en grand, plein écran, qu'on peut agrandir avec deux doigts
+/// (ou la molette) ; « Changer la photo » si on en a le droit.
+Future<void> voirPhotoEleve(BuildContext context,
+    {required String eleveId, required String nom, required String version, VoidCallback? changer}) async {
+  var image = _cachePhotos[eleveId]?.$1 == version ? _cachePhotos[eleveId]!.$2 : null;
+  if (image == null) {
+    final p = await db.getOptional('SELECT image FROM photos_eleves WHERE eleve_id = ?', [eleveId]);
+    if (p == null) return;
+    try {
+      image = MemoryImage(base64Decode(p['image'] as String));
+      _cachePhotos[eleveId] = (version, image);
+    } catch (_) {
+      return;
+    }
+  }
+  if (!context.mounted) return;
+  final img = image;
+  await showDialog<void>(
+    context: context,
+    barrierColor: Colors.black87,
+    builder: (context) => Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: SafeArea(
+        child: Stack(children: [
+          Positioned.fill(
+            child: InteractiveViewer(
+              minScale: 1,
+              maxScale: 5,
+              child: Center(child: Image(image: img, fit: BoxFit.contain)),
+            ),
+          ),
+          Positioned(
+            left: 8,
+            right: 8,
+            top: 4,
+            child: Row(children: [
+              IconButton(
+                tooltip: 'Fermer',
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(nom,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+              if (changer != null)
+                TextButton.icon(
+                  style: TextButton.styleFrom(foregroundColor: Colors.white),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    changer();
+                  },
+                  icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                  label: const Text('Changer'),
+                ),
+            ]),
+          ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 12,
+            child: Text('Écartez deux doigts (ou la molette) pour agrandir',
+                textAlign: TextAlign.center, style: TextStyle(color: Colors.white60, fontSize: 12)),
+          ),
+        ]),
+      ),
+    ),
+  );
+}
+
 /// Logo, signature et cachet de l'école, prêts pour les documents.
 Future<ImagesEcole> _imagesEcole(Object? orgId) async {
   Uint8List? lire(Map<String, Object?>? r) {

@@ -492,8 +492,10 @@ class _Calendrier extends StatelessWidget {
             onChanged: (_) => maj(remplir),
             decoration: _champ('Nombre de tranches'),
           ),
-          Row(children: [
-            const Expanded(child: Text('Répartir par', style: TextStyle(fontSize: 13))),
+          // Le libellé au-dessus du choix : sur téléphone, côte à côte ne tient pas.
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Répartir par', style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 6),
             Segments<bool>(
               valeur: parMois,
               choix: const {false: 'Pourcentage', true: 'Nombre de mois'},
@@ -508,18 +510,19 @@ class _Calendrier extends StatelessWidget {
           ]),
         ],
         for (var k = 0; k < noms.length; k++)
-          Row(children: [
-            Expanded(
+          // Une tranche : son nom, puis sa part et sa date (sur une ligne si la place le permet).
+          Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            SizedBox(
+              width: MediaQuery.sizeOf(context).width < 600 ? double.infinity : 180,
               child: TextField(
                 controller: noms[k],
-                decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                decoration: InputDecoration(isDense: true, border: const OutlineInputBorder(), labelText: 'Tranche ${k + 1}'),
                 style: const TextStyle(fontSize: 14),
                 onChanged: (_) => maj(() {}),
               ),
             ),
-            const SizedBox(width: 6),
             SizedBox(
-              width: 92,
+              width: 104,
               child: TextField(
                 controller: valeurs[k],
                 enabled: tranches,
@@ -529,7 +532,6 @@ class _Calendrier extends StatelessWidget {
                 onChanged: (_) => maj(() {}),
               ),
             ),
-            const SizedBox(width: 4),
             // En mois, la date suit : fin du dernier mois de la tranche.
             TextButton(
               onPressed: tranches && parMois
