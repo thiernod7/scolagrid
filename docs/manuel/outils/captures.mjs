@@ -103,8 +103,17 @@ if (etape === 'connexion') {
       await b.last().click().catch(() => {}); await pause(1500); await semantique();
     }
   };
-  const onglet = async (nom) => { await fermer(); await page.getByText(nom, { exact: true }).last().click(); await pause(3000); await semantique(); };
-  const plus = async (nom) => { await onglet('Plus'); await page.getByText(nom, { exact: true }).last().click(); await pause(3000); await semantique(); };
+  const onglet = async (nom) => {
+    await fermer();
+    await page.getByRole('tab', { name: nom, exact: true }).click({ timeout: 10000 }); await pause(3000); await semantique();
+  };
+  const plus = async (nom) => {
+    await onglet('Plus'); await arbre('menu plus');
+    const b = page.getByRole('button', { name: nom, exact: false });
+    if (await b.count()) await b.last().click({ timeout: 10000 });
+    else await page.getByText(nom, { exact: false }).last().click({ timeout: 10000 });
+    await pause(3000); await semantique();
+  };
   await etapeSure('m-accueil', async () => { await onglet('Accueil'); await photo('m01-accueil'); });
   await etapeSure('m-eleves', async () => {
     await onglet('Élèves'); await voir('DIALLO'); await photo('m02-eleves');
