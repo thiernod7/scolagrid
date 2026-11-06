@@ -1,0 +1,40 @@
+name: VPS - Diagnostic des clôtures (lecture seule)
+
+# Clôtures de caisse des 10 derniers jours, SANS RIEN MODIFIER : production et essai.
+# Le journal est public : il n'affiche que des nombres (encaisseurs désignés par une lettre).
+# Voir serveur/outils/diagnostic-clotures.sql.
+
+on:
+  push:
+    paths:
+      - ".github/workflows/vps-diagnostic-clotures.yml"
+      - "serveur/outils/diagnostic-clotures.sql"
+  workflow_dispatch:
+
+concurrency:
+  group: vps
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Préparer la connexion SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519
+      - name: Production
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i supabase-db psql -X -q -U supabase_admin -d postgres" \
+            < serveur/outils/diagnostic-clotures.sql
+      - name: Essai
+        env:
+          VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
+        run: |
+          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres" \
+            < serveur/outils/diagnostic-clotures.sql
