@@ -1548,7 +1548,9 @@ Future<List<LigneRecu>> _lignesRecu(String encaissementId) async => [
     ];
 
 /// Imprime un reçu. Chaque impression est comptée : la deuxième porte « DUPLICATA ».
-Future<void> _imprimerRecu(String encaissementId) async {
+/// Le PDF d'un reçu. Chaque exemplaire (imprimé ou partagé) est compté :
+/// à partir du deuxième, il porte « DUPLICATA ».
+Future<(Uint8List, String)> _pdfRecu(String encaissementId) async {
   final r = await db.get('SELECT * FROM encaissements WHERE id = ?', [encaissementId]);
   final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [r['organisation_id']]);
   final par = await db.getOptional(
@@ -1563,7 +1565,98 @@ Future<void> _imprimerRecu(String encaissementId) async {
     images: await _imagesEcole(r['organisation_id']),
   );
   await _modifier('encaissements', encaissementId, {'impressions': (r['impressions'] as int? ?? 0) + 1});
-  await Printing.layoutPdf(onLayout: (_) async => pdf, name: '${r['numero']}${duplicata ? '-duplicata' : ''}');
+  return (pdf, '${r['numero']}${duplicata ? '-duplicata' : ''}');
+}
+
+Future<void> _imprimerRecu(String encaissementId) async {
+  final (pdf, nom) = await _pdfRecu(encaissementId);
+  await Printing.layoutPdf(onLayout: (_) async => pdf, name: nom);
+}
+
+/// Partage le PDF du reçu (WhatsApp, e-mail…) : sur téléphone, la feuille de partage.
+Future<void> _partagerRecu(String encaissementId) async {
+  final (pdf, nom) = await _pdfRecu(encaissementId);
+  await Printing.sharePdf(bytes: pdf, filename: '$nom.pdf');
+}
+
+/// Le numéro à qui envoyer le reçu : le payeur, sinon le responsable financier
+/// puis le tuteur principal d'un élève du reçu.
+Future<String?> _telephonePayeur(Map<String, Object?> r) async {
+  if (r['payeur_contact_id'] != null) {
+    final c = await db.getOptional('SELECT telephone FROM contacts WHERE id = ?', [r['payeur_contact_id']]);
+    if (c?['telephone'] != null) return '${c!['telephone']}';
+  }
+  final c = await db.getOptional(
+      '''SELECT ct.telephone FROM lignes_encaissement l
+         JOIN eleves_contacts ec ON ec.eleve_id = l.eleve_id JOIN contacts ct ON ct.id = ec.contact_id
+         WHERE l.encaissement_id = ? AND ct.telephone IS NOT NULL
+         ORDER BY ec.responsable_financier DESC, ec.tuteur_principal DESC LIMIT 1''',
+      [r['id']]);
+  return c?['telephone'] as String?;
+}
+
+/// Le message WhatsApp d'un reçu : l'école, le reçu, ce qui a été payé, ce qu'il reste.
+Future<String> _messageRecu(Map<String, Object?> r) async {
+  final ecole = await db.get('SELECT nom, nom_officiel FROM organisations WHERE id = ?', [r['organisation_id']]);
+  final lignes = await db.getAll(
+      '''SELECT l.eleve_id, l.montant_gnf, f.libelle AS frais, e.nom, e.prenoms, c.nom AS classe
+         FROM lignes_encaissement l JOIN eleves e ON e.id = l.eleve_id JOIN frais f ON f.id = l.frais_id
+         JOIN inscriptions i ON i.id = l.inscription_id JOIN classes c ON c.id = i.classe_id
+         WHERE l.encaissement_id = ? ORDER BY e.nom, e.prenoms''',
+      [r['id']]);
+  final parEleve = <String, List<Map<String, Object?>>>{};
+  for (final l in lignes) {
+    parEleve.putIfAbsent(l['eleve_id'] as String, () => []).add(l);
+  }
+  Map<String, ({int du, int paye, int retard})> soldes = const {};
+  try {
+    soldes = await soldesDesEleves(r['organisation_id'] as String);
+  } catch (_) {}
+  final b = StringBuffer()
+    ..writeln('${ecole['nom_officiel'] ?? ecole['nom']}')
+    ..writeln('Reçu n° ${r['numero']} du ${_dateLisible(r['date_effective'])}')
+    ..writeln('Montant reçu : ${gnf(r['total_gnf'])} (${modesPaiement[r['mode']] ?? r['mode']})')
+    ..writeln('Payé par : ${r['payeur_nom']}');
+  for (final e in parEleve.entries) {
+    final l = e.value.first;
+    b.writeln('');
+    b.writeln('${l['prenoms']} ${l['nom']} (${l['classe']})');
+    for (final x in e.value) {
+      b.writeln('- ${x['frais']} : ${gnf(x['montant_gnf'])}');
+    }
+    final s = soldes[e.key];
+    if (s != null) b.writeln(s.du - s.paye > 0 ? 'Reste à payer pour l\'année : ${gnf(s.du - s.paye)}' : 'Année soldée. Merci !');
+  }
+  if (r['statut'] == 'annule') b.writeln('\nATTENTION : ce reçu a été annulé.');
+  return b.toString().trim();
+}
+
+/// Ouvre WhatsApp vers le payeur avec le message du reçu : il ne reste qu'à appuyer sur « Envoyer ».
+Future<void> _envoyerRecuWhatsApp(BuildContext context, Map<String, Object?> r) async {
+  final messager = ScaffoldMessenger.of(context);
+  final tel = await _telephonePayeur(r);
+  if (!context.mounted) return;
+  final champ = TextEditingController(text: tel ?? '');
+  final ok = await _formulaire(context, 'Envoyer le reçu par WhatsApp', (_) => [
+        TextField(
+          controller: champ,
+          keyboardType: TextInputType.phone,
+          decoration: _champ('Numéro WhatsApp', aide: tel == null ? 'Aucun numéro trouvé pour ce payeur' : 'Numéro du payeur, modifiable'),
+        ),
+        const Text("WhatsApp s'ouvre avec le message prêt ; appuyez sur « Envoyer ». Sur téléphone, « Partager le PDF » "
+            'envoie aussi le reçu lui-même.', style: TextStyle(fontSize: 12)),
+      ], valider: () => 'Ouvrir WhatsApp');
+  if (!ok) return;
+  final n = champ.text.replaceAll(RegExp(r'[^0-9+]'), '');
+  if (n.length < 8) {
+    messager.showSnackBar(const SnackBar(content: Text('Numéro incomplet.')));
+    return;
+  }
+  final international = n.startsWith('+') ? n.substring(1) : (n.length == 9 ? '224$n' : n);
+  final texte = await _messageRecu(r);
+  final ouvert = await launchUrl(Uri.parse('https://wa.me/$international?text=${Uri.encodeComponent(texte)}'),
+      mode: LaunchMode.externalApplication);
+  if (!ouvert) messager.showSnackBar(const SnackBar(content: Text("Impossible d'ouvrir WhatsApp sur cet appareil.")));
 }
 
 class RecuScreen extends StatelessWidget {
@@ -1702,6 +1795,20 @@ class RecuScreen extends StatelessWidget {
                     icon: const Icon(Icons.print),
                     label: Text((r['impressions'] as int? ?? 0) == 0 ? 'Imprimer le reçu' : 'Réimprimer (duplicata)'),
                   ),
+                  const SizedBox(height: 8),
+                  // Envoyer le reçu au parent : gratuit, depuis le WhatsApp de ce poste.
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    OutlinedButton.icon(
+                      onPressed: () => _envoyerRecuWhatsApp(context, r),
+                      icon: const Icon(Icons.chat_outlined),
+                      label: const Text('Envoyer par WhatsApp'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _partagerRecu(encaissementId),
+                      icon: const Icon(Icons.share_outlined),
+                      label: const Text('Partager le PDF'),
+                    ),
+                  ]),
                   if (!annule) ...[
                     const SizedBox(height: 8),
                     OutlinedButton.icon(
