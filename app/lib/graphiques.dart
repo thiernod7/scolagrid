@@ -62,9 +62,24 @@ class GrilleCartes extends StatelessWidget {
         final n = math.min(colonnesMax, c.maxWidth >= 1100 ? 4 : (c.maxWidth >= 320 ? 2 : 1));
         const espace = 12.0;
         final col = (c.maxWidth - espace * (n - 1)) / n;
-        return Wrap(spacing: espace, runSpacing: espace, children: [
-          for (var i = 0; i < cartes.length; i++)
-            SizedBox(width: larges.contains(i) && n > 1 ? col * 2 + espace : col, child: cartes[i]),
+        // Les cartes d'une même ligne ont toutes la hauteur de la plus haute.
+        final lignes = <List<Widget>>[];
+        var place = 0;
+        for (var i = 0; i < cartes.length; i++) {
+          final k = larges.contains(i) && n > 1 ? 2 : 1;
+          if (lignes.isEmpty || place + k > n) {
+            lignes.add([]);
+            place = 0;
+          }
+          if (lignes.last.isNotEmpty) lignes.last.add(const SizedBox(width: espace));
+          lignes.last.add(SizedBox(width: k == 2 ? col * 2 + espace : col, child: cartes[i]));
+          place += k;
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (var i = 0; i < lignes.length; i++) ...[
+            if (i > 0) const SizedBox(height: espace),
+            IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: lignes[i])),
+          ],
         ]);
       });
 }
@@ -121,10 +136,10 @@ class CarteKpi extends StatelessWidget {
   final Widget? detail;
   final VoidCallback? onTap;
 
+  // Pas de LayoutBuilder ici : la grille mesure la hauteur des cartes pour les aligner.
+  // Téléphone : deux cartes par ligne, plus compactes.
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, c) => _carte(context, c.maxWidth < 260));
-  }
+  Widget build(BuildContext context) => _carte(context, MediaQuery.sizeOf(context).width < 640);
 
   /// [serre] : carte étroite (deux par ligne sur téléphone) — marges et chiffres plus petits.
   Widget _carte(BuildContext context, bool serre) {
