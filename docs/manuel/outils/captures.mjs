@@ -114,7 +114,12 @@ if (etape === 'connexion') {
     else await page.getByText(nom, { exact: false }).last().click({ timeout: 10000 });
     await pause(3000); await semantique();
   };
-  await etapeSure('m-accueil', async () => { await onglet('Accueil'); await photo('m01-accueil'); });
+  await etapeSure('m-accueil', async () => {
+    await onglet('Accueil'); await photo('m01-accueil');
+    await page.mouse.move(195, 450);
+    for (const n of ['b', 'c', 'd']) { await page.mouse.wheel(0, 650); await pause(1200); await photo(`m01${n}-accueil`); }
+    await page.mouse.wheel(0, -4000); await pause(800);
+  });
   await etapeSure('m-eleves', async () => {
     await onglet('Élèves'); await voir('BAH'); await photo('m02-eleves');
     await page.mouse.click(200, 215); await pause(3500); await semantique();
@@ -202,7 +207,11 @@ if (etape === 'connexion') {
     await photo('33-import-termine');
     await clic('Compris'); await pause(3000); await semantique();
   });
-  await etapeSure('tableau', async () => { await aller('Accueil', 'FINANCES'); await pause(3000); await photo('10-tableau-de-bord'); });
+  await etapeSure('tableau', async () => {
+    await aller('Accueil', 'FINANCES'); await pause(3000); await photo('10-tableau-de-bord');
+    await page.mouse.move(800, 500); await page.mouse.wheel(0, 800); await pause(1500); await photo('10b-tableau-de-bord-suite');
+    await page.mouse.wheel(0, -2000); await pause(800);
+  });
   await etapeSure('eleves', async () => {
     await aller('Élèves', 'DIALLO'); await arbre('élèves'); await photo('40-eleves');
     await page.mouse.click(360, 254); await pause(3500); await semantique();
