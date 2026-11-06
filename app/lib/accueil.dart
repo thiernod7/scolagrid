@@ -949,6 +949,11 @@ class _TableauDeBord extends StatelessWidget {
           inscrire: inscrire,
           importer: importer,
           encaisser: encaisser,
+          ouvrir: (r) => aller(switch (r) {
+            'caisse' => _Rubrique.caisse,
+            'recouvrement' => _Rubrique.recouvrement,
+            _ => _Rubrique.eleves,
+          }),
           pied: [
             Wrap(spacing: 12, runSpacing: 12, children: [
               Container(

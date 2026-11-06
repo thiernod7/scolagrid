@@ -407,6 +407,7 @@ class TableauDeBord extends StatefulWidget {
     required this.inscrire,
     required this.importer,
     required this.encaisser,
+    this.ouvrir,
     this.pied = const [],
   });
 
@@ -422,6 +423,9 @@ class TableauDeBord extends StatefulWidget {
   final VoidCallback importer;
   final VoidCallback encaisser;
 
+  /// Ouvre une rubrique depuis une tuile : 'caisse', 'recouvrement', 'eleves'.
+  final ValueChanged<String>? ouvrir;
+
   /// Ce qui suit les chiffres (sites, poste, installation).
   final List<Widget> pied;
 
@@ -431,6 +435,7 @@ class TableauDeBord extends StatefulWidget {
 
 class _TableauDeBordState extends State<TableauDeBord> {
   Periode _periode = Periode.mois;
+  bool _toutAFaire = false;
   String? _cle;
   Future<_Mesures>? _resultat;
 
@@ -542,77 +547,295 @@ class _TableauDeBordState extends State<TableauDeBord> {
   Widget _contenu(BuildContext context, _Mesures m) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
-    final telephone = MediaQuery.sizeOf(context).width < 640;
+    final largeur = MediaQuery.sizeOf(context).width;
+    final telephone = largeur < 640;
     final recouvrement = m.du == 0 ? 0.0 : m.regle * 100 / m.du;
     final cible = (widget.organisation['seuil_recouvrement'] as int?) ?? 70;
-    final seuil = recouvrement >= cible ? NiveauSeuil.bon : (recouvrement >= cible - 10 ? NiveauSeuil.vigilance : NiveauSeuil.alerte);
+    // Sous le seuil : orange (vigilance), pas une alarme rouge.
+    final seuil = recouvrement >= cible ? NiveauSeuil.bon : NiveauSeuil.vigilance;
     double? variation(int a, int? b) => b == null || b == 0 ? (b == 0 && a == 0 ? 0 : null) : (a - b) * 100 / b;
+    void ouvrir(String r) => widget.ouvrir?.call(r);
 
-    // Téléphone : titre et période, le choix de période, puis les deux gestes côte à côte.
-    final enTeteTelephone = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('${widget.organisation['nom']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-      Text('$_libellePeriode${m.annee == null ? '' : ' · ${m.annee}'}', style: TextStyle(fontSize: 13, color: gris)),
-      if (widget.voitFinances) ...[
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Segments<Periode>(
-            valeur: _periode,
-            choix: const {Periode.mois: 'Mois', Periode.trimestre: 'Trimestre', Periode.annee: 'Année'},
-            onChanged: (p) => setState(() => _periode = p),
+    // En-tête ------------------------------------------------------------------
+    final periode = Segments<Periode>(
+      valeur: _periode,
+      choix: const {Periode.mois: 'Mois', Periode.trimestre: 'Trimestre', Periode.annee: 'Année'},
+      onChanged: (p) => setState(() => _periode = p),
+    );
+    final enTete = telephone
+        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('${widget.organisation['nom']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text('$_libellePeriode${m.annee == null ? '' : ' · ${m.annee}'}', style: TextStyle(fontSize: 13, color: gris)),
+            if (widget.voitFinances) ...[const SizedBox(height: 10), Align(alignment: Alignment.centerLeft, child: periode)],
+            if (widget.peutInscrire || widget.peutEncaisser) ...[
+              const SizedBox(height: 10),
+              Row(children: [
+                if (widget.peutInscrire)
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: FilledButton.icon(
+                          onPressed: widget.inscrire, icon: const Icon(Icons.person_add_alt, size: 18), label: const Text('Inscrire')),
+                    ),
+                  ),
+                if (widget.peutInscrire && widget.peutEncaisser) const SizedBox(width: 8),
+                if (widget.peutEncaisser)
+                  Expanded(
+                    child: SizedBox(
+                      height: 44,
+                      child: FilledButton.tonalIcon(
+                          onPressed: widget.encaisser, icon: const Icon(Icons.point_of_sale_outlined, size: 18), label: const Text('Encaisser')),
+                    ),
+                  ),
+              ]),
+            ],
+          ])
+        : Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 10,
+            children: [
+              Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 12, children: [
+                Text('${widget.organisation['nom']}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: -.3)),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text('$_libellePeriode${m.annee == null ? '' : ' · ${m.annee}'}', style: TextStyle(fontSize: 14, color: gris)),
+                ),
+              ]),
+              Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                if (widget.voitFinances) periode,
+                if (widget.peutEncaisser)
+                  OutlinedButton.icon(
+                      onPressed: widget.encaisser, icon: const Icon(Icons.point_of_sale_outlined, size: 16), label: const Text('Encaisser')),
+                if (widget.peutInscrire)
+                  FilledButton.icon(
+                      onPressed: widget.inscrire, icon: const Icon(Icons.person_add_alt, size: 16), label: const Text('Nouvelle inscription')),
+              ]),
+            ],
+          );
+
+    // À faire ------------------------------------------------------------------
+    Widget ligne(Widget etat, String texte, VoidCallback onTap, {Color? couleur}) => InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(children: [
+              etat,
+              const SizedBox(width: 12),
+              Expanded(child: Text(texte, style: TextStyle(fontSize: 14, color: couleur))),
+              Icon(Icons.chevron_right, size: 16, color: gris),
+            ]),
           ),
+        );
+    final aFaire = <Widget>[
+      if (m.refus.isNotEmpty)
+        ligne(Etat('${m.refus.length}', ton: Ton.retard), 'changement(s) refusé(s) par le serveur sur ce poste : à vérifier',
+            () => _voirRefus(m.refus), couleur: Couleurs.retard),
+      if (widget.espace.gestionnaire && m.postesAValider > 0)
+        ligne(Etat('${m.postesAValider}', ton: Ton.attente), 'poste(s) à valider : activés par le personnel',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PostesScreen(espace: widget.espace)))),
+      ...widget.aFaire,
+      if (m.incomplets.isNotEmpty)
+        ligne(Etat('${m.incomplets.length}', ton: Ton.attente), 'dossier(s) incomplet(s) : pièce obligatoire manquante',
+            () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => _DossiersIncompletsScreen(espace: widget.espace, dossiers: m.incomplets)))),
+      if (widget.voitFinances && m.aConfirmer > 0)
+        ligne(
+            Etat('${m.aConfirmer}', ton: m.confirmationsEnRetard > 0 ? Ton.retard : Ton.attente),
+            'remboursement(s) autorisé(s) de vive voix à confirmer'
+                '${m.confirmationsEnRetard > 0 ? ' — ${m.confirmationsEnRetard} hors délai' : ''}',
+            () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RemboursementsScreen(espace: widget.espace))),
+            couleur: m.confirmationsEnRetard > 0 ? Couleurs.retard : null),
+    ];
+    // Sur téléphone : les trois premiers, le reste sur demande.
+    final aFaireVisibles = telephone && !_toutAFaire && aFaire.length > 3 ? aFaire.take(3).toList() : aFaire;
+    final carte = BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: schema.outlineVariant));
+    final blocAFaire = aFaire.isEmpty
+        ? null
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const TitreSection('À faire'),
+            Container(
+              decoration: carte,
+              child: Column(children: [
+                for (var i = 0; i < aFaireVisibles.length; i++) ...[
+                  if (i > 0) Divider(height: 1, color: schema.outlineVariant),
+                  aFaireVisibles[i],
+                ],
+                if (aFaireVisibles.length < aFaire.length) ...[
+                  Divider(height: 1, color: schema.outlineVariant),
+                  TextButton(
+                    onPressed: () => setState(() => _toutAFaire = true),
+                    child: Text('Voir tout (${aFaire.length})'),
+                  ),
+                ],
+              ]),
+            ),
+          ]);
+
+    // Les quatre tuiles -----------------------------------------------------------
+    final tuiles = GrilleCartes(cartes: [
+      if (widget.voitFinances) ...[
+        CarteKpi(
+          titre: 'Encaissé',
+          aide: 'Total des reçus sur la période choisie.',
+          valeur: gnf(m.encaisse),
+          comparaisons: [Comparaison(_vsPrecedent, variation(m.encaisse, m.encaissePrecedent))],
+          detail: m.parMode.isEmpty
+              ? null
+              : Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(m.parMode.entries.map((e) => '${modesPaiement[e.key] ?? e.key} ${millions(e.value)}').join(' · '),
+                      style: TextStyle(fontSize: 12, color: gris)),
+                ),
+          onTap: () => ouvrir('caisse'),
+        ),
+        CarteKpi(
+          titre: 'Recouvrement',
+          aide: "Part de ce qui est dû pour l'année qui a déjà été payé (réductions déduites).",
+          valeur: m.du == 0 ? '—' : pourcent(recouvrement),
+          seuil: m.du == 0 ? null : seuil,
+          texteSeuil: 'seuil $cible %',
+          barre: m.du == 0 ? null : recouvrement,
+          detail: Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${millions(m.regle)} réglés sur ${millions(m.du)}', style: TextStyle(fontSize: 12, color: gris)),
+              if (m.reductions > 0)
+                Text('réductions : ${millions(m.reductions)} (${m.eleveReduits} élève(s))', style: TextStyle(fontSize: 12, color: gris)),
+            ]),
+          ),
+          onTap: () => ouvrir('recouvrement'),
+        ),
+        CarteKpi(
+          titre: 'Arriérés',
+          aide: 'Échéances dont la date (et le délai de grâce) est passée et qui ne sont pas payées.',
+          valeur: gnf(m.arrieres),
+          seuil: m.arrieres > 0 ? NiveauSeuil.vigilance : null,
+          detail: Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(m.retards.isEmpty ? 'aucun élève en retard' : '${m.retards.length} élève(s) en retard',
+                style: TextStyle(fontSize: 12, color: gris)),
+          ),
+          onTap: () => _voirArrieres(m.retards),
         ),
       ],
-      if (widget.peutInscrire || widget.peutEncaisser) ...[
-        const SizedBox(height: 10),
-        Row(children: [
-          if (widget.peutInscrire)
-            Expanded(
-              child: FilledButton.icon(
-                  onPressed: widget.inscrire, icon: const Icon(Icons.person_add_alt, size: 16), label: const Text('Inscrire')),
-            ),
-          if (widget.peutInscrire && widget.peutEncaisser) const SizedBox(width: 8),
-          if (widget.peutEncaisser)
-            Expanded(
-              child: OutlinedButton.icon(
-                  onPressed: widget.encaisser, icon: const Icon(Icons.point_of_sale_outlined, size: 16), label: const Text('Encaisser')),
-            ),
-        ]),
-      ],
+      CarteKpi(
+        titre: 'Élèves inscrits',
+        valeur: '${m.inscrits}',
+        detail: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${m.nouvelles} nouveau(x) · ${m.departs} départ(s)', style: TextStyle(fontSize: 12, color: gris)),
+            Text('${m.filles} fille(s) · ${m.garcons} garçon(s)', style: TextStyle(fontSize: 12, color: gris)),
+            if (m.attente > 0) ...[const SizedBox(height: 4), Etat('${m.attente} en attente', ton: Ton.attente)],
+          ]),
+        ),
+        onTap: () => ouvrir('eleves'),
+      ),
     ]);
-    final enTete = telephone ? enTeteTelephone : Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: 12,
-      runSpacing: 10,
-      children: [
-        Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 12, children: [
-          Text('${widget.organisation['nom']}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: -.3)),
+
+    // Recouvrement par classe : les cinq classes les plus en retard ------------------
+    final parClasse = <String, (String, int, int)>{};
+    for (final l in m.recouvrement) {
+      final c = parClasse[l.classeId];
+      parClasse[l.classeId] = (l.classe, (c?.$2 ?? 0) + l.du, (c?.$3 ?? 0) + l.paye);
+    }
+    final classes = parClasse.values.where((c) => c.$2 > 0).toList()..sort((a, b) => (a.$3 / a.$2).compareTo(b.$3 / b.$2));
+    final blocClasses = Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      decoration: carte,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Expanded(child: Text('Recouvrement par classe', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+          if (widget.ouvrir != null) TextButton(onPressed: () => ouvrir('recouvrement'), child: const Text('Voir tout')),
+        ]),
+        Text('Les classes les moins à jour', style: TextStyle(fontSize: 12, color: gris)),
+        const SizedBox(height: 8),
+        if (classes.isEmpty) Text('Aucun montant dû pour le moment.', style: TextStyle(fontSize: 13, color: gris)),
+        for (final (classe, du, paye) in classes.take(5))
           Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Text('$_libellePeriode${m.annee == null ? '' : ' · ${m.annee}'}', style: TextStyle(fontSize: 14, color: gris)),
+            padding: const EdgeInsets.only(bottom: 10, right: 8),
+            child: Row(children: [
+              SizedBox(width: 72, child: Text(classe, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13))),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: (paye / du).clamp(0, 1).toDouble(),
+                    minHeight: 6,
+                    backgroundColor: Couleurs.doux(context),
+                    color: paye * 100 / du >= cible ? Couleurs.regle : Couleurs.attente,
+                  ),
+                ),
+              ),
+              SizedBox(
+                  width: 48,
+                  child: Text('${(paye * 100 / du).round()} %', textAlign: TextAlign.right, style: const TextStyle(fontSize: 13))),
+              SizedBox(
+                  width: telephone ? 70 : 96,
+                  child: Text(millions(du - paye), textAlign: TextAlign.right, style: TextStyle(fontSize: 12, color: gris))),
+            ]),
           ),
-        ]),
-        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          if (widget.voitFinances)
-            Segments<Periode>(
-              valeur: _periode,
-              choix: const {Periode.mois: 'Mois', Periode.trimestre: 'Trimestre', Periode.annee: 'Année'},
-              onChanged: (p) => setState(() => _periode = p),
-            ),
-          if (widget.peutEncaisser)
-            OutlinedButton.icon(
-                onPressed: widget.encaisser, icon: const Icon(Icons.point_of_sale_outlined, size: 16), label: const Text('Encaisser')),
-          if (widget.peutInscrire)
-            FilledButton.icon(
-                onPressed: widget.inscrire, icon: const Icon(Icons.person_add_alt, size: 16), label: const Text('Nouvelle inscription')),
-        ]),
-      ],
+      ]),
     );
 
+    final graphique = CarteGraphique(
+      titre: 'Encaissements par mois',
+      indice: m.annee,
+      legende: [EntreeLegende(Viz.bleu, m.annee ?? 'Année en cours')],
+      enfant: GraphBarres(
+        format: millions,
+        barres: [for (final (mois, t) in m.parMois) Barre(mois, t, infobulle: '$mois : ${gnf(t)}')],
+      ),
+    );
+    final anciennete = CarteGraphique(
+      titre: 'Ancienneté des arriérés',
+      indice: gnf(m.arrieres),
+      enfant: GraphBarresH(
+        format: millions,
+        barres: [
+          Barre('moins de 30 j', m.moins30, couleur: Viz.rampe[0], infobulle: gnf(m.moins30)),
+          Barre('30 à 60 j', m.de30a60, couleur: Viz.rampe[1], infobulle: gnf(m.de30a60)),
+          Barre('plus de 60 j', m.plus60, couleur: Viz.rampe[2], infobulle: gnf(m.plus60)),
+        ],
+      ),
+    );
+    // Aujourd'hui : la caisse du jour (même calcul que la clôture).
+    final aujourdhui = widget.peutEncaisser || widget.voitFinances
+        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const TitreSection("Aujourd'hui"),
+            _CaisseDuJour(orgId: widget.espace.orgId, toute: widget.voitFinances),
+          ])
+        : null;
+
+    // Effectifs ------------------------------------------------------------------
+    final cycles = <String?>[];
+    for (final n in m.parNiveau) {
+      if (!cycles.contains(n.$2)) cycles.add(n.$2);
+    }
+    const couleursCycles = [Color(0xFF86B6EF), Viz.bleu, Viz.orange, Viz.vert, Viz.violet];
+    Color couleurCycle(String? c) => couleursCycles[cycles.indexOf(c) % couleursCycles.length];
+    final niveaux = CarteGraphique(
+      titre: 'Répartition par niveau',
+      legende: [for (final c in cycles) EntreeLegende(couleurCycle(c), c ?? 'Sans cycle')],
+      enfant: m.parNiveau.isEmpty
+          ? Center(child: Text('Aucun élève inscrit.', style: TextStyle(fontSize: 14, color: gris)))
+          : GraphBarres(barres: [
+              for (final (niveau, cycle, n) in m.parNiveau) Barre(niveau, n, couleur: couleurCycle(cycle), infobulle: '$niveau : $n élève(s)'),
+            ]),
+    );
+    final sexes = CarteGraphique(
+      titre: 'Filles et garçons',
+      indice: '${m.inscrits} élèves · ${m.personnel} personnel',
+      enfant: GraphAnneau(parts: [
+        Barre('Filles', m.filles, couleur: Viz.orange),
+        Barre('Garçons', m.garcons, couleur: Viz.bleu),
+        if (m.sexeInconnu > 0) Barre('Non renseigné', m.sexeInconnu, couleur: gris.withValues(alpha: .4)),
+      ]),
+    );
     Widget deux(Widget a, Widget b) => LayoutBuilder(
           builder: (context, c) => c.maxWidth >= 1000
-              // Les deux cartes ont la même hauteur fixe : pas besoin de mesurer.
               ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Expanded(flex: 2, child: a),
                   const SizedBox(width: 12),
@@ -620,259 +843,53 @@ class _TableauDeBordState extends State<TableauDeBord> {
                 ])
               : Column(children: [a, const SizedBox(height: 12), b]),
         );
+    const espace = SizedBox(height: 20);
 
-    final cycles = <String?>[];
-    for (final n in m.parNiveau) {
-      if (!cycles.contains(n.$2)) cycles.add(n.$2);
-    }
-    const couleursCycles = [Color(0xFF86B6EF), Viz.bleu, Viz.orange, Viz.vert, Viz.violet];
-    Color couleurCycle(String? c) => couleursCycles[cycles.indexOf(c) % couleursCycles.length];
+    final large = largeur >= 1100;
+    final corps = <Widget>[
+      enTete,
+      espace,
+      if (m.inscrits == 0 && widget.peutInscrire) ...[_PremierJour(importer: widget.importer, inscrire: widget.inscrire), espace],
+      if (large) ...[
+        tuiles,
+        espace,
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            flex: 2,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (widget.voitFinances) ...[graphique, const SizedBox(height: 12), blocClasses, espace],
+              const TitreSection('Effectifs'),
+              niveaux,
+            ]),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (aujourdhui != null) ...[aujourdhui, espace],
+              if (blocAFaire != null) ...[blocAFaire, espace],
+              if (widget.voitFinances) ...[anciennete, const SizedBox(height: 12)],
+              sexes,
+            ]),
+          ),
+        ]),
+      ] else ...[
+        if (aujourdhui != null) ...[aujourdhui, const SizedBox(height: 12)],
+        tuiles,
+        espace,
+        if (blocAFaire != null) ...[blocAFaire, espace],
+        if (widget.voitFinances) ...[blocClasses, const SizedBox(height: 12), graphique, const SizedBox(height: 12), anciennete, espace],
+        const TitreSection('Effectifs'),
+        deux(niveaux, sexes),
+      ],
+      if (widget.pied.isNotEmpty) ...[espace, const TitreSection('Établissement'), ...widget.pied],
+      espace,
+    ];
 
     return ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
       Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1600),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            enTete,
-            const SizedBox(height: 20),
-            if (m.inscrits == 0 && widget.peutInscrire) ...[
-              _PremierJour(importer: widget.importer, inscrire: widget.inscrire),
-              const SizedBox(height: 20),
-            ],
-            if (widget.aFaire.isNotEmpty ||
-                m.incomplets.isNotEmpty ||
-                m.refus.isNotEmpty ||
-                (widget.espace.gestionnaire && m.postesAValider > 0) ||
-                (widget.voitFinances && m.aConfirmer > 0)) ...[
-              const TitreSection('À faire'),
-              Container(
-                decoration: BoxDecoration(
-                  color: schema.surface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: schema.outlineVariant),
-                ),
-                child: Column(children: [
-                  if (m.refus.isNotEmpty) ...[
-                    InkWell(
-                      onTap: () => _voirRefus(m.refus),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(children: [
-                          Etat('${m.refus.length}', ton: Ton.retard),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Text('changement(s) refusé(s) par le serveur sur ce poste : à vérifier',
-                                style: TextStyle(fontSize: 14, color: Couleurs.retard)),
-                          ),
-                          Icon(Icons.chevron_right, size: 16, color: gris),
-                        ]),
-                      ),
-                    ),
-                    if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty || (widget.voitFinances && m.aConfirmer > 0))
-                      Divider(height: 1, color: schema.outlineVariant),
-                  ],
-                  if (widget.espace.gestionnaire && m.postesAValider > 0) ...[
-                    InkWell(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PostesScreen(espace: widget.espace))),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(children: [
-                          Etat('${m.postesAValider}', ton: Ton.attente),
-                          const SizedBox(width: 12),
-                          const Expanded(child: Text('poste(s) à valider : activés par le personnel', style: TextStyle(fontSize: 14))),
-                          Icon(Icons.chevron_right, size: 16, color: gris),
-                        ]),
-                      ),
-                    ),
-                    Divider(height: 1, color: schema.outlineVariant),
-                  ],
-                  for (var i = 0; i < widget.aFaire.length; i++) ...[
-                    if (i > 0) Divider(height: 1, color: schema.outlineVariant),
-                    widget.aFaire[i],
-                  ],
-                  if (m.incomplets.isNotEmpty) ...[
-                    if (widget.aFaire.isNotEmpty) Divider(height: 1, color: schema.outlineVariant),
-                    InkWell(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => _DossiersIncompletsScreen(espace: widget.espace, dossiers: m.incomplets))),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(children: [
-                          Etat('${m.incomplets.length}', ton: Ton.attente),
-                          const SizedBox(width: 12),
-                          const Expanded(child: Text('dossier(s) incomplet(s) : pièce obligatoire manquante', style: TextStyle(fontSize: 14))),
-                          Icon(Icons.chevron_right, size: 16, color: gris),
-                        ]),
-                      ),
-                    ),
-                  ],
-                  if (widget.voitFinances && m.aConfirmer > 0) ...[
-                    if (widget.aFaire.isNotEmpty || m.incomplets.isNotEmpty) Divider(height: 1, color: schema.outlineVariant),
-                    InkWell(
-                      onTap: () => Navigator.of(context)
-                          .push(MaterialPageRoute(builder: (_) => RemboursementsScreen(espace: widget.espace))),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(children: [
-                          Etat('${m.aConfirmer}', ton: m.confirmationsEnRetard > 0 ? Ton.retard : Ton.attente),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                                'remboursement(s) autorisé(s) de vive voix à confirmer'
-                                '${m.confirmationsEnRetard > 0 ? ' — ${m.confirmationsEnRetard} hors délai' : ''}',
-                                style: TextStyle(fontSize: 14, color: m.confirmationsEnRetard > 0 ? Couleurs.retard : null)),
-                          ),
-                          Icon(Icons.chevron_right, size: 16, color: gris),
-                        ]),
-                      ),
-                    ),
-                  ],
-                ]),
-              ),
-              const SizedBox(height: 24),
-            ],
-            if (widget.voitFinances) ...[
-              const TitreSection('Finances'),
-              GrilleCartes(larges: const {0}, cartes: [
-                CarteKpi(
-                  vedette: true,
-                  titre: 'Taux de recouvrement',
-                  aide: "Part de ce qui est dû pour l'année qui a déjà été payé (réductions déduites).",
-                  valeur: m.du == 0 ? '—' : pourcent(recouvrement),
-                  seuil: m.du == 0 ? null : seuil,
-                  texteSeuil: 'seuil $cible %',
-                  barre: m.du == 0 ? null : recouvrement,
-                  detail: Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${gnf(m.regle)} / ${gnf(m.du)}', style: TextStyle(fontSize: 14, color: gris)),
-                      if (m.retraitsArrivee > 0)
-                        Text('dont ${gnf(m.retraitsArrivee)} retirés pour des arrivées en cours d\'année',
-                            style: TextStyle(fontSize: 12, color: gris)),
-                    ]),
-                  ),
-                  onTap: () => _voirArrieres(m.retards),
-                ),
-                CarteKpi(
-                  titre: 'Encaissé sur la période',
-                  valeur: gnf(m.encaisse),
-                  comparaisons: [Comparaison(_vsPrecedent, variation(m.encaisse, m.encaissePrecedent))],
-                  detail: m.parMode.isEmpty
-                      ? null
-                      : Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                              m.parMode.entries.map((e) => '${modesPaiement[e.key] ?? e.key} ${millions(e.value)}').join(' · '),
-                              style: TextStyle(fontSize: 12, color: gris)),
-                        ),
-                ),
-                CarteKpi(
-                  titre: 'Total des arriérés',
-                  aide: 'Échéances dont la date est passée et qui ne sont pas payées.',
-                  valeur: gnf(m.arrieres),
-                  seuil: m.arrieres > 0 ? NiveauSeuil.alerte : null,
-                  onTap: () => _voirArrieres(m.retards),
-                ),
-                CarteKpi(
-                  titre: 'Élèves en retard de paiement',
-                  aide: 'Élèves qui ont au moins une échéance passée non payée.',
-                  valeur: '${m.retards.length}',
-                  detail: m.inscrits == 0
-                      ? null
-                      : Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text('sur ${m.inscrits} inscrits', style: TextStyle(fontSize: 14, color: gris)),
-                        ),
-                  onTap: () => _voirArrieres(m.retards),
-                ),
-                CarteKpi(
-                  titre: 'Coût des réductions',
-                  aide: "Ce que l'école renonce à percevoir cette année : fratrie, enfants du personnel, bourses…",
-                  valeur: gnf(m.reductions),
-                  detail: m.reductions == 0
-                      ? null
-                      : Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('${m.eleveReduits} élève(s)${m.du + m.reductions > 0 ? ' · ${pourcent(m.reductions * 100 / (m.du + m.reductions))} du brut' : ''}',
-                                style: TextStyle(fontSize: 14, color: gris)),
-                            for (final e in (m.reductionsParRegle.entries.toList()..sort((a, b) => b.value.compareTo(a.value))).take(4))
-                              Text('${e.key} : ${millions(e.value)}', style: TextStyle(fontSize: 12, color: gris)),
-                          ]),
-                        ),
-                ),
-              ]),
-              const SizedBox(height: 12),
-              deux(
-                CarteGraphique(
-                  titre: 'Encaissements par mois',
-                  indice: m.annee,
-                  legende: [EntreeLegende(Viz.bleu, m.annee ?? 'Année en cours')],
-                  enfant: GraphBarres(
-                    format: millions,
-                    barres: [for (final (mois, t) in m.parMois) Barre(mois, t, infobulle: '$mois : ${gnf(t)}')],
-                  ),
-                ),
-                CarteGraphique(
-                  titre: 'Ancienneté des arriérés',
-                  indice: gnf(m.arrieres),
-                  enfant: GraphBarresH(
-                    format: millions,
-                    barres: [
-                      Barre('moins de 30 j', m.moins30, couleur: Viz.rampe[0], infobulle: gnf(m.moins30)),
-                      Barre('30 à 60 j', m.de30a60, couleur: Viz.rampe[1], infobulle: gnf(m.de30a60)),
-                      Barre('plus de 60 j', m.plus60, couleur: Viz.rampe[2], infobulle: gnf(m.plus60)),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-            const TitreSection('Effectifs'),
-            GrilleCartes(cartes: [
-              CarteKpi(
-                titre: 'Élèves inscrits',
-                valeur: '${m.inscrits}',
-                detail: m.attente == 0
-                    ? null
-                    : Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Align(alignment: Alignment.centerLeft, child: Etat('${m.attente} en attente', ton: Ton.attente)),
-                      ),
-              ),
-              CarteKpi(titre: 'Nouvelles inscriptions', aide: 'Premières inscriptions et transferts entrants.', valeur: '${m.nouvelles}'),
-              CarteKpi(titre: 'Départs / transferts sortants', valeur: '${m.departs}'),
-              CarteKpi(titre: 'Personnel — effectif', valeur: '${m.personnel}'),
-            ]),
-            const SizedBox(height: 12),
-            deux(
-              CarteGraphique(
-                titre: 'Répartition par niveau',
-                legende: [for (final c in cycles) EntreeLegende(couleurCycle(c), c ?? 'Sans cycle')],
-                enfant: m.parNiveau.isEmpty
-                    ? Center(child: Text('Aucun élève inscrit.', style: TextStyle(fontSize: 14, color: gris)))
-                    : GraphBarres(barres: [
-                        for (final (niveau, cycle, n) in m.parNiveau)
-                          Barre(niveau, n, couleur: couleurCycle(cycle), infobulle: '$niveau : $n élève(s)'),
-                      ]),
-              ),
-              CarteGraphique(
-                titre: 'Filles et garçons',
-                indice: '${m.inscrits} élèves',
-                enfant: GraphAnneau(parts: [
-                  Barre('Filles', m.filles, couleur: Viz.orange),
-                  Barre('Garçons', m.garcons, couleur: Viz.bleu),
-                  if (m.sexeInconnu > 0) Barre('Non renseigné', m.sexeInconnu, couleur: gris.withValues(alpha: .4)),
-                ]),
-              ),
-            ),
-            if (widget.pied.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              const TitreSection('Établissement'),
-              ...widget.pied,
-            ],
-            const SizedBox(height: 24),
-          ]),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: corps),
         ),
       ),
     ]);
