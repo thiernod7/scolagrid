@@ -380,6 +380,46 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
       ),
     );
 
+    // Téléphone : une carte par élève, ses tranches en dessous (pas de tableau à faire glisser).
+    Widget cartes() => Column(children: [
+          for (final l in lignes)
+            Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: l.eleveId))),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Row(children: [
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(l.nom, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                          Text(l.matricule, style: styleMono.copyWith(fontSize: 11, color: gris)),
+                        ]),
+                      ),
+                      Text(l.reste <= 0 ? 'soldé' : gnf(l.reste),
+                          style: _chiffresDep.copyWith(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: l.reste <= 0 ? Couleurs.regle : (l.retard > 0 ? Couleurs.retard : null))),
+                    ]),
+                    const SizedBox(height: 8),
+                    Wrap(spacing: 14, runSpacing: 6, children: [
+                      for (final k in colonnes)
+                        if (l.cases[k] != null && l.cases[k]!.du > 0)
+                          Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                            Text(k, style: TextStyle(fontSize: 11, color: gris)),
+                            casePour(l.cases[k]),
+                          ]),
+                    ]),
+                  ]),
+                ),
+              ),
+            ),
+          if (lignes.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text('Aucun élève.', style: TextStyle(color: gris))),
+        ]);
+
     return ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
       Wrap(spacing: 24, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         _chiffre(context, 'Recouvrement', _taux(paye, du)),
@@ -415,7 +455,7 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
       Text('Chaque case : ce qui reste à payer. En rouge : en retard (date limite et délai de grâce passés).',
           style: TextStyle(fontSize: 12, color: gris)),
       const SizedBox(height: 10),
-      tableau,
+      if (telephone) cartes() else tableau,
     ]);
   }
 
