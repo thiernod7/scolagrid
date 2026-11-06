@@ -90,3 +90,29 @@ do $$ begin
 end $$;
 rollback;
 \echo '035 jour de caisse : OK'
+
+-- 037 : le poste ne voyait pas d'écart, le serveur en trouve un : clôture gardée, « à vérifier ».
+\set s '88888888-8888-8888-8888-888888888888'
+begin;
+create function pg_temp.connecte2(u uuid) returns void language sql as $$
+  select set_config('request.jwt.claims', json_build_object('sub', u, 'role', 'authenticated', 'is_anonymous', false)::text, true);
+  select set_config('request.jwt.claim.sub', u::text, true);
+$$;
+select id as org from public.organisations where cree_par = '11111111-1111-1111-1111-111111111111' order by created_at limit 1 \gset
+select id as site from public.sites where organisation_id = :'org' and nom = 'Site de Kaloum' \gset
+select id as annee from public.annees_scolaires where organisation_id = :'org' and en_cours \gset
+select pg_temp.connecte2(:'s');
+set local role authenticated;
+insert into public.encaissements (organisation_id, site_id, annee_id, numero, payeur_nom, mode, total_gnf, date_effective, jour_caisse)
+  values (:'org', :'site', :'annee', 'REC-JOUR-KAL-2026-J0009', 'Parent J9', 'especes', 40000, current_date - 3, current_date - 3);
+-- Le poste croyait 0 attendu et a compté 0 : sans écart pour lui.
+insert into public.clotures_caisse (organisation_id, site_id, encaisse_par, jour, compte_especes, attendu_especes, ecart)
+  values (:'org', :'site', :'s', current_date - 3, 0, 0, 0);
+reset role;
+do $$ begin
+  assert (select a_verifier and ecart = -40000 and justification like 'Écart apparu%' from public.clotures_caisse
+          where jour = current_date - 3 and encaisse_par = '88888888-8888-8888-8888-888888888888'
+          order by rang desc limit 1), 'Clôture gardée, à vérifier';
+end $$;
+rollback;
+\echo '037 clôture sans refus : OK'

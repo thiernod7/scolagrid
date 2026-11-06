@@ -522,6 +522,7 @@ const schema = Schema([
     Column.integer('rang'),
     Column.integer('nb_recus'),
     Column.integer('total_autres_modes'),
+    Column.integer('a_verifier'),
     Column.text('poste_id'),
     Column.text('created_at'),
     Column.text('updated_at'),

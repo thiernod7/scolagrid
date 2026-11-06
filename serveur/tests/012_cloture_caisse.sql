@@ -27,8 +27,8 @@ insert into public.encaissements (organisation_id, site_id, annee_id, numero, pa
 do $$ begin
   -- Écart sans justification : refusé
   begin
-    insert into public.clotures_caisse (organisation_id, site_id, encaisse_par, jour, compte_especes)
-      values (current_setting('test.org')::uuid, current_setting('test.site_1')::uuid, auth.uid(), '2026-11-02', 90000);
+    insert into public.clotures_caisse (organisation_id, site_id, encaisse_par, jour, compte_especes, ecart)
+      values (current_setting('test.org')::uuid, current_setting('test.site_1')::uuid, auth.uid(), '2026-11-02', 90000, -10000);
     raise exception 'Écart non justifié accepté';
   exception when check_violation then null;
   end;

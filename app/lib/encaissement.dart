@@ -2152,6 +2152,7 @@ class _CaisseScreenState extends State<CaisseScreen> {
         child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
           enTete,
           const SizedBox(height: 12),
+          if (widget.espace.fondateur || widget.espace.droits.contains('encaisser')) _JoursNonClos(espace: widget.espace),
           filtres,
           const SizedBox(height: 12),
           if (largeur >= 1100)
@@ -2175,7 +2176,44 @@ class _CaisseScreenState extends State<CaisseScreen> {
 
 /// Clôture la caisse de la personne connectée pour un jour et un site :
 /// espèces attendues (calculées), espèces comptées (saisies), écart justifié.
+const _joursSemaine = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+
+/// « jeudi 05/11/2026 » : le jour de la semaine évite de se tromper de journée.
+String _jourLong(String iso) {
+  final d = DateTime.tryParse(iso);
+  return d == null ? _dateLisible(iso) : '${_joursSemaine[d.weekday - 1]} ${_dateLisible(iso)}';
+}
+
+/// Mes journées non clôturées avant [jour] (la plus ancienne d'abord).
+const _sqlJoursNonClos = """SELECT e.jour_caisse AS jour, e.site_id FROM encaissements e
+     WHERE e.organisation_id = ? AND e.encaisse_par = ? AND e.statut = 'valide' AND e.jour_caisse < ?
+     GROUP BY e.jour_caisse, e.site_id
+     HAVING count(*) > (SELECT coalesce(sum(c.nb_recus), 0) FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
+         AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.jour_caisse)
+     ORDER BY e.jour_caisse""";
+
 Future<void> cloturerCaisse(BuildContext context, {required String orgId, required String siteId, required String jour}) async {
+  // Dans l'ordre : une journée plus ancienne non clôturée passe d'abord.
+  final avantLui = await db.getAll(_sqlJoursNonClos, [orgId, monId, jour]);
+  if (avantLui.isNotEmpty && context.mounted) {
+    final ancien = '${avantLui.first['jour']}';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Une journée plus ancienne reste à clôturer'),
+        content: Text('Votre caisse du ${_jourLong(ancien)} n\'est pas clôturée. On clôture les journées dans l\'ordre : '
+            'comptez d\'abord les espèces de ce jour-là.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text('Clôturer le ${_dateLisible(ancien)}')),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) {
+      await cloturerCaisse(context, orgId: orgId, siteId: avantLui.first['site_id'] as String, jour: ancien);
+    }
+    return;
+  }
   final recus = await db.get(
       """SELECT coalesce(sum(total_gnf) FILTER (WHERE mode = 'especes'), 0) AS especes,
                 coalesce(sum(total_gnf) FILTER (WHERE mode <> 'especes'), 0) AS autres,
@@ -2211,7 +2249,7 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
   final compte = TextEditingController();
   final justification = TextEditingController();
   if (!context.mounted) return;
-  final ok = await _formulaire(context, rang == 1 ? 'Clôturer ma caisse du ${_dateLisible(jour)}' : 'Clôturer le complément du ${_dateLisible(jour)}', (maj) {
+  final ok = await _formulaire(context, rang == 1 ? 'Clôturer ma caisse du ${_jourLong(jour)}' : 'Clôturer le complément du ${_jourLong(jour)}', (maj) {
     final c = int.tryParse(compte.text.replaceAll(RegExp(r'[^0-9]'), ''));
     final ecart = c == null ? null : c - attendu;
     return [
@@ -2267,16 +2305,51 @@ Future<void> cloturerCaisse(BuildContext context, {required String orgId, requir
 
 /// Jours passés où la personne connectée a encaissé sans clôturer (le plus ancien d'abord).
 Future<List<Map<String, Object?>>> joursNonClotures(String orgId) async => [
-      for (final r in await db.getAll(
-          """SELECT e.jour_caisse AS jour, e.site_id FROM encaissements e
-             WHERE e.organisation_id = ? AND e.encaisse_par = ? AND e.statut = 'valide' AND e.jour_caisse < ?
-             GROUP BY e.jour_caisse, e.site_id
-             HAVING count(*) > (SELECT coalesce(sum(c.nb_recus), 0) FROM clotures_caisse c WHERE c.organisation_id = e.organisation_id
-                 AND c.site_id = e.site_id AND c.encaisse_par = e.encaisse_par AND c.jour = e.jour_caisse)
-             ORDER BY e.jour_caisse""",
-          [orgId, monId, _date(DateTime.now())]))
-        Map.of(r),
+      for (final r in await db.getAll(_sqlJoursNonClos, [orgId, monId, _date(DateTime.now())])) Map.of(r),
     ];
+
+/// Bandeau du journal : mes journées passées pas encore clôturées, chacune avec son bouton.
+class _JoursNonClos extends StatelessWidget {
+  const _JoursNonClos({required this.espace});
+
+  final Espace espace;
+
+  @override
+  Widget build(BuildContext context) => Requete(
+        _sqlJoursNonClos,
+        parametres: [espace.orgId, monId, _date(DateTime.now())],
+        builder: (context, jours) {
+          if (jours.isEmpty) return const SizedBox.shrink();
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+            decoration: BoxDecoration(
+              color: Couleurs.attenteFond,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Couleurs.attente.withValues(alpha: .4)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                const Icon(Icons.warning_amber, size: 16, color: Couleurs.attente),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                      jours.length == 1
+                          ? 'Votre caisse du ${_jourLong('${jours.first['jour']}')} n\'est pas clôturée.'
+                          : '${jours.length} journées de votre caisse ne sont pas clôturées : dans l\'ordre, la plus ancienne d\'abord.',
+                      style: const TextStyle(fontSize: 14)),
+                ),
+                FilledButton.tonal(
+                  onPressed: () => cloturerCaisse(context,
+                      orgId: espace.orgId, siteId: jours.first['site_id'] as String, jour: '${jours.first['jour']}'),
+                  child: Text('Clôturer le ${_dateLisible(jours.first['jour'])}'),
+                ),
+              ]),
+            ]),
+          );
+        },
+      );
+}
 
 class _ClotureDuJour extends StatelessWidget {
   const _ClotureDuJour({required this.espace, required this.jour});
@@ -2323,7 +2396,9 @@ class _ClotureDuJour extends StatelessWidget {
                     '${c['nb_recus']} reçu(s) · autres modes ${gnf(c['total_autres_modes'])}',
                   ].join('\n')),
                   isThreeLine: true,
-                  trailing: Etat((c['ecart'] as int? ?? 0) == 0 ? 'Sans écart' : 'Écart', ton: (c['ecart'] as int? ?? 0) == 0 ? Ton.regle : Ton.retard),
+                  trailing: c['a_verifier'] == 1
+                      ? const Etat('À vérifier', ton: Ton.attente)
+                      : Etat((c['ecart'] as int? ?? 0) == 0 ? 'Sans écart' : 'Écart', ton: (c['ecart'] as int? ?? 0) == 0 ? Ton.regle : Ton.retard),
                 ),
               ),
           ]),
