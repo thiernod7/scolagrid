@@ -140,7 +140,7 @@ if (etape === 'connexion') {
   });
   await etapeSure('m-recouvrement', async () => {
     await plus('Recouvrement'); await pause(3000); await photo('m17-recouvrement');
-    await page.getByText('7ème A', { exact: true }).first().click(); await pause(4000); await semantique();
+    await page.mouse.click(200, 300); await pause(5000); await semantique();
     await photo('m18-recouvrement-classe');
   });
   await etapeSure('m-personnel', async () => { await plus('Personnel'); await photo('m13-personnel'); });
@@ -255,7 +255,7 @@ if (etape === 'connexion') {
   });
   await etapeSure('recouvrement', async () => {
     await aller('Recouvrement', 'Choisissez une classe'); await pause(4000); await photo('61-recouvrement');
-    await page.getByText('7ème A', { exact: true }).first().click(); await pause(4000); await semantique();
+    await page.mouse.click(700, 290); await pause(5000); await semantique();
     await photo('62-recouvrement-classe');
     await retour();
   });
