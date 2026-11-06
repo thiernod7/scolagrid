@@ -138,6 +138,11 @@ if (etape === 'connexion') {
     await plus('Dépenses'); await photo('m11-depenses');
     await clic('Nouvelle dépense'); await pause(2500); await semantique(); await photo('m12-nouvelle-depense');
   });
+  await etapeSure('m-recouvrement', async () => {
+    await plus('Recouvrement'); await pause(3000); await photo('m17-recouvrement');
+    await page.getByText('7ème A', { exact: true }).first().click(); await pause(4000); await semantique();
+    await photo('m18-recouvrement-classe');
+  });
   await etapeSure('m-personnel', async () => { await plus('Personnel'); await photo('m13-personnel'); });
   await etapeSure('m-postes', async () => { await plus('Postes'); await photo('m14-postes'); });
   await etapeSure('m-parametres', async () => {
@@ -146,7 +151,7 @@ if (etape === 'connexion') {
   });
 } else {
   // Barre latérale (PC 1440 × 900) : positions fixes.
-  const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Caisse': 267, 'Dépenses': 305, 'Personnel': 380, 'Postes': 418, 'Paramètres': 456 };
+  const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Caisse': 267, 'Dépenses': 305, 'Recouvrement': 343, 'Personnel': 418, 'Postes': 456, 'Paramètres': 494 };
   const attendre = (texte, ms = 12000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
   const retour = async () => {
     const b = page.getByRole('button', { name: 'Retour' });
@@ -247,6 +252,12 @@ if (etape === 'connexion') {
     await pause(3500); await semantique(); await arbre('fiche famille'); await photo('46-fiche-famille-panneau');
     const fermer = page.getByRole('button', { name: 'Fermer' });
     if (await fermer.count()) { await fermer.first().click(); await pause(1500); }
+  });
+  await etapeSure('recouvrement', async () => {
+    await aller('Recouvrement', 'Choisissez une classe'); await pause(4000); await photo('61-recouvrement');
+    await page.getByText('7ème A', { exact: true }).first().click(); await pause(4000); await semantique();
+    await photo('62-recouvrement-classe');
+    await retour();
   });
   await etapeSure('menu-depenses', async () => { await aller('Dépenses', 'Nouvelle dépense'); await photo('58-depenses'); });
   for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });

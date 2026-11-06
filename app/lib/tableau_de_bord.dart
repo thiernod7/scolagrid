@@ -24,8 +24,40 @@ class _EnRetard {
   final int jours;
 }
 
+/// Une case de l'état de recouvrement : ce qui était dû, ce qui est payé, en retard ou non.
+typedef _Case = ({int du, int paye, bool retard});
+
+/// Un élève dans l'état de recouvrement de sa classe, colonne par colonne
+/// (inscription, chaque tranche de scolarité, autres frais).
+class _LigneRecouvrement {
+  _LigneRecouvrement(this.eleveId, this.nom, this.matricule, this.classeId, this.classe, this.ordre);
+
+  final String eleveId;
+  final String nom;
+  final String matricule;
+  final String classeId;
+  final String classe;
+  final int ordre;
+  final cases = <String, _Case>{};
+  int du = 0;
+  int paye = 0;
+  int retard = 0;
+
+  int get reste => du - paye;
+
+  void ajouter(String colonne, int du, int paye, bool retard) {
+    final c = cases[colonne];
+    cases[colonne] = (du: (c?.du ?? 0) + du, paye: (c?.paye ?? 0) + paye, retard: (c?.retard ?? false) || retard);
+  }
+}
+
 class _Mesures {
   String? annee;
+
+  /// État de recouvrement : une ligne par élève inscrit, et l'ordre des colonnes
+  /// (clé de tri : inscription d'abord, puis les tranches par date, puis le reste).
+  final recouvrement = <_LigneRecouvrement>[];
+  final colonnesRecouvrement = <String, (int, DateTime?)>{};
   int du = 0;
   int regle = 0;
   int arrieres = 0;
@@ -142,7 +174,7 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
   final inscriptions = await db.getAll('''
       SELECT i.id, i.eleve_id, i.site_id, i.classe_id, i.type_admission, i.statut, i.date_effective,
              i.arrivee_mode, i.arrivee_retrait_gnf, e.pieces_dossier,
-             c.niveau_id, c.nom AS classe, n.nom AS niveau, n.cycle, n.ordre, e.sexe, e.nom, e.prenoms
+             c.niveau_id, c.nom AS classe, n.nom AS niveau, n.cycle, n.ordre, e.sexe, e.nom, e.prenoms, e.matricule
       FROM inscriptions i JOIN classes c ON c.id = i.classe_id JOIN niveaux n ON n.id = c.niveau_id
       JOIN eleves e ON e.id = i.eleve_id
       WHERE i.organisation_id = ? AND i.annee_id = ?
@@ -261,6 +293,8 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
     var reduitIci = false;
     var duIci = 0;
     var payeIci = 0;
+    final ligne = _LigneRecouvrement(i['eleve_id'] as String, '${i['nom']} ${i['prenoms']}', '${i['matricule'] ?? ''}',
+        i['classe_id'] as String, '${i['classe']}', i['ordre'] as int? ?? 0);
     final siens = fraisRetenus([
       for (final f in frais)
         if ((f['site_id'] == null || f['site_id'] == i['site_id']) &&
@@ -310,6 +344,18 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
       m.regle += s.paye;
       duIci += s.total;
       payeIci += s.paye;
+      // L'état de recouvrement : l'inscription, chaque tranche, et les autres frais ensemble.
+      if (type == 'scolarite') {
+        for (final e in s.echeances) {
+          ligne.ajouter(e.libelle, e.montant, e.paye, e.enRetard(jour));
+          final k = m.colonnesRecouvrement[e.libelle];
+          if (k == null || (k.$2 != null && e.dateLimite.isBefore(k.$2!))) m.colonnesRecouvrement[e.libelle] = (1, e.dateLimite);
+        }
+      } else {
+        final col = type == 'optionnel' ? 'Autres frais' : 'Inscription';
+        ligne.ajouter(col, s.total, s.paye, s.echeances.any((e) => e.enRetard(jour)));
+        m.colonnesRecouvrement.putIfAbsent(col, () => (type == 'optionnel' ? 2 : 0, null));
+      }
       for (final e in s.echeances) {
         if (!e.enRetard(jour)) continue;
         final jours = jour.difference(e.dateLimite).inDays;
@@ -326,6 +372,11 @@ Future<_Mesures> _mesurer(String o, Periode periode) async {
     }
     if (reduitIci) m.eleveReduits++;
     m.soldes[i['eleve_id'] as String] = (du: duIci, paye: payeIci, retard: retard);
+    ligne
+      ..du = duIci
+      ..paye = payeIci
+      ..retard = retard;
+    m.recouvrement.add(ligne);
     if (retard > 0) {
       m.arrieres += retard;
       m.retards.add(_EnRetard(i['eleve_id'] as String, '${i['nom']} ${i['prenoms']}', '${i['classe']}', retard, plusVieux));

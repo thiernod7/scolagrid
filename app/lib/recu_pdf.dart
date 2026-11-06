@@ -576,3 +576,90 @@ Future<Uint8List> bonDeSortiePdf({
   ));
   return doc.save();
 }
+
+/// État de recouvrement d'une classe (A4 paysage) : chaque élève, ce qui reste
+/// à payer colonne par colonne (inscription, tranches, autres frais), le dû,
+/// le réglé et le reste ; totaux en bas.
+Future<Uint8List> etatRecouvrementPdf({
+  required Map<String, Object?> ecole,
+  required String classe,
+  required String annee,
+  required List<String> colonnes,
+  required List<({String nom, String matricule, List<int?> cases, int du, int paye})> lignes,
+  ImagesEcole images = const ImagesEcole(),
+}) {
+  final doc = pw.Document(title: 'Recouvrement $classe');
+  String n(int v) => _gnf(v).replaceAll(' GNF', '');
+  final aujourdhui = DateTime.now();
+  final st = const pw.TextStyle(fontSize: 8);
+  final gras = pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold);
+  pw.Widget cel(String t, {bool droite = true, pw.TextStyle? style}) => pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+        child: pw.Text(t, textAlign: droite ? pw.TextAlign.right : pw.TextAlign.left, style: style ?? st),
+      );
+  final totalCases = List<int>.filled(colonnes.length, 0);
+  for (final l in lignes) {
+    for (var i = 0; i < colonnes.length; i++) {
+      totalCases[i] += l.cases[i] ?? 0;
+    }
+  }
+  final du = lignes.fold(0, (s, l) => s + l.du), paye = lignes.fold(0, (s, l) => s + l.paye);
+  doc.addPage(pw.MultiPage(
+    pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4, orientation: pw.PageOrientation.landscape, margin: pw.EdgeInsets.all(24)),
+    header: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      _enTete(ecole, images, titre: 12, petit: 8),
+      pw.Divider(),
+      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        pw.Text('ÉTAT DE RECOUVREMENT — $classe', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+        pw.Text('$annee · arrêté au ${_date(aujourdhui.toIso8601String())} · ${lignes.length} élève(s)',
+            style: const pw.TextStyle(fontSize: 9)),
+      ]),
+      pw.SizedBox(height: 6),
+    ]),
+    footer: (c) => pw.Align(
+      alignment: pw.Alignment.centerRight,
+      child: pw.Text('Page ${c.pageNumber} / ${c.pagesCount} · Chaque colonne : reste à payer (GNF)',
+          style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700)),
+    ),
+    build: (_) => [
+      pw.Table(
+        border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey400, width: .5)),
+        columnWidths: {0: const pw.FlexColumnWidth(3)},
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: .8))),
+            children: [
+              cel('Élève', droite: false, style: gras),
+              for (final k in colonnes) cel(k, style: gras),
+              cel('Dû', style: gras),
+              cel('Réglé', style: gras),
+              cel('Reste', style: gras),
+            ],
+          ),
+          for (final l in lignes)
+            pw.TableRow(children: [
+              cel('${l.nom}  ${l.matricule}', droite: false),
+              for (final x in l.cases) cel(x == null ? '—' : (x <= 0 ? 'payé' : n(x))),
+              cel(n(l.du)),
+              cel(n(l.paye)),
+              cel(l.du - l.paye <= 0 ? 'soldé' : n(l.du - l.paye), style: gras),
+            ]),
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+            children: [
+              cel('Total', droite: false, style: gras),
+              for (final t in totalCases) cel(n(t), style: gras),
+              cel(n(du), style: gras),
+              cel(n(paye), style: gras),
+              cel(n(du - paye), style: gras),
+            ],
+          ),
+        ],
+      ),
+      pw.SizedBox(height: 8),
+      pw.Text('Recouvrement : ${du <= 0 ? '—' : '${(paye * 100 / du).round()} %'} '
+          '(${n(paye)} réglés sur ${n(du)} GNF)', style: const pw.TextStyle(fontSize: 9)),
+    ],
+  ));
+  return doc.save();
+}

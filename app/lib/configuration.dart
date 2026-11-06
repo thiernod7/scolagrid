@@ -43,6 +43,7 @@ part 'mise_en_route.dart';
 part 'personnel.dart';
 part 'photo.dart';
 part 'poste.dart';
+part 'recouvrement.dart';
 part 'reductions.dart';
 part 'regles.dart';
 part 'remboursements.dart';
