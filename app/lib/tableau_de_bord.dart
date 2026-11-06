@@ -25,7 +25,7 @@ class _EnRetard {
 }
 
 /// Une case de l'état de recouvrement : ce qui était dû, ce qui est payé, en retard ou non.
-typedef _Case = ({int du, int paye, bool retard});
+typedef _CaseRecouvrement = ({int du, int paye, bool retard});
 
 /// Un élève dans l'état de recouvrement de sa classe, colonne par colonne
 /// (inscription, chaque tranche de scolarité, autres frais).
@@ -38,7 +38,7 @@ class _LigneRecouvrement {
   final String classeId;
   final String classe;
   final int ordre;
-  final cases = <String, _Case>{};
+  final cases = <String, _CaseRecouvrement>{};
   int du = 0;
   int paye = 0;
   int retard = 0;

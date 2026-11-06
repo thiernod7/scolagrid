@@ -285,7 +285,7 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
     const largeurNom = 220.0, largeurCol = 118.0;
 
     // Une case : ce qui reste à payer ; « payé » si soldé ; en rouge si en retard.
-    Widget casePour(_Case? c) {
+    Widget casePour(_CaseRecouvrement? c) {
       if (c == null || c.du <= 0) return Text('—', style: TextStyle(color: gris));
       final reste = c.du - c.paye;
       if (reste <= 0) return const Text('payé', style: TextStyle(fontSize: 13, color: Couleurs.regle));
