@@ -789,7 +789,18 @@ class _TableauDeBordState extends State<TableauDeBord> {
         barres: [for (final (mois, t) in m.parMois) Barre(mois, t, infobulle: '$mois : ${gnf(t)}')],
       ),
     );
-    final anciennete = CarteGraphique(
+    // Sans arriéré, un simple bandeau au lieu d'un graphique vide.
+    final anciennete = m.arrieres == 0
+        ? Container(
+            padding: const EdgeInsets.all(16),
+            decoration: carte,
+            child: Row(children: [
+              const Icon(Icons.check_circle_outline, size: 18, color: Couleurs.regle),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Aucun arriéré : toutes les échéances passées sont payées.', style: TextStyle(fontSize: 13, color: gris))),
+            ]),
+          )
+        : CarteGraphique(
       titre: 'Ancienneté des arriérés',
       indice: gnf(m.arrieres),
       enfant: GraphBarresH(
@@ -859,7 +870,11 @@ class _TableauDeBordState extends State<TableauDeBord> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               if (widget.voitFinances) ...[graphique, const SizedBox(height: 12), blocClasses, espace],
               const TitreSection('Effectifs'),
-              niveaux,
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(flex: 3, child: niveaux),
+                const SizedBox(width: 12),
+                Expanded(flex: 2, child: sexes),
+              ]),
             ]),
           ),
           const SizedBox(width: 16),
@@ -867,8 +882,7 @@ class _TableauDeBordState extends State<TableauDeBord> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               if (aujourdhui != null) ...[aujourdhui, espace],
               if (blocAFaire != null) ...[blocAFaire, espace],
-              if (widget.voitFinances) ...[anciennete, const SizedBox(height: 12)],
-              sexes,
+              if (widget.voitFinances) anciennete,
             ]),
           ),
         ]),

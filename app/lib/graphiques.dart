@@ -169,8 +169,8 @@ class CarteKpi extends StatelessWidget {
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   Container(
                       width: 6, height: 6, decoration: BoxDecoration(color: couleurSeuil(seuil!), shape: BoxShape.circle)),
-                  const SizedBox(width: 4),
-                  Text(texteSeuil!, style: TextStyle(fontSize: 12, color: gris)),
+                  // Carte étroite : le point de couleur suffit, le titre garde sa place.
+                  if (!serre) ...[const SizedBox(width: 4), Text(texteSeuil!, style: TextStyle(fontSize: 12, color: gris))],
                 ])
               else if (onTap != null)
                 Icon(Icons.chevron_right, size: 16, color: gris.withValues(alpha: .6)),
