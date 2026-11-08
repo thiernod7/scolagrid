@@ -986,7 +986,7 @@ class _Resultats extends StatelessWidget {
       // La colonne des noms prend la place libre : le tableau remplit son cadre.
       tableau = LayoutBuilder(builder: (context, contraintes) {
         final fixe = 48.0 + (matieres.length + 1) * largeurCol + 48 + 2;
-        final largeurNom = (contraintes.maxWidth - fixe).clamp(220.0, 420.0);
+        final largeurNom = (contraintes.maxWidth - fixe).clamp(220.0, double.infinity);
         return Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),

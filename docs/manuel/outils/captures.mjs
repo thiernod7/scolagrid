@@ -233,9 +233,12 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape'); await pause(1500); await retour();
     await clic('Encaisser'); await pause(3000); await semantique();
     const champ = page.getByRole('textbox', { name: 'Ajouter un élève', exact: false }).first();
-    await champ.click(); await pause(300); await page.keyboard.type('DIALLO', { delay: 40 }); await pause(2500); await semantique();
+    // Chaque passage solde un élève : un nom différent selon le jour, pour en trouver un qui doit encore.
+    const noms = ['BAH', 'SOW', 'KEITA', 'SOUMAH', 'SYLLA', 'CONDÉ', 'BARRY', 'TOURÉ', 'BANGOURA', 'CAMARA', 'DIALLO'];
+    const nomDuJour = noms[Math.floor(Date.now() / 86400000) % noms.length];
+    await champ.click(); await pause(300); await page.keyboard.type(nomDuJour, { delay: 40 }); await pause(2500); await semantique();
     await arbre('recherche encaisser'); await photo('51-encaisser-recherche');
-    await page.getByText('DIALLO', { exact: false }).nth(1).click(); await pause(2500); await semantique();
+    await page.getByText(nomDuJour, { exact: false }).nth(1).click(); await pause(2500); await semantique();
     await arbre('encaisser élève'); await photo('52-encaisser-eleve');
     await page.getByRole('button', { name: 'Solde' }).first().click(); await pause(1500);
     await photo('53-encaisser-montant');
