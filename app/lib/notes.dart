@@ -143,10 +143,8 @@ class _NotesScreenState extends State<NotesScreen> {
     final enTete = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
       const Text('Notes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
       const SizedBox(width: 4),
-      MenuCompact<String>(
-        largeur: telephone ? 200 : 220,
+      _MenuClasse(
         valeur: classe['id'] as String,
-        tous: 'Classe',
         choix: {for (final c in classes) c['id'] as String: '${c['nom']} · ${c['effectif']} él.'},
         onChanged: (v) => setState(() {
           _classeId = v;
@@ -263,7 +261,7 @@ class _Evaluations extends StatelessWidget {
   final Map<String, Object?> periode;
   final bool peutSaisir;
 
-  Future<void> _nouvelle(BuildContext context) async {
+  Future<void> _nouvelle(BuildContext context, {String? matiereChoisie}) async {
     final messager = ScaffoldMessenger.of(context);
     final matieres = {
       for (final m in await db.getAll('SELECT id, nom FROM matieres WHERE niveau_id = ? ORDER BY nom', [classe['niveau_id']]))
@@ -279,7 +277,7 @@ class _Evaluations extends StatelessWidget {
       messager.showSnackBar(const SnackBar(content: Text("Aucun type d'évaluation : la direction doit les créer.")));
       return;
     }
-    var matiere = matieres.keys.first;
+    var matiere = matiereChoisie != null && matieres.containsKey(matiereChoisie) ? matiereChoisie : matieres.keys.first;
     var type = types.first['id'] as String;
     var date = DateTime.now();
     final libelle = TextEditingController();
@@ -326,53 +324,181 @@ class _Evaluations extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Requete(
+        'SELECT id, nom, coefficient FROM matieres WHERE niveau_id = ? ORDER BY nom',
+        parametres: [classe['niveau_id']],
+        builder: (context, matieres) => Requete(
+          '''SELECT ev.*, t.libelle AS type, t.compte, t.poids,
+               (SELECT count(*) FROM notes n WHERE n.evaluation_id = ev.id AND n.etat <> 'non_note') AS saisies,
+               (SELECT avg(n.valeur) FROM notes n WHERE n.evaluation_id = ev.id AND n.etat = 'note') AS moyenne
+             FROM evaluations ev JOIN types_evaluation t ON t.id = ev.type_id
+             WHERE ev.classe_id = ? AND ev.periode_id = ?
+             ORDER BY ev.date_evaluation, ev.created_at''',
+          parametres: [classe['id'], periode['id']],
+          builder: (context, evaluations) => _contenu(context, matieres, evaluations),
+        ),
+      );
+
+  Widget _contenu(BuildContext context, Lignes matieres, Lignes evaluations) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
-    return Requete(
-      '''SELECT ev.*, m.nom AS matiere, t.libelle AS type, t.compte,
-           (SELECT count(*) FROM notes n WHERE n.evaluation_id = ev.id AND n.etat <> 'non_note') AS saisies
-         FROM evaluations ev JOIN matieres m ON m.id = ev.matiere_id JOIN types_evaluation t ON t.id = ev.type_id
-         WHERE ev.classe_id = ? AND ev.periode_id = ?
-         ORDER BY ev.date_evaluation DESC, m.nom''',
-      parametres: [classe['id'], periode['id']],
-      builder: (context, evaluations) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Expanded(
-            child: Text('${evaluations.length} évaluation(s) · ${classe['effectif']} élève(s)', style: TextStyle(fontSize: 14, color: gris)),
-          ),
-          if (peutSaisir)
-            FilledButton.icon(
-              onPressed: () => _nouvelle(context),
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Nouvelle évaluation'),
+    final bordure = Theme.of(context).dividerColor;
+    final telephone = MediaQuery.sizeOf(context).width < 640;
+    final effectif = classe['effectif'] as int? ?? 0;
+    final bareme = periode['bareme'] as int? ?? 20;
+    final aCompleter = evaluations.where((e) => (e['saisies'] as int? ?? 0) < effectif).length;
+    if (matieres.isEmpty) {
+      return Text('Aucune matière pour ce niveau : ajoutez-les dans Paramètres › Matières.', style: TextStyle(color: gris));
+    }
+
+    Widget ligneEvaluation(Map<String, Object?> ev) {
+      final saisies = ev['saisies'] as int? ?? 0;
+      final complet = effectif > 0 && saisies >= effectif;
+      final moy = (ev['moyenne'] as num?)?.toDouble();
+      return InkWell(
+        onTap: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => _SaisieNotesScreen(espace: espace, evaluationId: ev['id'] as String))),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(children: [
+            SizedBox(
+              width: telephone ? 52 : 92,
+              child: Text(telephone ? '${_dateLisible(ev['date_evaluation'])}'.substring(0, 5) : _dateLisible(ev['date_evaluation']),
+                  style: _chiffresDep.copyWith(fontSize: 13, color: gris)),
             ),
-        ]),
-        const SizedBox(height: 10),
-        if (evaluations.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(border: Border.all(color: schema.outlineVariant), borderRadius: BorderRadius.circular(8)),
-            child: Text('Aucune évaluation sur cette période. Créez-en une pour saisir les notes.',
-                textAlign: TextAlign.center, style: TextStyle(color: gris)),
-          ),
-        for (final ev in evaluations)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              onTap: () => Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => _SaisieNotesScreen(espace: espace, evaluationId: ev['id'] as String))),
-              title: Text('${ev['matiere']}${ev['libelle'] != null ? ' · ${ev['libelle']}' : ''}',
-                  style: const TextStyle(fontWeight: FontWeight.w500)),
-              subtitle: Text('${_dateLisible(ev['date_evaluation'])} · ${ev['type']}${ev['compte'] == 1 ? '' : ' (hors moyenne)'}'),
-              trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Etat('${ev['saisies']} / ${classe['effectif']}',
-                    ton: (ev['saisies'] as int? ?? 0) >= (classe['effectif'] as int? ?? 0) ? Ton.regle : Ton.attente),
-                Text('notes', style: TextStyle(fontSize: 11, color: gris)),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${ev['libelle'] ?? ev['type']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
+                Text(
+                    [
+                      '${ev['type']}',
+                      if ((ev['poids'] as num? ?? 1) != 1) 'poids ${noteLisible((ev['poids'] as num).toDouble()).replaceAll(',00', '')}',
+                      if (ev['compte'] != 1) 'hors moyenne',
+                    ].join(' · '),
+                    style: TextStyle(fontSize: 12, color: gris)),
               ]),
             ),
-          ),
+            SizedBox(
+              width: telephone ? 64 : 120,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text('$saisies / $effectif', style: TextStyle(fontSize: 12, color: complet ? Couleurs.regle : Couleurs.attente)),
+                const SizedBox(height: 3),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: effectif == 0 ? 0 : (saisies / effectif).clamp(0, 1).toDouble(),
+                    minHeight: 4,
+                    backgroundColor: Couleurs.doux(context),
+                    color: complet ? Couleurs.regle : Couleurs.attente,
+                  ),
+                ),
+              ]),
+            ),
+            SizedBox(
+              width: telephone ? 56 : 96,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Text(noteLisible(moy), style: _chiffresDep.copyWith(fontSize: 14, fontWeight: FontWeight.w600,
+                    color: moy == null ? gris : (moy < bareme / 2 ? Couleurs.retard : null))),
+                if (!telephone) Text('moy. classe', style: TextStyle(fontSize: 11, color: gris)),
+              ]),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: gris),
+          ]),
+        ),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(
+          child: Text(
+              '${evaluations.length} évaluation(s) · $effectif élève(s)'
+              '${aCompleter > 0 ? ' · $aCompleter à compléter' : ''}',
+              style: TextStyle(fontSize: 14, color: aCompleter > 0 ? Couleurs.attente : gris)),
+        ),
+        if (peutSaisir)
+          FilledButton.icon(onPressed: () => _nouvelle(context), icon: const Icon(Icons.add, size: 16), label: const Text('Nouvelle évaluation')),
       ]),
+      const SizedBox(height: 12),
+      // Une carte par matière : ses évaluations dans l'ordre, la saisie et la moyenne de chacune.
+      for (final m in matieres)
+        Builder(builder: (context) {
+          final siennes = evaluations.where((e) => e['matiere_id'] == m['id']).toList();
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                color: Couleurs.doux(context).withValues(alpha: .5),
+                child: Row(children: [
+                  Expanded(
+                    child: Text.rich(TextSpan(children: [
+                      TextSpan(text: '${m['nom']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      TextSpan(
+                          text: '  coef. ${noteLisible((m['coefficient'] as num? ?? 1).toDouble()).replaceAll(',00', '')}'
+                              ' · ${siennes.length} évaluation(s)',
+                          style: TextStyle(fontSize: 12, color: gris)),
+                    ])),
+                  ),
+                  if (peutSaisir)
+                    TextButton.icon(
+                      onPressed: () => _nouvelle(context, matiereChoisie: m['id'] as String),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('Ajouter'),
+                    ),
+                ]),
+              ),
+              if (siennes.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Text('Aucune évaluation sur cette période.', style: TextStyle(fontSize: 13, color: gris)),
+                ),
+              for (var i = 0; i < siennes.length; i++) ...[
+                if (i > 0) Divider(height: 1, color: bordure),
+                ligneEvaluation(siennes[i]),
+              ],
+            ]),
+          );
+        }),
+    ]);
+  }
+}
+
+/// Choix de la classe : un menu sans case vide (toujours une classe choisie).
+class _MenuClasse extends StatelessWidget {
+  const _MenuClasse({required this.valeur, required this.choix, required this.onChanged});
+
+  final String valeur;
+  final Map<String, String> choix;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final schema = Theme.of(context).colorScheme;
+    return Container(
+      height: 36,
+      width: 210,
+      padding: const EdgeInsets.only(left: 12, right: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(6),
+        color: schema.surface,
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: valeur,
+          isExpanded: true,
+          isDense: true,
+          icon: Icon(Icons.keyboard_arrow_down, size: 18, color: schema.onSurfaceVariant),
+          style: TextStyle(fontFamily: policeTexte, fontSize: 14, color: schema.onSurface),
+          items: [for (final c in choix.entries) DropdownMenuItem(value: c.key, child: Text(c.value, overflow: TextOverflow.ellipsis))],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ),
     );
   }
 }
@@ -390,12 +516,16 @@ class _SaisieNotesScreen extends StatefulWidget {
 
 class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
   final _champs = <String, TextEditingController>{};
+  final _focus = <String, FocusNode>{};
   final _erreurs = <String, String>{};
 
   @override
   void dispose() {
     for (final c in _champs.values) {
       c.dispose();
+    }
+    for (final f in _focus.values) {
+      f.dispose();
     }
     super.dispose();
   }
@@ -482,84 +612,153 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
       );
 
   Widget _lignes(BuildContext context, Map<String, Object?> ev, Lignes eleves, bool ouverte) {
-    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final bareme = ev['bareme'] as int? ?? 20;
     final saisies = eleves.where((e) => e['etat'] != null && e['etat'] != 'non_note').length;
+    final valeurs = [for (final e in eleves) if (e['etat'] == 'note' && e['valeur'] != null) (e['valeur'] as num).toDouble()];
+    final moy = valeurs.isEmpty ? null : valeurs.reduce((a, b) => a + b) / valeurs.length;
+    final ordre = [for (final e in eleves) e['id'] as String];
+
+    Widget repere(String libelle, String valeur, {Color? couleur}) =>
+        Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(libelle, style: TextStyle(fontSize: 12, color: gris)),
+          Text(valeur, style: _chiffresDep.copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: couleur)),
+        ]);
+
+    // En haut : où en est la saisie, et les repères de l'évaluation.
+    final bandeau = Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: Theme.of(context).dividerColor)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('${ev['type']} du ${_dateLisible(ev['date_evaluation'])}${ev['libelle'] != null ? ' · ${ev['libelle']}' : ''}',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        Text('${ev['periode']} · notes sur $bareme', style: TextStyle(fontSize: 13, color: gris)),
+        const SizedBox(height: 12),
+        Wrap(spacing: 28, runSpacing: 10, children: [
+          repere('Saisies', '$saisies / ${eleves.length}', couleur: saisies >= eleves.length ? Couleurs.regle : Couleurs.attente),
+          repere('Moyenne', noteLisible(moy), couleur: moy != null && moy < bareme / 2 ? Couleurs.retard : null),
+          repere('Plus haute', noteLisible(valeurs.isEmpty ? null : valeurs.reduce((a, b) => a > b ? a : b))),
+          repere('Plus basse', noteLisible(valeurs.isEmpty ? null : valeurs.reduce((a, b) => a < b ? a : b))),
+        ]),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(
+            value: eleves.isEmpty ? 0 : saisies / eleves.length,
+            minHeight: 4,
+            backgroundColor: Couleurs.doux(context),
+            color: saisies >= eleves.length ? Couleurs.regle : Couleurs.attente,
+          ),
+        ),
+        if (!ouverte) ...[
+          const SizedBox(height: 10),
+          const Etat('Lecture seule : période clôturée ou pas de droit de saisie', icone: Icons.lock_outline),
+        ] else ...[
+          const SizedBox(height: 8),
+          Text('Tapez la note puis Entrée pour passer à l\'élève suivant. Tout s\'enregistre seul, même sans internet. '
+              'Le menu ⋮ : absent, dispensé, non concerné.', style: TextStyle(fontSize: 12, color: gris)),
+        ],
+      ]),
+    );
+
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 760),
         child: ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
-          Text('${ev['type']} du ${_dateLisible(ev['date_evaluation'])}${ev['libelle'] != null ? ' · ${ev['libelle']}' : ''}',
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-          Text('${ev['periode']} · notes sur ${ev['bareme']} · $saisies / ${eleves.length} saisie(s)',
-              style: TextStyle(fontSize: 13, color: gris)),
-          if (!ouverte) ...[
-            const SizedBox(height: 8),
-            const Etat('Lecture seule : période clôturée ou pas de droit de saisie', icone: Icons.lock_outline),
-          ],
-          const SizedBox(height: 4),
-          Text('Tapez la note : elle s\'enregistre seule, même sans internet. Le menu à droite : absent, dispensé…',
-              style: TextStyle(fontSize: 12, color: gris)),
+          bandeau,
           const SizedBox(height: 12),
-          for (final e in eleves)
-            Builder(builder: (context) {
-              final id = e['id'] as String;
-              final etat = e['etat'] as String? ?? 'non_note';
-              final c = _champs.putIfAbsent(
-                  id, () => TextEditingController(text: e['valeur'] == null ? '' : noteLisible((e['valeur'] as num).toDouble()).replaceAll(',00', '')));
-              return Container(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
-                child: Row(children: [
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${e['nom']} ${e['prenoms']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                      Text('${e['matricule']}', style: styleMono.copyWith(fontSize: 11, color: gris)),
-                    ]),
-                  ),
-                  if (etat != 'note' && etat != 'non_note')
-                    Padding(padding: const EdgeInsets.only(right: 8), child: Etat(_etatsCourts[etat] ?? etat, ton: etat == 'absent' ? Ton.retard : Ton.neutre))
-                  else
-                    SizedBox(
-                      width: 92,
-                      child: TextField(
-                        controller: c,
-                        enabled: ouverte,
-                        textAlign: TextAlign.right,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        textInputAction: TextInputAction.next,
-                        onChanged: (t) => _valeurTapee(ev, id, t),
-                        style: _chiffresDep.copyWith(fontSize: 16, fontWeight: FontWeight.w600),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          border: const OutlineInputBorder(),
-                          suffixText: '/${ev['bareme']}',
-                          errorText: _erreurs[id],
-                          errorMaxLines: 2,
-                        ),
+          Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: Theme.of(context).dividerColor)),
+            child: Column(children: [
+              for (var i = 0; i < eleves.length; i++)
+                Builder(builder: (context) {
+                  final e = eleves[i];
+                  final id = e['id'] as String;
+                  final etat = e['etat'] as String? ?? 'non_note';
+                  final v = (e['valeur'] as num?)?.toDouble();
+                  final c = _champs.putIfAbsent(id, () => TextEditingController(text: v == null ? '' : noteLisible(v).replaceAll(',00', '')));
+                  final f = _focus.putIfAbsent(id, FocusNode.new);
+                  final basse = etat == 'note' && v != null && v < bareme / 2;
+                  return Container(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 4, 6),
+                    decoration: BoxDecoration(
+                      border: i == 0 ? null : Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+                    ),
+                    child: Row(children: [
+                      SizedBox(width: 26, child: Text('${i + 1}', style: TextStyle(fontSize: 12, color: gris))),
+                      Initiales('${e['nom']} ${e['prenoms']}', taille: 32),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text('${e['nom']} ${e['prenoms']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text('${e['matricule']}', style: styleMono.copyWith(fontSize: 11, color: gris)),
+                        ]),
                       ),
-                    ),
-                  if (ouverte)
-                    PopupMenuButton<String>(
-                      tooltip: 'Absent, dispensé…',
-                      icon: Icon(Icons.more_vert, size: 18, color: gris),
-                      onSelected: (v) async {
-                        if (v == 'note') {
-                          await db.execute('DELETE FROM notes WHERE id = ?', [_idNote(widget.evaluationId, id)]);
-                          c.clear();
-                        } else {
-                          c.clear();
-                          await _enregistrer(ev, id, etat: v);
-                        }
-                      },
-                      itemBuilder: (_) => [
-                        if (etat != 'note' && etat != 'non_note') const PopupMenuItem(value: 'note', child: Text('Saisir une note')),
-                        for (final x in _etatsNote.entries) PopupMenuItem(value: x.key, child: Text(x.value)),
-                      ],
-                    ),
-                ]),
-              );
-            }),
+                      if (etat != 'note' && etat != 'non_note')
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: Etat(_etatsCourts[etat] ?? etat, ton: etat == 'absent' ? Ton.retard : Ton.neutre),
+                        )
+                      else
+                        SizedBox(
+                          width: 104,
+                          child: TextField(
+                            controller: c,
+                            focusNode: f,
+                            enabled: ouverte,
+                            textAlign: TextAlign.right,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            textInputAction: i < eleves.length - 1 ? TextInputAction.next : TextInputAction.done,
+                            onChanged: (t) => _valeurTapee(ev, id, t),
+                            onSubmitted: (_) {
+                              // Entrée : l'élève suivant qui attend une note.
+                              for (var k = i + 1; k < ordre.length; k++) {
+                                final suivant = _focus[ordre[k]];
+                                if (suivant != null && suivant.context != null) {
+                                  suivant.requestFocus();
+                                  return;
+                                }
+                              }
+                            },
+                            style: _chiffresDep.copyWith(fontSize: 17, fontWeight: FontWeight.w600, color: basse ? Couleurs.retard : null),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              hintText: '—',
+                              border: const OutlineInputBorder(),
+                              suffixText: '/$bareme',
+                              errorText: _erreurs[id],
+                              errorMaxLines: 2,
+                            ),
+                          ),
+                        ),
+                      if (ouverte)
+                        PopupMenuButton<String>(
+                          tooltip: 'Absent, dispensé…',
+                          icon: Icon(Icons.more_vert, size: 18, color: gris),
+                          onSelected: (x) async {
+                            if (x == 'note') {
+                              await db.execute('DELETE FROM notes WHERE id = ?', [_idNote(widget.evaluationId, id)]);
+                              c.clear();
+                            } else {
+                              c.clear();
+                              await _enregistrer(ev, id, etat: x);
+                            }
+                          },
+                          itemBuilder: (_) => [
+                            if (etat != 'note' && etat != 'non_note') const PopupMenuItem(value: 'note', child: Text('Saisir une note')),
+                            for (final x in _etatsNote.entries) PopupMenuItem(value: x.key, child: Text(x.value)),
+                          ],
+                        )
+                      else
+                        const SizedBox(width: 12),
+                    ]),
+                  );
+                }),
+            ]),
+          ),
         ]),
       ),
     );
@@ -637,6 +836,9 @@ class _Resultats extends StatelessWidget {
     final moyClasse = avecMoyenne.isEmpty ? null : avecMoyenne.reduce((a, b) => a + b) / avecMoyenne.length;
     final plusForte = avecMoyenne.isEmpty ? null : avecMoyenne.reduce((a, b) => a > b ? a : b);
     final plusFaible = avecMoyenne.isEmpty ? null : avecMoyenne.reduce((a, b) => a < b ? a : b);
+
+    // Sous la moyenne (la moitié du barème) : en rouge.
+    Color? couleurNote(double? v) => v != null && v < bareme / 2 ? Couleurs.retard : null;
 
     List<_LigneBulletin> lignes(String eleveId) => [
           for (final m in matieres)
@@ -756,7 +958,8 @@ class _Resultats extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Row(children: [
                   Expanded(child: Text('${e['nom']} ${e['prenoms']}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
-                  Text(noteLisible(generale[e['id']]), style: _chiffresDep.copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text(noteLisible(generale[e['id']]),
+                      style: _chiffresDep.copyWith(fontSize: 16, fontWeight: FontWeight.w700, color: couleurNote(generale[e['id']]))),
                   const SizedBox(width: 6),
                   Etat(rangLisible(rang[e['id']])),
                   actions(e),
@@ -772,7 +975,7 @@ class _Resultats extends StatelessWidget {
           ),
       ]);
     } else {
-      const largeurNom = 220.0, largeurCol = 92.0;
+      const largeurNom = 220.0, largeurCol = 104.0;
       Widget c(double l, Widget w, {bool droite = true}) => SizedBox(
           width: l,
           child: Padding(
@@ -792,8 +995,15 @@ class _Resultats extends StatelessWidget {
               child: Row(children: [
                 c(48, const Text('Rang', style: entete)),
                 c(largeurNom, const Text('Élève', style: entete), droite: false),
+                // Le nom de la matière sur deux lignes, son coefficient dessous.
                 for (final m in matieres)
-                  c(largeurCol, Tooltip(message: '${m['nom']} · coef. ${m['coefficient']}', child: Text('${m['nom']}', overflow: TextOverflow.ellipsis, style: entete))),
+                  c(
+                      largeurCol,
+                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                        Text('${m['nom']}', maxLines: 2, textAlign: TextAlign.right, overflow: TextOverflow.ellipsis, style: entete),
+                        Text('coef. ${noteLisible((m['coefficient'] as num? ?? 1).toDouble()).replaceAll(',00', '')}',
+                            style: TextStyle(fontSize: 11, color: gris)),
+                      ])),
                 c(largeurCol, const Text('Moyenne', style: entete)),
                 const SizedBox(width: 48),
               ]),
@@ -812,8 +1022,10 @@ class _Resultats extends StatelessWidget {
                           Text('« ${e['appreciation']} »', overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: gris)),
                       ]),
                       droite: false),
-                  for (final m in matieres) c(largeurCol, Text(noteLisible(moy[e['id']]![m['id']]), style: _chiffresDep.copyWith(fontSize: 13))),
-                  c(largeurCol, Text(noteLisible(generale[e['id']]), style: _chiffresDep.copyWith(fontSize: 14, fontWeight: FontWeight.w700))),
+                  for (final m in matieres)
+                    c(largeurCol, Text(noteLisible(moy[e['id']]![m['id']]), style: _chiffresDep.copyWith(fontSize: 13, color: couleurNote(moy[e['id']]![m['id']])))),
+                  c(largeurCol,
+                      Text(noteLisible(generale[e['id']]), style: _chiffresDep.copyWith(fontSize: 14, fontWeight: FontWeight.w700, color: couleurNote(generale[e['id']])))),
                   SizedBox(width: 48, child: actions(e)),
                 ]),
               ),

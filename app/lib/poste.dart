@@ -6,7 +6,7 @@ part of 'configuration.dart';
 /// Le code PIN, propre à ce poste, rouvre l'app sans réseau.
 
 /// Même numéro que « version » dans pubspec.yaml (un test le vérifie).
-const versionApp = '0.9.27';
+const versionApp = '0.9.28';
 
 /// Ce poste, tel qu'enregistré localement (table locale, jamais synchronisée).
 Future<Map<String, Object?>?> cePoste() => db.getOptional('SELECT * FROM ce_poste LIMIT 1');
