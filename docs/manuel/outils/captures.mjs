@@ -233,9 +233,9 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape'); await pause(1500); await retour();
     await clic('Encaisser'); await pause(3000); await semantique();
     const champ = page.getByRole('textbox', { name: 'Ajouter un élève', exact: false }).first();
-    // Chaque passage solde un élève : un nom différent selon le jour, pour en trouver un qui doit encore.
+    // Chaque passage solde un élève : un nom différent à chaque passage, pour en trouver un qui doit encore.
     const noms = ['BAH', 'SOW', 'KEITA', 'SOUMAH', 'SYLLA', 'CONDÉ', 'BARRY', 'TOURÉ', 'BANGOURA', 'CAMARA', 'DIALLO'];
-    const nomDuJour = noms[Math.floor(Date.now() / 86400000) % noms.length];
+    const nomDuJour = noms[Math.floor(Date.now() / 60000) % noms.length];
     await champ.click(); await pause(300); await page.keyboard.type(nomDuJour, { delay: 40 }); await pause(2500); await semantique();
     await arbre('recherche encaisser'); await photo('51-encaisser-recherche');
     await page.getByText(nomDuJour, { exact: false }).nth(1).click(); await pause(2500); await semantique();
@@ -252,6 +252,9 @@ if (etape === 'connexion') {
     if (nouvelle) { await nouvelle.waitForTimeout(4000); await nouvelle.screenshot({ path: `${dossier}/55-recu-pdf.png` }); await nouvelle.close(); }
     await photo('55-apres-encaissement');
     await page.keyboard.press('Escape'); await pause(2000); await semantique();
+  });
+  // Le reçu : son propre passage, pour qu'un encaissement impossible (élève soldé) ne l'empêche pas.
+  await etapeSure('reçu', async () => {
     await aller('Caisse', 'Journal de caisse'); await pause(4000); await arbre('journal'); await photo('56-journal-caisse');
     await page.mouse.click(700, 220); await pause(3000); await semantique(); await arbre('reçu'); await photo('57-recu');
     const boutonPlus = page.getByRole('button', { name: 'Plus' });
