@@ -159,12 +159,12 @@ if (etape === 'connexion') {
   const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Notes': 230, 'Caisse': 305, 'Dépenses': 343, 'Recouvrement': 381, 'Personnel': 456, 'Postes': 494, 'Paramètres': 532 };
   const attendre = (texte, ms = 12000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
   const retour = async () => {
-    const b = page.getByRole('button', { name: 'Retour' });
+    const b = page.getByRole('button', { name: /^(Retour|Back)$/ });
     if (await b.count()) await b.last().click(); else await page.keyboard.press('Escape');
     await pause(2000); await semantique();
   };
   const aller = async (r, attendu) => {
-    for (let i = 0; i < 3 && (await page.getByRole('button', { name: 'Retour' }).count()); i++) await retour();
+    for (let i = 0; i < 3 && (await page.getByRole('button', { name: /^(Retour|Back)$/ }).count()); i++) await retour();
     for (let i = 0; i < 3; i++) {
       await page.mouse.click(110, barre[r]); await pause(2500); await semantique();
       if (!attendu || (await attendre(attendu, 5000))) return;
@@ -278,7 +278,8 @@ if (etape === 'connexion') {
     await page.mouse.click(700, 310); await pause(3500); await semantique(); await photo('66-notes-saisie');
     await retour();
     const resultats = page.getByRole('button', { name: 'Résultats' });
-    if (await resultats.count()) { await resultats.first().click(); await pause(3000); await photo('65-notes-resultats'); }
+    if (await resultats.count()) await resultats.first().click(); else await page.mouse.click(384, 166);
+    await pause(3000); await photo('65-notes-resultats');
   });
   await etapeSure('recouvrement', async () => {
     await aller('Recouvrement', 'Choisissez une classe'); await pause(4000); await photo('61-recouvrement');

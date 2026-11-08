@@ -63,6 +63,8 @@ jobs:
             < docs/manuel/outils/notes-demo.sql
           ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres -v tel=224620000009" \
             < docs/manuel/outils/personnel-demo.sql
+          ssh -o ConnectTimeout=20 "$VPS" "sudo docker exec -i essai-supabase-db psql -X -q -U supabase_admin -d postgres -v tel=224620000009" \
+            < docs/manuel/outils/caisse-demo.sql
       - name: Écrans
         working-directory: docs/manuel/outils
         env:
