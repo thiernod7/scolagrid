@@ -48,6 +48,18 @@ Future<bool> jAiLeDroit(String orgId, String? siteId, String droit) async {
   return (parDefaut || exceptions.any((d) => d['accorde'] == 1)) && !exceptions.any((d) => d['accorde'] == 0);
 }
 
+/// Pages que le fondateur m'a masquées (jamais au fondateur lui-même).
+Future<Set<String>> pagesMasqueesPourMoi(String orgId) async {
+  final fiche = await db.getOptional(
+      "SELECT id FROM personnel WHERE organisation_id = ? AND user_id = ? AND statut = 'actif'", [orgId, monId]);
+  if (fiche == null) return const {};
+  final aff = await db.getAll('SELECT fonction FROM affectations WHERE personnel_id = ? AND actif = 1', [fiche['id']]);
+  if (aff.any((a) => a['fonction'] == 'fondateur')) return const {};
+  final l = await db.getAll(
+      "SELECT droit FROM droits_personnel WHERE personnel_id = ? AND accorde = 1 AND droit LIKE 'masquer_%'", [fiche['id']]);
+  return {for (final d in l) (d['droit'] as String).substring('masquer_'.length)};
+}
+
 /// Sites où je peux inscrire.
 Future<Map<String, String>> _sitesOuJInscris(String orgId) async => {
       for (final s in await db.getAll('SELECT id, nom FROM sites WHERE organisation_id = ? ORDER BY created_at', [orgId]))

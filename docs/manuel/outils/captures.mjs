@@ -251,6 +251,8 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape'); await pause(2000); await semantique();
     await aller('Caisse', 'Journal de caisse'); await pause(4000); await arbre('journal'); await photo('56-journal-caisse');
     await page.mouse.click(700, 220); await pause(3000); await semantique(); await arbre('reçu'); await photo('57-recu');
+    const boutonPlus = page.getByRole('button', { name: 'Plus' });
+    if (await boutonPlus.count()) { await boutonPlus.first().click(); await pause(1200); await photo('57b-recu-plus'); await page.keyboard.press('Escape'); await pause(800); }
     await retour();
   });
   await etapeSure('familles', async () => {
@@ -286,6 +288,14 @@ if (etape === 'connexion') {
   });
   await etapeSure('menu-depenses', async () => { await aller('Dépenses', 'Nouvelle dépense'); await photo('58-depenses'); });
   for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
+  await etapeSure('fiche personnel', async () => {
+    await aller('Personnel'); await pause(2500);
+    const mariama = page.getByText(/KOUROUMA/);
+    if (await mariama.count()) await mariama.first().click(); else await page.mouse.click(500, 300);
+    await pause(3000); await semantique(); await photo('60b-fiche-personnel');
+    await page.mouse.wheel(0, 900); await pause(1200); await photo('60c-pages-visibles');
+    await retour();
+  });
 }
 await ctx.close();
 // vérification de la caisse (0.9.8) et du menu Dépenses (0.9.9)

@@ -975,7 +975,7 @@ class _Resultats extends StatelessWidget {
           ),
       ]);
     } else {
-      const largeurNom = 220.0, largeurCol = 104.0;
+      const largeurCol = 104.0;
       Widget c(double l, Widget w, {bool droite = true}) => SizedBox(
           width: l,
           child: Padding(
@@ -983,7 +983,11 @@ class _Resultats extends StatelessWidget {
             child: Align(alignment: droite ? Alignment.centerRight : Alignment.centerLeft, child: w),
           ));
       const entete = TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
-      tableau = Container(
+      // La colonne des noms prend la place libre : le tableau remplit son cadre.
+      tableau = LayoutBuilder(builder: (context, contraintes) {
+        final fixe = 48.0 + (matieres.length + 1) * largeurCol + 48 + 2;
+        final largeurNom = (contraintes.maxWidth - fixe).clamp(220.0, 420.0);
+        return Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
         child: SingleChildScrollView(
@@ -1032,6 +1036,7 @@ class _Resultats extends StatelessWidget {
           ]),
         ),
       );
+      });
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

@@ -481,6 +481,10 @@ class FicheScreen extends StatelessWidget {
                   modifiable: espace.fondateur && !actives.any((a) => a['fonction'] == 'fondateur'),
                   changer: _changerDroit,
                 ),
+                if (!actives.any((a) => a['fonction'] == 'fondateur')) ...[
+                  const SizedBox(height: 12),
+                  _PagesVisibles(ficheId: ficheId, modifiable: espace.fondateur, changer: _changerDroit),
+                ],
                 if (gere && actives.every((a) => a['fonction'] != 'fondateur')) ...[
                   const SizedBox(height: 24),
                   OutlinedButton.icon(
@@ -501,6 +505,48 @@ class FicheScreen extends StatelessWidget {
       },
     );
   }
+}
+
+/// Pages de l'app que la personne voit dans son menu. Le fondateur peut en
+/// masquer « pour le moment », sans toucher à ses droits ; une page qu'elle
+/// n'a pas le droit d'ouvrir reste de toute façon absente.
+class _PagesVisibles extends StatelessWidget {
+  const _PagesVisibles({required this.ficheId, required this.modifiable, required this.changer});
+
+  final String ficheId;
+  final bool modifiable;
+  final Future<void> Function(String droit, bool parDefaut, bool voulu, String? exceptionId) changer;
+
+  @override
+  Widget build(BuildContext context) => Requete(
+        "SELECT * FROM droits_personnel WHERE personnel_id = ? AND site_id IS NULL AND droit LIKE 'masquer_%'",
+        parametres: [ficheId],
+        builder: (context, l) {
+          final masquees = {for (final e in l) (e['droit'] as String).substring('masquer_'.length): e};
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Pages visibles', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(modifiable
+                ? 'Décochez une page pour la cacher de son menu, quels que soient ses droits. Vous pourrez la rendre à tout moment.'
+                : 'Pages que le fondateur lui laisse voir.'),
+            Card(
+              child: Column(children: [
+                for (final p in pagesMasquables.entries)
+                  SwitchListTile(
+                    dense: true,
+                    title: Text(p.value),
+                    subtitle: masquees[p.key]?['accorde'] == 1 ? const Text('Masquée par le fondateur') : null,
+                    value: masquees[p.key]?['accorde'] != 1,
+                    // « masquer » accordé = page cachée ; le retour à « visible » supprime l'exception.
+                    onChanged: modifiable
+                        ? (visible) => changer('masquer_${p.key}', false, !visible, masquees[p.key]?['id'] as String?)
+                        : null,
+                  ),
+              ]),
+            ),
+          ]);
+        },
+      );
 }
 
 /// Droits de la personne : ceux de ses fonctions, plus ou moins les exceptions

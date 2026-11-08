@@ -120,6 +120,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
   DateTime? _dernierSignal;
   bool _peutEncaisser = false;
   Set<String> _droits = const {};
+  Set<String> _masquees = const {};
   bool _peutInscrire = false;
 
   _Rubrique _rubrique = _Rubrique.accueil;
@@ -186,9 +187,11 @@ class _AccueilScreenState extends State<AccueilScreen> {
       for (final d in droits.keys)
         if (await jAiLeDroitQuelquePart(org['id'] as String, d)) d,
     };
+    final masquees = await pagesMasqueesPourMoi(org['id'] as String);
     if (mounted) {
       setState(() {
         _droits = mes;
+        _masquees = masquees;
         _peutEncaisser = mes.contains('encaisser');
         _peutInscrire = mes.contains('gerer_inscriptions');
       });
@@ -245,7 +248,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
 
   List<_Entree> _entrees(Espace e) => [
         for (final x in _toutes)
-          if (switch (x.rubrique) {
+          // Page masquée à cette personne par le fondateur, quels que soient ses droits.
+          if (!_masquees.contains(x.rubrique.name) && switch (x.rubrique) {
             // Un lecteur voit la caisse ou le personnel si on le lui a accordé (sans pouvoir agir).
             _Rubrique.caisse => _peutEncaisser || _droits.contains('voir_caisse'),
             // Les familles : qui voit les parents (secrétariat, caisse, direction, lecteur autorisé).

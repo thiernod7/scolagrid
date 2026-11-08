@@ -1756,84 +1756,168 @@ class RecuScreen extends StatelessWidget {
                 if (!s.hasData) return const Center(child: CircularProgressIndicator());
                 final lignes = s.data![0] as List<LigneRecu>;
                 final peutAnnuler = !annule && ((r['encaisse_par'] == monId && recent) || s.data![1] as bool);
-                return ListView(padding: const EdgeInsets.all(16), children: [
+                return ListView(padding: EdgeInsets.symmetric(horizontal: ((MediaQuery.sizeOf(context).width - 680) / 2).clamp(16.0, double.infinity), vertical: 16), children: [
                   if (annule)
                     Card(
                       color: Theme.of(context).colorScheme.errorContainer,
                       child: ListTile(
                           leading: const Icon(Icons.block), title: const Text('Reçu annulé'), subtitle: Text('${r['motif_annulation']}')),
                     ),
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.receipt_long),
-                      title: Text('${gnf(r['total_gnf'])} · ${modesPaiement[r['mode']]}'),
-                      subtitle: Text([
-                        'Reçu de ${r['payeur_nom']}, le ${_dateLisible(r['date_effective'])}',
-                        if (r['jour_caisse'] != null && r['jour_caisse'] != r['date_effective'])
-                          'Entré en caisse le ${_dateLisible(r['jour_caisse'])}',
-                        if (r['date_initiale'] != null)
-                          'Date corrigée (au départ : ${_dateLisible(r['date_initiale'])}) : ${r['motif_correction_date'] ?? ''}',
-                        if (r['date_douteuse'] == 1) "Date à vérifier : l'ordinateur n'était pas à la bonne date",
-                        if (r['feuille'] != null) 'Reçu papier : ${r['carnet'] ?? ''} n° ${r['feuille']}',
-                        if (r['reference'] != null) 'Réf. ${r['reference']}',
-                        if (r['confirmation'] == 'en_attente') "Sous réserve d'encaissement",
-                        'Imprimé ${r['impressions']} fois',
-                      ].join('\n')),
-                      isThreeLine: true,
-                    ),
-                  ),
-                  for (final x in lignes)
-                    ListTile(
-                      dense: true,
-                      title: Text('${x.eleve} · ${x.classe}'),
-                      subtitle: Text(x.frais),
-                      trailing: Text(gnf(x.montant)),
-                    ),
+                  _FicheRecu(r: r, lignes: lignes),
                   const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: () => _imprimer(context, r),
-                    icon: const Icon(Icons.print),
-                    label: Text((r['impressions'] as int? ?? 0) == 0 ? 'Imprimer le reçu' : 'Réimprimer (duplicata)'),
-                  ),
-                  const SizedBox(height: 8),
-                  // Envoyer le reçu au parent : gratuit, depuis le WhatsApp de ce poste.
-                  Wrap(spacing: 8, runSpacing: 8, children: [
-                    OutlinedButton.icon(
-                      onPressed: () => _envoyerRecuWhatsApp(context, r),
-                      icon: const Icon(Icons.chat_outlined),
-                      label: const Text('Envoyer par WhatsApp'),
+                  // Une seule action en vue : imprimer. Le reste attend derrière « Plus ».
+                  Row(children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => _imprimer(context, r),
+                        icon: const Icon(Icons.print),
+                        label: Text((r['impressions'] as int? ?? 0) == 0 ? 'Imprimer le reçu' : 'Réimprimer (duplicata)'),
+                      ),
                     ),
-                    OutlinedButton.icon(
-                      onPressed: () => _partagerRecu(encaissementId),
-                      icon: const Icon(Icons.share_outlined),
-                      label: const Text('Partager le PDF'),
+                    const SizedBox(width: 8),
+                    MenuAnchor(
+                      alignmentOffset: const Offset(0, 4),
+                      builder: (context, menu, _) => OutlinedButton.icon(
+                        onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+                        icon: const Icon(Icons.more_horiz),
+                        label: const Text('Plus'),
+                      ),
+                      menuChildren: [
+                        // Envoyer le reçu au parent : gratuit, depuis le WhatsApp de ce poste.
+                        MenuItemButton(
+                            leadingIcon: const Icon(Icons.chat_outlined),
+                            onPressed: () => _envoyerRecuWhatsApp(context, r),
+                            child: const Text('Envoyer par WhatsApp')),
+                        MenuItemButton(
+                            leadingIcon: const Icon(Icons.share_outlined),
+                            onPressed: () => _partagerRecu(encaissementId),
+                            child: const Text('Partager le PDF')),
+                        if (!annule) ...[
+                          const Divider(height: 1),
+                          MenuItemButton(
+                              leadingIcon: const Icon(Icons.currency_exchange),
+                              onPressed: () => demanderRemboursement(context, r),
+                              child: const Text('Demander un remboursement')),
+                        ],
+                        if (!annule && s.data![1] as bool)
+                          MenuItemButton(
+                              leadingIcon: const Icon(Icons.edit_calendar_outlined),
+                              onPressed: () => _corrigerDate(context, r),
+                              child: const Text('Corriger la date')),
+                        if (peutAnnuler)
+                          MenuItemButton(
+                              leadingIcon: Icon(Icons.block, color: Theme.of(context).colorScheme.error),
+                              onPressed: () => _annuler(context, r),
+                              child: Text('Annuler ce reçu', style: TextStyle(color: Theme.of(context).colorScheme.error))),
+                      ],
                     ),
                   ]),
-                  if (!annule) ...[
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                        onPressed: () => demanderRemboursement(context, r),
-                        icon: const Icon(Icons.currency_exchange),
-                        label: const Text('Demander un remboursement')),
-                  ],
-                  if (peutAnnuler) ...[
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                        onPressed: () => _annuler(context, r), icon: const Icon(Icons.block), label: const Text('Annuler ce reçu')),
-                  ],
-                  if (!annule && s.data![1] as bool) ...[
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                        onPressed: () => _corrigerDate(context, r),
-                        icon: const Icon(Icons.edit_calendar_outlined),
-                        label: const Text('Corriger la date')),
-                  ],
                 ]);
               },
             ),
           );
         },
       );
+}
+
+/// Le reçu présenté comme sur papier : le montant en grand, les informations
+/// sur des lignes « libellé — valeur », puis ce qui a été payé et le total.
+class _FicheRecu extends StatelessWidget {
+  const _FicheRecu({required this.r, required this.lignes});
+
+  final Map<String, Object?> r;
+  final List<LigneRecu> lignes;
+
+  @override
+  Widget build(BuildContext context) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final bordure = schema.outlineVariant;
+    Widget info(String libelle, String valeur, {Color? couleur}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SizedBox(width: 140, child: Text(libelle, style: TextStyle(fontSize: 13, color: gris))),
+            Expanded(child: Text(valeur, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: couleur))),
+          ]),
+        );
+    final avertissements = [
+      if (r['date_douteuse'] == 1) "Date à vérifier : l'ordinateur n'était pas à la bonne date",
+      if (r['confirmation'] == 'en_attente') "Sous réserve d'encaissement",
+    ];
+    return Container(
+      decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: bordure)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Montant reçu', style: TextStyle(fontSize: 12, color: gris)),
+            const SizedBox(height: 2),
+            Text(gnf(r['total_gnf']), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              Chip(
+                  visualDensity: VisualDensity.compact,
+                  avatar: const Icon(Icons.payments_outlined, size: 16),
+                  label: Text('${modesPaiement[r['mode']] ?? r['mode']}')),
+              Chip(
+                  visualDensity: VisualDensity.compact,
+                  avatar: const Icon(Icons.print_outlined, size: 16),
+                  label: Text((r['impressions'] as int? ?? 0) == 0 ? 'Pas encore imprimé' : 'Imprimé ${r['impressions']} fois')),
+            ]),
+          ]),
+        ),
+        for (final a in avertissements)
+          Container(
+            margin: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: schema.errorContainer, borderRadius: BorderRadius.circular(8)),
+            child: Text(a, style: TextStyle(fontSize: 13, color: schema.onErrorContainer)),
+          ),
+        Divider(height: 1, color: bordure),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          child: Column(children: [
+            info('Payé par', '${r['payeur_nom']}'),
+            info('Date du paiement', _dateLisible(r['date_effective'])),
+            if (r['jour_caisse'] != null && r['jour_caisse'] != r['date_effective']) info('Entré en caisse le', _dateLisible(r['jour_caisse'])),
+            if (r['date_initiale'] != null)
+              info('Date corrigée', 'au départ ${_dateLisible(r['date_initiale'])} · ${r['motif_correction_date'] ?? ''}'),
+            if (r['reference'] != null) info('Référence', '${r['reference']}'),
+            if (r['feuille'] != null) info('Reçu papier', '${r['carnet'] ?? ''} n° ${r['feuille']}'),
+          ]),
+        ),
+        Divider(height: 1, color: bordure),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+          child: Text('DÉTAIL', style: TextStyle(fontSize: 11, letterSpacing: 0.8, fontWeight: FontWeight.w600, color: gris)),
+        ),
+        for (final x in lignes)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(x.frais, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                  Text('${x.eleve} · ${x.classe}', style: TextStyle(fontSize: 12, color: gris)),
+                ]),
+              ),
+              Text(gnf(x.montant), style: const TextStyle(fontSize: 14)),
+            ]),
+          ),
+        Container(
+          margin: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          decoration: BoxDecoration(
+              color: schema.surfaceContainerHighest.withValues(alpha: 0.5),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12))),
+          child: Row(children: [
+            const Expanded(child: Text('Total', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600))),
+            Text(gnf(r['total_gnf']), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      ]),
+    );
+  }
 }
 
 // Journal de caisse -----------------------------------------------------------------

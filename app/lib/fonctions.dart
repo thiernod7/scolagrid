@@ -62,6 +62,19 @@ const droits = {
   'voir_personnel': 'Voir la liste du personnel',
 };
 
+/// Pages que le fondateur peut masquer à une personne, quels que soient ses
+/// droits (« pour le moment, pas les Dépenses »). Exception « masquer_<page> »
+/// sur sa fiche ; la clé est le nom de la rubrique du menu.
+const pagesMasquables = {
+  'eleves': 'Élèves',
+  'familles': 'Familles',
+  'notes': 'Notes',
+  'caisse': 'Caisse',
+  'depenses': 'Dépenses',
+  'recouvrement': 'Recouvrement',
+  'personnel': 'Personnel',
+};
+
 /// Droits par défaut de chaque fonction (le fondateur a tous les droits).
 /// L'accès aux salaires n'est jamais automatique.
 const droitsParDefaut = <String, Set<String>>{
