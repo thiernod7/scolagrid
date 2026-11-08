@@ -270,7 +270,7 @@ if (etape === 'connexion') {
     await page.mouse.click(420, 92); await pause(1500); await semantique();
     await page.mouse.click(420, 251); await pause(3000); await semantique();
     await photo('63b-notes-evaluations');
-    await page.mouse.click(800, 262); await pause(3500); await semantique(); await photo('66-notes-saisie');
+    await page.mouse.click(700, 300); await pause(3500); await semantique(); await photo('66-notes-saisie');
     await retour();
     const resultats = page.getByRole('button', { name: 'Résultats' });
     if (await resultats.count()) { await resultats.first().click(); await pause(3000); await photo('65-notes-resultats'); }
