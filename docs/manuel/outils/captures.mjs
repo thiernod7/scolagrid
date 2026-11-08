@@ -270,7 +270,7 @@ if (etape === 'connexion') {
     await page.mouse.click(420, 92); await pause(1500); await semantique();
     await photo('63a-notes-menu-classe');
     const ce2a = page.getByText(/^CE2 A\b/);
-    if (await ce2a.count()) { await ce2a.last().click(); } else { await page.mouse.click(420, 251); }
+    if (await ce2a.count()) { await ce2a.last().click(); } else { await page.mouse.click(420, 203); }
     await pause(3000); await semantique();
     await photo('63b-notes-evaluations');
     await page.mouse.click(700, 310); await pause(3500); await semantique(); await photo('66-notes-saisie');
