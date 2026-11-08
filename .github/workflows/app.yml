@@ -79,6 +79,8 @@ jobs:
           sed -i 's/L"scolagrid"/L"ScolaGrid"/' windows/runner/main.cpp
           sed -i 's/"scolagrid"/"ScolaGrid"/g' windows/runner/Runner.rc
       - run: flutter pub get
+      - name: Bibliothèques SQLite (téléchargées avec nouvelles tentatives)
+        run: bash plateformes/sqlite3_binaires.sh sqlite3.x64.windows.dll && flutter pub get
       - run: flutter analyze --no-fatal-infos
       - run: flutter test
       - name: Vérifier que l'app connaît son serveur
@@ -124,6 +126,8 @@ jobs:
           sed -i 's/android:label="scolagrid"/android:label="ScolaGrid"/' android/app/src/main/AndroidManifest.xml
           grep -q 'android:label="ScolaGrid"' android/app/src/main/AndroidManifest.xml
       - run: flutter pub get
+      - name: Bibliothèques SQLite (téléchargées avec nouvelles tentatives)
+        run: bash plateformes/sqlite3_binaires.sh libsqlite3.arm.android.so libsqlite3.arm64.android.so libsqlite3.x64.android.so libsqlite3.ia32.android.so libsqlite3.x64.linux.so && flutter pub get
       - name: Vérifier que l'app connaît son serveur
         run: '[ -n "$DART_DEFINES$DART_DEFINES_ESSAI" ] || { echo "Aucune adresse de serveur : compilation arrêtée"; exit 1; }'
       # Signature avec la clé fixe de Scolagrid, faite par Gradle pendant la
@@ -201,6 +205,8 @@ jobs:
           cache: true
       - run: flutter create --platforms=web --org com.scolagrid --project-name scolagrid . && rm -f test/widget_test.dart
       - run: flutter pub get
+      - name: Bibliothèques SQLite (téléchargées avec nouvelles tentatives)
+        run: bash plateformes/sqlite3_binaires.sh libsqlite3.x64.linux.so && flutter pub get
       - name: Fichiers web de PowerSync (SQLite dans le navigateur)
         run: dart run powersync:setup_web
       - name: Titre et langue de la page
