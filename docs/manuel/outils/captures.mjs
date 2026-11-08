@@ -266,6 +266,12 @@ if (etape === 'connexion') {
     await aller('Notes', 'Notes'); await pause(3000); await photo('63-notes');
     const creer = page.getByRole('button', { name: /Créer les périodes/ });
     if (await creer.count()) { await creer.first().click(); await pause(4000); await semantique(); await photo('64-notes-periodes'); }
+    // La CE2 A a des notes de démonstration.
+    await page.mouse.click(420, 92); await pause(1500); await semantique();
+    await page.getByText('CE2 A', { exact: false }).last().click(); await pause(3000); await semantique();
+    await photo('63b-notes-evaluations');
+    await page.mouse.click(800, 262); await pause(3500); await semantique(); await photo('66-notes-saisie');
+    await retour();
     const resultats = page.getByRole('button', { name: 'Résultats' });
     if (await resultats.count()) { await resultats.first().click(); await pause(3000); await photo('65-notes-resultats'); }
   });
