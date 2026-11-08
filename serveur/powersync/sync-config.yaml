@@ -145,6 +145,20 @@ streams:
       - SELECT * FROM images_ecole WHERE organisation_id IN orgs_caisse AND sorte = 'signature'
       - SELECT * FROM images_ecole WHERE organisation_id IN orgs_caisse AND sorte = 'cachet'
 
+  # Notes et bulletins : qui saisit les notes, planifie les évaluations, consulte le
+  # tableau de bord ou gère les inscriptions (impression des bulletins).
+  notes:
+    auto_subscribe: true
+    priority: 3
+    with:
+      orgs_notes: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_notes = true
+    queries:
+      - SELECT * FROM periodes_evaluation WHERE organisation_id IN orgs_notes
+      - SELECT * FROM types_evaluation WHERE organisation_id IN orgs_notes
+      - SELECT * FROM evaluations WHERE organisation_id IN orgs_notes
+      - SELECT * FROM notes WHERE organisation_id IN orgs_notes
+      - SELECT * FROM appreciations WHERE organisation_id IN orgs_notes
+
   # Table de test « Bonjour » (première version de l'app).
   hellos:
     auto_subscribe: true

@@ -25,6 +25,7 @@ import 'import_eleves.dart';
 import 'matricule.dart';
 import 'modele_excel.dart';
 import 'modele_guineen.dart';
+import 'notes_calcul.dart';
 import 'recu_pdf.dart';
 import 'theme.dart';
 
@@ -40,6 +41,7 @@ part 'identite.dart';
 part 'import_ecran.dart';
 part 'inscription.dart';
 part 'mise_en_route.dart';
+part 'notes.dart';
 part 'personnel.dart';
 part 'photo.dart';
 part 'poste.dart';
