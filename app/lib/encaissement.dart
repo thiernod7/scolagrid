@@ -1756,7 +1756,8 @@ class RecuScreen extends StatelessWidget {
                 if (!s.hasData) return const Center(child: CircularProgressIndicator());
                 final lignes = s.data![0] as List<LigneRecu>;
                 final peutAnnuler = !annule && ((r['encaisse_par'] == monId && recent) || s.data![1] as bool);
-                return ListView(padding: EdgeInsets.symmetric(horizontal: ((MediaQuery.sizeOf(context).width - 680) / 2).clamp(16.0, double.infinity), vertical: 16), children: [
+                // Largeur limitée à 680 dans la place réellement disponible (à côté du menu).
+                return LayoutBuilder(builder: (context, place) => ListView(padding: EdgeInsets.symmetric(horizontal: ((place.maxWidth - 680) / 2).clamp(16.0, double.infinity), vertical: 16), children: [
                   if (annule)
                     Card(
                       color: Theme.of(context).colorScheme.errorContainer,
@@ -1812,7 +1813,7 @@ class RecuScreen extends StatelessWidget {
                       ],
                     ),
                   ]),
-                ]);
+                ]));
               },
             ),
           );
