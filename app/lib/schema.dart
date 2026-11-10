@@ -429,6 +429,8 @@ const schema = Schema([
     Column.text('eleve_id'),
     Column.text('frais_id'),
     Column.integer('montant_gnf'),
+    // Répartition par tranche, figée à l'encaissement (JSON) : migration 040.
+    Column.text('imputation'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [

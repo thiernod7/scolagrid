@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show jsonDecode;
 
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:powersync/powersync.dart';
@@ -204,8 +205,17 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     'reductions_eleves': ['actif'],
   };
 
+  // Colonnes JSON : texte en local, objet JSON pour le serveur.
+  static const _json = {
+    'lignes_encaissement': ['imputation'],
+  };
+
   static Map<String, dynamic> _pourServeur(String table, Map<String, dynamic> donnees) {
     final copie = {...donnees};
+    for (final c in _json[table] ?? const <String>[]) {
+      final v = copie[c];
+      if (v is String && v.isNotEmpty) copie[c] = jsonDecode(v);
+    }
     for (final c in _booleens[table] ?? const <String>[]) {
       final v = copie[c];
       if (v is num) copie[c] = v != 0;

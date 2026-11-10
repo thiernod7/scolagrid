@@ -140,6 +140,41 @@ Map<String, int> repartir(int montant, List<FraisDu> frais) {
   return r;
 }
 
+/// La part d'un versement sur chaque tranche, figée sur la ligne du reçu :
+/// il remplit la tranche en cours, puis la suivante. [dejaImpute] : ce qu'un
+/// autre reçu du même encaissement vient de verser sur ce frais (deux modes).
+/// Null pour un frais sans tranches (inscription, autres frais).
+List<Map<String, Object>>? imputationTranches(FraisDu f, int montant, {int dejaImpute = 0}) {
+  if (f.type != 'scolarite' || f.echeances.isEmpty || montant <= 0) return null;
+  final r = <Map<String, Object>>[];
+  var aSauter = dejaImpute;
+  var reste = montant;
+  for (final e in f.echeances) {
+    var libre = e.reste;
+    if (aSauter > 0) {
+      final s = aSauter < libre ? aSauter : libre;
+      libre -= s;
+      aSauter -= s;
+    }
+    if (libre <= 0 || reste <= 0) continue;
+    final part = reste < libre ? reste : libre;
+    r.add({'tranche': e.libelle, 'echeance': _iso(e.dateLimite), 'montant': part});
+    reste -= part;
+  }
+  // Au-delà de ce qui est dû (ne devrait pas arriver) : sur la dernière tranche.
+  if (reste > 0) {
+    if (r.isEmpty) {
+      final d = f.echeances.last;
+      r.add({'tranche': d.libelle, 'echeance': _iso(d.dateLimite), 'montant': reste});
+    } else {
+      r.last['montant'] = (r.last['montant'] as int) + reste;
+    }
+  }
+  return r;
+}
+
+String _iso(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
 /// Numéro de reçu suivant pour ce poste : REC-ALPHA-DONKA-2026-B0042.
 String numeroRecuSuivant(
     {required String sigle, required String codeSite, required String annee, required String lettre, required Iterable<String> existants}) {

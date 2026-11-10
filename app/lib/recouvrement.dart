@@ -447,7 +447,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
     final tranche = m.colonnesRecouvrement[colonne]?.$1 == 1;
     final type = tranche ? "f.type_frais = 'scolarite'" : (colonne == 'Autres frais' ? "f.type_frais = 'optionnel'" : "f.type_frais NOT IN ('scolarite', 'optionnel')");
     final versements = await db.getAll('''
-        SELECT e.id, e.numero, e.date_effective, e.mode, e.reference, e.payeur_nom, e.total_gnf, l.montant_gnf
+        SELECT e.id, e.numero, e.date_effective, e.mode, e.reference, e.payeur_nom, e.total_gnf, l.montant_gnf, l.imputation
         FROM lignes_encaissement l
         JOIN encaissements e ON e.id = l.encaissement_id AND e.statut = 'valide' AND e.confirmation <> 'rejete'
         JOIN frais f ON f.id = l.frais_id
@@ -468,7 +468,9 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
         final montant = v['montant_gnf'] as int? ?? 0;
         final debut = cumul;
         cumul += montant;
-        final part = (cumul < fin ? cumul : fin) - (debut > avant ? debut : avant);
+        // La répartition enregistrée avec le reçu fait foi ; sinon, le calcul dans l'ordre.
+        final enregistree = _partEnregistree(v['imputation'], colonne);
+        final part = enregistree ?? (cumul < fin ? cumul : fin) - (debut > avant ? debut : avant);
         if (part > 0) parts.add((v, part));
       }
     } else {
@@ -547,6 +549,17 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
         ),
       ),
     );
+  }
+
+  /// La part d'une tranche dans la répartition enregistrée (null : pas de répartition).
+  static int? _partEnregistree(Object? imputation, String tranche) {
+    if (imputation == null || '$imputation'.isEmpty) return null;
+    try {
+      final l = (jsonDecode('$imputation') as List).cast<Map<String, dynamic>>();
+      return l.where((x) => x['tranche'] == tranche).fold<int>(0, (s, x) => s + ((x['montant'] as num?)?.toInt() ?? 0));
+    } catch (_) {
+      return null;
+    }
   }
 
   Widget _chiffre(BuildContext context, String libelle, String valeur, {bool alerte = false}) =>

@@ -211,6 +211,29 @@ void main() {
     expect(g.echeances.map((e) => e.montant), [200000, 300000]);
   });
 
+  test('répartition d\'un versement par tranche, figée sur le reçu', () {
+    final t = [
+      (libelle: '1re tranche', montant: 300000, dateLimite: DateTime(2026, 10, 15)),
+      (libelle: '2e tranche', montant: 300000, dateLimite: DateTime(2027, 1, 15)),
+      (libelle: '3e tranche', montant: 300000, dateLimite: DateTime(2027, 4, 15)),
+    ];
+    // Déjà 250 000 versés : 100 000 de plus finissent la 1re tranche et entament la 2e.
+    final f = situationFrais(
+        id: 'sco', libelle: 'Scolarité', type: 'scolarite', total: 900000, echeances: t, arrivee: DateTime(2026, 10, 1), dejaPaye: 250000);
+    expect(imputationTranches(f, 100000), [
+      {'tranche': '1re tranche', 'echeance': '2026-10-15', 'montant': 50000},
+      {'tranche': '2e tranche', 'echeance': '2027-01-15', 'montant': 50000},
+    ]);
+    // Un second reçu du même encaissement (autre mode) continue après le premier.
+    expect(imputationTranches(f, 200000, dejaImpute: 100000), [
+      {'tranche': '2e tranche', 'echeance': '2027-01-15', 'montant': 200000},
+    ]);
+    // Pas de tranches pour l'inscription.
+    final ins = situationFrais(
+        id: 'ins', libelle: 'Inscription', type: 'inscription', total: 150000, echeances: const [], arrivee: DateTime(2026, 10, 5), dejaPaye: 0);
+    expect(imputationTranches(ins, 150000), isNull);
+  });
+
   test('calendrier de l\'école et frais le plus précis', () {
     final cal = calendrierPropose(periodicite: 'tranches', rentree: DateTime(2026, 10, 1), nbMois: 9);
     expect(cal.map((t) => t.libelle), ['Tranche 1', 'Tranche 2', 'Tranche 3']);

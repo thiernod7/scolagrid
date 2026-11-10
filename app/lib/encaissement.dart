@@ -710,6 +710,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
     final ids = <String>[];
     try {
       final maintenant = _maintenant();
+      final dejaImpute = <String, int>{};
       await db.writeTransaction((tx) async {
         for (final b in recus) {
           final total = b.lignes.fold<int>(0, (s, l) => s + l.total);
@@ -751,10 +752,15 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
             for (final f in l.frais) {
               final m = l.montant(f.id);
               if (m <= 0) continue;
+              // La part sur chaque tranche, figée avec le reçu (ce que le caissier annonce).
+              final cle = '${l.inscription['id']}|${f.id}';
+              final imputation = imputationTranches(f, m, dejaImpute: dejaImpute[cle] ?? 0);
+              dejaImpute[cle] = (dejaImpute[cle] ?? 0) + m;
               await tx.execute(
                   '''INSERT INTO lignes_encaissement (id, organisation_id, encaissement_id, inscription_id, eleve_id, frais_id,
-                       montant_gnf, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?)''',
-                  [o, id, l.inscription['id'], l.eleve['id'], f.id, m, maintenant, maintenant]);
+                       montant_gnf, imputation, created_at, updated_at) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  [o, id, l.inscription['id'], l.eleve['id'], f.id, m, imputation == null ? null : jsonEncode(imputation),
+                   maintenant, maintenant]);
             }
           }
         }
@@ -1531,9 +1537,21 @@ class _ApercuRecu extends StatelessWidget {
 
 // Reçu --------------------------------------------------------------------------
 
+/// « 1re tranche 300 000 · 2e tranche 50 000 », d'après la répartition enregistrée.
+String? tranchesLisibles(Object? imputation) {
+  if (imputation == null || '$imputation'.isEmpty) return null;
+  try {
+    final l = (jsonDecode('$imputation') as List).cast<Map<String, dynamic>>();
+    return l.map((x) => '${x['tranche']} ${gnf(x['montant']).replaceAll(' GNF', '')}').join(' · ');
+  } catch (_) {
+    return null;
+  }
+}
+
+
 Future<List<LigneRecu>> _lignesRecu(String encaissementId) async => [
       for (final l in await db.getAll(
-          '''SELECT l.montant_gnf, f.libelle AS frais, e.nom, e.prenoms, e.matricule, c.nom AS classe
+          '''SELECT l.montant_gnf, l.imputation, f.libelle AS frais, e.nom, e.prenoms, e.matricule, c.nom AS classe
              FROM lignes_encaissement l JOIN eleves e ON e.id = l.eleve_id JOIN frais f ON f.id = l.frais_id
              JOIN inscriptions i ON i.id = l.inscription_id JOIN classes c ON c.id = i.classe_id
              WHERE l.encaissement_id = ? ORDER BY e.nom, e.prenoms''',
@@ -1542,7 +1560,8 @@ Future<List<LigneRecu>> _lignesRecu(String encaissementId) async => [
           eleve: '${l['nom']} ${l['prenoms']}',
           matricule: '${l['matricule']}',
           classe: '${l['classe']}',
-          frais: '${l['frais']}',
+          // « Scolarité (1re tranche 300 000 · 2e tranche 50 000) » : ce qui a été annoncé au guichet.
+          frais: tranchesLisibles(l['imputation']) == null ? '${l['frais']}' : '${l['frais']} (${tranchesLisibles(l['imputation'])})',
           montant: l['montant_gnf'] as int,
         ),
     ];
