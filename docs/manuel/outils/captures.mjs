@@ -293,8 +293,7 @@ if (etape === 'connexion') {
     const menuNotes = page.getByRole('button', { name: /Périodes, types, clôture/ });
     if (await menuNotes.count()) await menuNotes.first().click(); else await page.mouse.click(874, 92);
     await pause(1500); await semantique(); await photo('67a-notes-menu');
-    const reglages = page.getByText(/Périodes, sessions/);
-    if (await reglages.count()) await reglages.first().click(); else await page.mouse.click(1000, 130);
+    await page.mouse.click(750, 104);
     await pause(3000); await semantique(); await photo('67-notes-reglages');
     await page.mouse.wheel(0, 1500); await pause(1500); await photo('67b-notes-regles-mentions');
     await retour();
