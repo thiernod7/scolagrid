@@ -123,16 +123,28 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
     final largeurCol = toutesClasses ? 108.0 : 124.0;
     const largeurClasse = 96.0;
 
-    // Une case : ce qui reste à payer ; « payé » si soldé ; en rouge si en retard.
+    // Une case : ce que l'élève a VERSÉ sur cette tranche (comme l'état papier).
+    // Soldée : écrit normalement ; échéance passée et pas soldée : en rouge ;
+    // pas encore due : en gris. Le détail (attendu, reste) au survol.
     Widget casePour(_CaseRecouvrement? c) {
       if (c == null || c.du <= 0) return Text('—', style: TextStyle(color: gris));
       final reste = c.du - c.paye;
-      if (reste <= 0) return const Text('payé', style: TextStyle(fontSize: 13, color: Couleurs.regle));
       return Tooltip(
-        message: 'Dû ${gnf(c.du)} · payé ${gnf(c.paye)}',
-        child: Text(_sansUnite(reste),
-            style: _chiffresDep.copyWith(fontSize: 13, color: c.retard ? Couleurs.retard : null, fontWeight: c.retard ? FontWeight.w600 : null)),
+        message: reste <= 0
+            ? 'Soldé : ${gnf(c.paye)} versés'
+            : '${c.paye == 0 ? 'Aucun versement' : 'Versé ${gnf(c.paye)}'} sur ${gnf(c.du)} attendus · reste ${gnf(reste)}',
+        child: Text(_sansUnite(c.paye),
+            style: _chiffresDep.copyWith(
+                fontSize: 13,
+                color: reste <= 0 ? schema.onSurface : (c.retard ? Couleurs.retard : gris),
+                fontWeight: reste > 0 && c.retard ? FontWeight.w600 : null)),
       );
+    }
+
+    // L'échéance sous le nom de la colonne (« 15/10 »), quand c'est une tranche datée.
+    String? echeance(String k) {
+      final d = m.colonnesRecouvrement[k]?.$2;
+      return d == null ? null : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
     }
 
     void ouvrirEleve(_LigneRecouvrement l) =>
@@ -179,8 +191,14 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
             ligneTableau([
               c(largeurNom, const Text('Élève', style: entete), droite: false),
               if (toutesClasses) c(largeurClasse, const Text('Classe', style: entete), droite: false),
-              for (final k in colonnes) c(largeurCol, Text(k, style: entete, overflow: TextOverflow.ellipsis)),
-              c(largeurCol, const Text('Dû', style: entete)),
+              for (final k in colonnes)
+                c(
+                    largeurCol,
+                    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text(k, style: entete, overflow: TextOverflow.ellipsis),
+                      if (echeance(k) != null) Text(echeance(k)!, style: TextStyle(fontSize: 11, color: gris)),
+                    ])),
+              c(largeurCol, const Text('Total dû', style: entete)),
               c(largeurCol, const Text('Réglé', style: entete)),
               c(largeurCol, const Text('Reste', style: entete)),
             ], entetes: true),
@@ -220,10 +238,16 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
               ligneTableau([
                 c(largeurNom, Text(lignes.length > visibles.length ? 'Total (${lignes.length} élèves)' : 'Total', style: entete), droite: false),
                 if (toutesClasses) c(largeurClasse, const SizedBox()),
+                // Par tranche : l'encaissé, et sa part de l'attendu.
                 for (final k in colonnes)
-                  c(largeurCol,
-                      Text(total[k] == null ? '—' : _sansUnite(total[k]!.du - total[k]!.paye),
-                          style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
+                  c(
+                      largeurCol,
+                      total[k] == null
+                          ? Text('—', style: TextStyle(color: gris))
+                          : Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                              Text(_sansUnite(total[k]!.paye), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600)),
+                              Text(_taux(total[k]!.paye, total[k]!.du), style: TextStyle(fontSize: 11, color: gris)),
+                            ])),
                 c(largeurCol, Text(_sansUnite(duF), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
                 c(largeurCol, Text(_sansUnite(payeF), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
                 c(largeurCol, Text(_sansUnite(duF - payeF), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w700))),
@@ -352,10 +376,11 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
           const SizedBox(height: 16),
           // Les grands chiffres, pour la classe choisie (ou toute l'école).
           Wrap(spacing: 32, runSpacing: 12, children: [
+            _chiffre(context, 'Attendu', gnf(du)),
+            _chiffre(context, 'Encaissé', gnf(paye)),
+            _chiffre(context, 'Reste à percevoir', gnf(du - paye)),
             _chiffre(context, 'Recouvrement', _taux(paye, du)),
-            _chiffre(context, 'Dû', gnf(du)),
-            _chiffre(context, 'Réglé', gnf(paye)),
-            _chiffre(context, 'Reste', gnf(du - paye)),
+            _chiffre(context, 'Soldés', '$soldes / ${toutes.length}'),
             _chiffre(context, 'En retard', '$enRetard élève(s)', alerte: enRetard > 0),
           ]),
           const SizedBox(height: 16),
@@ -376,8 +401,8 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
             champRecherche,
           ]),
           const SizedBox(height: 12),
-          Text('Chaque case : ce qui reste à payer. En rouge : en retard (date limite et délai de grâce passés). '
-              'Touchez un élève pour ouvrir sa fiche.',
+          Text('Chaque case : ce que l\'élève a versé sur la tranche. En rouge : échéance passée, tranche pas soldée. '
+              'Survolez un montant pour voir l\'attendu et le reste ; touchez un élève pour ouvrir sa fiche.',
               style: TextStyle(fontSize: 13, color: gris)),
           const SizedBox(height: 12),
           if (telephone) cartes() else tableau,
@@ -414,7 +439,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
           (
             nom: toutes ? '${l.nom} (${l.classe})' : l.nom,
             matricule: l.matricule,
-            cases: [for (final k in colonnes) l.cases[k] == null ? null : l.cases[k]!.du - l.cases[k]!.paye],
+            cases: [for (final k in colonnes) l.cases[k] == null || l.cases[k]!.du <= 0 ? null : l.cases[k]!.paye],
             du: l.du,
             paye: l.paye,
           ),
@@ -432,13 +457,13 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
     xl.TextCellValue t(Object? v) => xl.TextCellValue(v == null ? '' : '$v');
     feuille.appendRow([
       t('Élève'), t('Matricule'), t('Classe'),
-      for (final k in colonnes) t('$k (reste)'),
+      for (final k in colonnes) t('$k (versé)'),
       t('Dû (GNF)'), t('Réglé (GNF)'), t('Reste (GNF)'),
     ]);
     for (final l in lignes) {
       feuille.appendRow([
         t(l.nom), t(l.matricule), t(l.classe),
-        for (final k in colonnes) l.cases[k] == null ? t('') : xl.IntCellValue(l.cases[k]!.du - l.cases[k]!.paye),
+        for (final k in colonnes) l.cases[k] == null ? t('') : xl.IntCellValue(l.cases[k]!.paye),
         xl.IntCellValue(l.du), xl.IntCellValue(l.paye), xl.IntCellValue(l.reste),
       ]);
     }

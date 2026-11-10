@@ -618,7 +618,7 @@ Future<Uint8List> etatRecouvrementPdf({
     ]),
     footer: (c) => pw.Align(
       alignment: pw.Alignment.centerRight,
-      child: pw.Text('Page ${c.pageNumber} / ${c.pagesCount} · Chaque colonne : reste à payer (GNF)',
+      child: pw.Text('Page ${c.pageNumber} / ${c.pagesCount} · Chaque colonne : montant versé (GNF)',
           style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700)),
     ),
     build: (_) => [
@@ -631,7 +631,7 @@ Future<Uint8List> etatRecouvrementPdf({
             children: [
               cel('Élève', droite: false, style: gras),
               for (final k in colonnes) cel(k, style: gras),
-              cel('Dû', style: gras),
+              cel('Total dû', style: gras),
               cel('Réglé', style: gras),
               cel('Reste', style: gras),
             ],
@@ -639,7 +639,7 @@ Future<Uint8List> etatRecouvrementPdf({
           for (final l in lignes)
             pw.TableRow(children: [
               cel('${l.nom}  ${l.matricule}', droite: false),
-              for (final x in l.cases) cel(x == null ? '—' : (x <= 0 ? 'payé' : n(x))),
+              for (final x in l.cases) cel(x == null ? '—' : n(x)),
               cel(n(l.du)),
               cel(n(l.paye)),
               cel(l.du - l.paye <= 0 ? 'soldé' : n(l.du - l.paye), style: gras),
