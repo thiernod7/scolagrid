@@ -145,8 +145,8 @@ if (etape === 'connexion') {
   });
   await etapeSure('m-recouvrement', async () => {
     await plus('Recouvrement'); await pause(3000); await photo('m17-recouvrement');
-    await page.mouse.click(200, 300); await pause(5000); await semantique();
-    await photo('m18-recouvrement-classe');
+    await page.mouse.wheel(0, 500); await pause(1500); await semantique();
+    await photo('m18-recouvrement-eleves');
   });
   await etapeSure('m-personnel', async () => { await plus('Personnel'); await photo('m13-personnel'); });
   await etapeSure('m-postes', async () => { await plus('Postes'); await photo('m14-postes'); });
@@ -288,13 +288,13 @@ if (etape === 'connexion') {
     await pause(3000); await photo('65-notes-resultats');
   });
   await etapeSure('recouvrement', async () => {
-    await aller('Recouvrement', 'Choisissez une classe'); await pause(4000); await photo('61-recouvrement');
-    // La CE2 A (3e ligne), sous les grands chiffres de l'année.
-    const ce2a = page.getByText(/^CE2 A$/);
-    if (await ce2a.count()) await ce2a.first().click(); else await page.mouse.click(700, 400);
-    await pause(5000); await semantique();
+    await aller('Recouvrement', 'Recouvrement'); await pause(4000); await photo('61-recouvrement');
+    // Le filtre de classe (premier menu sous les grands chiffres), puis la CE2 A.
+    await page.mouse.click(350, 199); await pause(1500); await semantique(); await photo('61b-recouvrement-menu-classe');
+    const ce2a = page.getByText(/^CE2 A/);
+    if (await ce2a.count()) await ce2a.last().click(); else await page.mouse.click(350, 199 + 48 * 3);
+    await pause(3000); await semantique();
     await photo('62-recouvrement-classe');
-    await retour();
   });
   await etapeSure('menu-depenses', async () => { await aller('Dépenses', 'Nouvelle dépense'); await photo('58-depenses'); });
   for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });

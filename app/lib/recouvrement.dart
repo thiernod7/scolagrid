@@ -52,227 +52,23 @@ class _AvecRecouvrement extends StatelessWidget {
       );
 }
 
-class RecouvrementScreen extends StatelessWidget {
+/// Recouvrement : une seule page. Les élèves directement, avec chaque tranche ;
+/// un filtre de classe (toutes par défaut), En retard / Soldés, une recherche.
+/// Les grands chiffres en haut suivent le filtre.
+class RecouvrementScreen extends StatefulWidget {
   const RecouvrementScreen({super.key, required this.espace});
 
   final Espace espace;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: _AvecRecouvrement(orgId: espace.orgId, builder: (context, m) => _classes(context, m)),
-      );
-
-  Widget _classes(BuildContext context, _Mesures m) {
-    final schema = Theme.of(context).colorScheme;
-    final gris = schema.onSurfaceVariant;
-    final bordure = Theme.of(context).dividerColor;
-    final largeur = MediaQuery.sizeOf(context).width;
-    final telephone = largeur < 640;
-    // Une ligne par classe, dans l'ordre des niveaux.
-    final parClasse = <String, List<_LigneRecouvrement>>{};
-    for (final l in m.recouvrement) {
-      parClasse.putIfAbsent(l.classeId, () => []).add(l);
-    }
-    final classes = parClasse.values.toList()
-      ..sort((a, b) {
-        final v = a.first.ordre.compareTo(b.first.ordre);
-        return v != 0 ? v : a.first.classe.compareTo(b.first.classe);
-      });
-    int somme(Iterable<_LigneRecouvrement> l, int Function(_LigneRecouvrement) f) => l.fold(0, (s, x) => s + f(x));
-    final du = somme(m.recouvrement, (x) => x.du);
-    final paye = somme(m.recouvrement, (x) => x.paye);
-    const entete = TextStyle(fontSize: 14, fontWeight: FontWeight.w500);
-
-    Widget cellule(double? l, Widget w, {int flex = 1, bool droite = false}) {
-      final c = Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Align(alignment: droite ? Alignment.centerRight : Alignment.centerLeft, child: w),
-      );
-      return l == null ? Expanded(flex: flex, child: c) : SizedBox(width: l, child: c);
-    }
-
-    Widget barre(int p, int d) => ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: LinearProgressIndicator(
-            value: d <= 0 ? 0 : (p / d).clamp(0, 1).toDouble(),
-            minHeight: 4,
-            backgroundColor: Couleurs.doux(context),
-            color: d > 0 && p * 100 / d < 70 ? Couleurs.attente : Couleurs.regle,
-          ),
-        );
-
-    void ouvrir(List<_LigneRecouvrement> l) => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => _RecouvrementClasseScreen(espace: espace, classeId: l.first.classeId, classe: l.first.classe)));
-
-    final tableau = Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (!telephone)
-          Container(
-            height: 44,
-            padding: const EdgeInsets.only(left: 8),
-            decoration: BoxDecoration(color: schema.surface, border: Border(bottom: BorderSide(color: bordure))),
-            child: Row(children: [
-              cellule(null, const Text('Classe', style: entete), flex: 2),
-              cellule(80, const Text('Élèves', style: entete), droite: true),
-              cellule(150, const Text('Dû', style: entete), droite: true),
-              cellule(150, const Text('Réglé', style: entete), droite: true),
-              cellule(150, const Text('Reste', style: entete), droite: true),
-              cellule(140, const Text('Recouvrement', style: entete)),
-              cellule(110, const Text('En retard', style: entete), droite: true),
-              const SizedBox(width: 48),
-            ]),
-          ),
-        if (classes.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(32),
-            child: Text('Aucun élève inscrit cette année.', textAlign: TextAlign.center, style: TextStyle(color: gris)),
-          ),
-        for (final l in classes)
-          Builder(builder: (context) {
-            final d = somme(l, (x) => x.du), p = somme(l, (x) => x.paye);
-            final retard = l.where((x) => x.retard > 0).length;
-            return InkWell(
-              onTap: () => ouvrir(l),
-              hoverColor: Couleurs.doux(context).withValues(alpha: .5),
-              child: Container(
-                padding: telephone ? const EdgeInsets.symmetric(vertical: 12, horizontal: 14) : const EdgeInsets.fromLTRB(8, 18, 0, 18),
-                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
-                child: telephone
-                    ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        Row(children: [
-                          Expanded(child: Text(l.first.classe, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
-                          Text(_taux(p, d), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                          Icon(Icons.chevron_right, size: 18, color: gris),
-                        ]),
-                        const SizedBox(height: 6),
-                        barre(p, d),
-                        const SizedBox(height: 6),
-                        Text('${l.length} élève(s) · reste ${gnf(d - p)}${retard > 0 ? ' · $retard en retard' : ''}',
-                            style: TextStyle(fontSize: 12, color: retard > 0 ? Couleurs.retard : gris)),
-                      ])
-                    : Row(children: [
-                        cellule(null, Text(l.first.classe, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)), flex: 2),
-                        cellule(80, Text('${l.length}', style: const TextStyle(fontSize: 14)), droite: true),
-                        cellule(150, Text(gnf(d), style: _chiffresDep.copyWith(fontSize: 14)), droite: true),
-                        cellule(150, Text(gnf(p), style: _chiffresDep.copyWith(fontSize: 14)), droite: true),
-                        cellule(150, Text(gnf(d - p), style: _chiffresDep.copyWith(fontSize: 14, fontWeight: FontWeight.w500)), droite: true),
-                        cellule(
-                          140,
-                          Row(children: [
-                            SizedBox(width: 44, child: Text(_taux(p, d), style: const TextStyle(fontSize: 14))),
-                            Expanded(child: barre(p, d)),
-                          ]),
-                        ),
-                        cellule(
-                            110,
-                            Text(retard == 0 ? '—' : '$retard élève(s)',
-                                style: TextStyle(fontSize: 14, color: retard > 0 ? Couleurs.retard : gris)),
-                            droite: true),
-                        SizedBox(width: 48, child: Icon(Icons.chevron_right, size: 18, color: gris)),
-                      ]),
-              ),
-            );
-          }),
-      ]),
-    );
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1600),
-        child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 12, children: [
-                  const Text('Recouvrement', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text('${m.annee ?? ''} · ${_taux(paye, du)} recouvré', style: TextStyle(fontSize: 14, color: gris)),
-                  ),
-                ]),
-              ]),
-            ),
-            if (!telephone)
-              OutlinedButton.icon(
-                onPressed: classes.isEmpty ? null : () => _exporterClasses(context, classes),
-                icon: const Icon(Icons.download_outlined, size: 16),
-                label: const Text('Excel'),
-              ),
-          ]),
-          const SizedBox(height: 16),
-          // Les grands chiffres de l'année, comme les tuiles de l'accueil.
-          Wrap(spacing: 32, runSpacing: 12, children: [
-            _chiffreRecouvrement(context, 'Recouvrement', _taux(paye, du)),
-            _chiffreRecouvrement(context, 'Dû', gnf(du)),
-            _chiffreRecouvrement(context, 'Réglé', gnf(paye)),
-            _chiffreRecouvrement(context, 'Reste', gnf(du - paye)),
-            _chiffreRecouvrement(context, 'En retard', '${m.recouvrement.where((x) => x.retard > 0).length} élève(s)'),
-          ]),
-          const SizedBox(height: 16),
-          Text('Choisissez une classe pour voir chaque élève, tranche par tranche.', style: TextStyle(fontSize: 13, color: gris)),
-          const SizedBox(height: 12),
-          tableau,
-        ]),
-      ),
-    );
-  }
-
-  Widget _chiffreRecouvrement(BuildContext context, String libelle, String valeur) =>
-      Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        Text(libelle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        const SizedBox(height: 2),
-        Text(valeur, style: _chiffresDep.copyWith(fontSize: 18, fontWeight: FontWeight.w600)),
-      ]);
-
-  Future<void> _exporterClasses(BuildContext context, List<List<_LigneRecouvrement>> classes) async {
-    final messager = ScaffoldMessenger.of(context);
-    final classeur = xl.Excel.createExcel();
-    final feuille = classeur['Recouvrement'];
-    classeur.setDefaultSheet('Recouvrement');
-    xl.TextCellValue t(Object? v) => xl.TextCellValue(v == null ? '' : '$v');
-    feuille.appendRow([for (final c in const ['Classe', 'Élèves', 'Dû (GNF)', 'Réglé (GNF)', 'Reste (GNF)', 'Recouvrement', 'En retard']) t(c)]);
-    for (final l in classes) {
-      final d = l.fold(0, (s, x) => s + x.du), p = l.fold(0, (s, x) => s + x.paye);
-      feuille.appendRow([
-        t(l.first.classe), xl.IntCellValue(l.length), xl.IntCellValue(d), xl.IntCellValue(p), xl.IntCellValue(d - p),
-        t(_taux(p, d)), xl.IntCellValue(l.where((x) => x.retard > 0).length),
-      ]);
-    }
-    await _enregistrerClasseur(messager, classeur, 'Recouvrement', 'recouvrement.xlsx');
-  }
+  State<RecouvrementScreen> createState() => _RecouvrementScreenState();
 }
 
-Future<void> _enregistrerClasseur(ScaffoldMessengerState messager, xl.Excel classeur, String feuille, String nom) async {
-  for (final f in classeur.tables.keys.toList()) {
-    if (f != feuille) classeur.delete(f);
-  }
-  final octets = classeur.encode();
-  if (octets == null) return;
-  try {
-    await FilePicker.saveFile(dialogTitle: 'Exporter', fileName: nom, bytes: Uint8List.fromList(octets));
-    messager.showSnackBar(const SnackBar(content: Text('Fichier exporté.')));
-  } catch (_) {
-    messager.showSnackBar(const SnackBar(content: Text("Impossible d'enregistrer le fichier sur cet appareil.")));
-  }
-}
-
-/// Une classe : chaque élève, colonne par colonne. On imprime ou on exporte l'état.
-class _RecouvrementClasseScreen extends StatefulWidget {
-  const _RecouvrementClasseScreen({required this.espace, required this.classeId, required this.classe});
-
-  final Espace espace;
-  final String classeId;
-  final String classe;
-
-  @override
-  State<_RecouvrementClasseScreen> createState() => _RecouvrementClasseScreenState();
-}
-
-class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
+class _RecouvrementScreenState extends State<RecouvrementScreen> {
+  String? _classeId; // null : toutes les classes
   String _filtre = 'tous'; // tous, retard, soldes
+  String _recherche = '';
+  int _affiches = 100; // lignes affichées (les grandes écoles : « Afficher plus »)
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -284,18 +80,46 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
     final gris = schema.onSurfaceVariant;
     final bordure = Theme.of(context).dividerColor;
     final telephone = MediaQuery.sizeOf(context).width < 640;
-    final toutes = m.recouvrement.where((l) => l.classeId == widget.classeId).toList()
-      ..sort((a, b) => nomSimplifie(a.nom).compareTo(nomSimplifie(b.nom)));
+
+    // Les classes, dans l'ordre des niveaux, avec leur effectif.
+    final classes = <String, ({String nom, int ordre, int n})>{};
+    for (final l in m.recouvrement) {
+      final c = classes[l.classeId];
+      classes[l.classeId] = (nom: l.classe, ordre: l.ordre, n: (c?.n ?? 0) + 1);
+    }
+    final ordreClasses = classes.entries.toList()
+      ..sort((a, b) {
+        final v = a.value.ordre.compareTo(b.value.ordre);
+        return v != 0 ? v : a.value.nom.compareTo(b.value.nom);
+      });
+    if (_classeId != null && !classes.containsKey(_classeId)) _classeId = null;
+    final toutesClasses = _classeId == null;
+
+    final q = nomSimplifie(_recherche.trim());
+    final toutes = m.recouvrement
+        .where((l) => (_classeId == null || l.classeId == _classeId) &&
+            (q.isEmpty || nomSimplifie(l.nom).contains(q) || l.matricule.toLowerCase().contains(q.toLowerCase())))
+        .toList()
+      ..sort((a, b) {
+        final v = a.ordre.compareTo(b.ordre);
+        if (v != 0) return v;
+        final c = a.classe.compareTo(b.classe);
+        return c != 0 ? c : nomSimplifie(a.nom).compareTo(nomSimplifie(b.nom));
+      });
     final lignes = toutes.where((l) => switch (_filtre) {
           'retard' => l.retard > 0,
           'soldes' => l.du > 0 && l.reste <= 0,
           _ => true,
         }).toList();
+    final visibles = lignes.take(_affiches).toList();
     final colonnes = _colonnes(m, toutes);
-    int somme(int Function(_LigneRecouvrement) f) => lignes.fold(0, (s, x) => s + f(x));
-    final du = somme((x) => x.du), paye = somme((x) => x.paye);
+    int somme(Iterable<_LigneRecouvrement> l, int Function(_LigneRecouvrement) f) => l.fold(0, (s, x) => s + f(x));
+    final du = somme(toutes, (x) => x.du), paye = somme(toutes, (x) => x.paye);
+    final enRetard = toutes.where((l) => l.retard > 0).length;
+    final soldes = toutes.where((l) => l.du > 0 && l.reste <= 0).length;
+    final nomClasse = _classeId == null ? 'Toutes les classes' : classes[_classeId]!.nom;
     const entete = TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
-    const largeurCol = 124.0;
+    const largeurCol = 124.0, largeurClasse = 110.0;
 
     // Une case : ce qui reste à payer ; « payé » si soldé ; en rouge si en retard.
     Widget casePour(_CaseRecouvrement? c) {
@@ -309,11 +133,15 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
       );
     }
 
-    Widget ligneTableau(List<Widget> cases, {Color? fond, VoidCallback? auClic, bool gras = false}) => InkWell(
+    void ouvrirEleve(_LigneRecouvrement l) =>
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: l.eleveId)));
+
+    Widget ligneTableau(List<Widget> cases, {Color? fond, VoidCallback? auClic, bool entetes = false}) => InkWell(
           onTap: auClic,
+          hoverColor: Couleurs.doux(context).withValues(alpha: .5),
           child: Container(
             color: fond,
-            padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
+            padding: EdgeInsets.fromLTRB(8, entetes ? 12 : 16, 8, entetes ? 12 : 16),
             decoration: fond == null ? BoxDecoration(border: Border(bottom: BorderSide(color: bordure))) : null,
             child: Row(children: cases),
           ),
@@ -334,85 +162,91 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
         total[k] = (du: (t?.du ?? 0) + x.du, paye: (t?.paye ?? 0) + x.paye);
       }
     }
+    final duF = somme(lignes, (x) => x.du), payeF = somme(lignes, (x) => x.paye);
 
     // La colonne des noms prend la place libre : le tableau remplit son cadre.
     final tableau = LayoutBuilder(builder: (context, place) {
-      final largeurNom = (place.maxWidth - 16 - 2 - largeurCol * (colonnes.length + 3)).clamp(240.0, double.infinity);
+      final fixe = largeurCol * (colonnes.length + 3) + (toutesClasses ? largeurClasse : 0) + 16 + 2;
+      final largeurNom = (place.maxWidth - fixe).clamp(240.0, double.infinity);
       return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ligneTableau([
-            c(largeurNom, const Text('Élève', style: entete), droite: false),
-            for (final k in colonnes) c(largeurCol, Text(k, style: entete, overflow: TextOverflow.ellipsis)),
-            c(largeurCol, const Text('Dû', style: entete)),
-            c(largeurCol, const Text('Réglé', style: entete)),
-            c(largeurCol, const Text('Reste', style: entete)),
-          ]),
-          if (lignes.isEmpty)
-            SizedBox(
-              width: largeurNom + largeurCol * (colonnes.length + 3),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('Aucun élève.', textAlign: TextAlign.center, style: TextStyle(color: gris)),
-              ),
-            ),
-          for (final l in lignes)
-            ligneTableau(
-              [
-                c(
-                    largeurNom,
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(l.nom, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                      Text(l.matricule, style: styleMono.copyWith(fontSize: 11, color: gris)),
-                    ]),
-                    droite: false),
-                for (final k in colonnes) c(largeurCol, casePour(l.cases[k])),
-                c(largeurCol, Text(_sansUnite(l.du), style: _chiffresDep.copyWith(fontSize: 13))),
-                c(largeurCol, Text(_sansUnite(l.paye), style: _chiffresDep.copyWith(fontSize: 13))),
-                c(
-                    largeurCol,
-                    Text(l.reste <= 0 ? 'soldé' : _sansUnite(l.reste),
-                        style: _chiffresDep.copyWith(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: l.reste <= 0 ? Couleurs.regle : (l.retard > 0 ? Couleurs.retard : null)))),
-              ],
-              auClic: () => Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: l.eleveId))),
-            ),
-          if (lignes.isNotEmpty)
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             ligneTableau([
-              c(largeurNom, const Text('Total', style: entete), droite: false),
-              for (final k in colonnes)
-                c(largeurCol, Text(total[k] == null ? '—' : _sansUnite(total[k]!.du - total[k]!.paye), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
-              c(largeurCol, Text(_sansUnite(du), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
-              c(largeurCol, Text(_sansUnite(paye), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
-              c(largeurCol, Text(_sansUnite(du - paye), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w700))),
-            ], fond: Couleurs.doux(context)),
-        ]),
-      ),
-    );
+              c(largeurNom, const Text('Élève', style: entete), droite: false),
+              if (toutesClasses) c(largeurClasse, const Text('Classe', style: entete), droite: false),
+              for (final k in colonnes) c(largeurCol, Text(k, style: entete, overflow: TextOverflow.ellipsis)),
+              c(largeurCol, const Text('Dû', style: entete)),
+              c(largeurCol, const Text('Réglé', style: entete)),
+              c(largeurCol, const Text('Reste', style: entete)),
+            ], entetes: true),
+            if (lignes.isEmpty)
+              SizedBox(
+                width: largeurNom + fixe - 18,
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Text('Aucun élève.', textAlign: TextAlign.center, style: TextStyle(color: gris)),
+                ),
+              ),
+            for (final l in visibles)
+              ligneTableau(
+                [
+                  c(
+                      largeurNom,
+                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(l.nom, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                        Text(l.matricule, style: styleMono.copyWith(fontSize: 11, color: gris)),
+                      ]),
+                      droite: false),
+                  if (toutesClasses) c(largeurClasse, Text(l.classe, style: const TextStyle(fontSize: 13)), droite: false),
+                  for (final k in colonnes) c(largeurCol, casePour(l.cases[k])),
+                  c(largeurCol, Text(_sansUnite(l.du), style: _chiffresDep.copyWith(fontSize: 13))),
+                  c(largeurCol, Text(_sansUnite(l.paye), style: _chiffresDep.copyWith(fontSize: 13))),
+                  c(
+                      largeurCol,
+                      Text(l.reste <= 0 ? 'soldé' : _sansUnite(l.reste),
+                          style: _chiffresDep.copyWith(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: l.reste <= 0 ? Couleurs.regle : (l.retard > 0 ? Couleurs.retard : null)))),
+                ],
+                auClic: () => ouvrirEleve(l),
+              ),
+            if (lignes.isNotEmpty)
+              ligneTableau([
+                c(largeurNom, Text(lignes.length > visibles.length ? 'Total (${lignes.length} élèves)' : 'Total', style: entete), droite: false),
+                if (toutesClasses) c(largeurClasse, const SizedBox()),
+                for (final k in colonnes)
+                  c(largeurCol,
+                      Text(total[k] == null ? '—' : _sansUnite(total[k]!.du - total[k]!.paye),
+                          style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
+                c(largeurCol, Text(_sansUnite(duF), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
+                c(largeurCol, Text(_sansUnite(payeF), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w600))),
+                c(largeurCol, Text(_sansUnite(duF - payeF), style: _chiffresDep.copyWith(fontSize: 13, fontWeight: FontWeight.w700))),
+              ], fond: Couleurs.doux(context)),
+          ]),
+        ),
+      );
     });
 
     // Téléphone : une carte par élève, ses tranches en dessous (pas de tableau à faire glisser).
     Widget cartes() => Column(children: [
-          for (final l in lignes)
+          for (final l in visibles)
             Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: InkWell(
-                onTap: () => Navigator.of(context)
-                    .push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: l.eleveId))),
+                onTap: () => ouvrirEleve(l),
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(14),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Row(children: [
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(l.nom, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                          Text(l.matricule, style: styleMono.copyWith(fontSize: 11, color: gris)),
+                          Text(toutesClasses ? '${l.classe} · ${l.matricule}' : l.matricule,
+                              style: styleMono.copyWith(fontSize: 11, color: gris)),
                         ]),
                       ),
                       Text(l.reste <= 0 ? 'soldé' : gnf(l.reste),
@@ -437,83 +271,146 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
           if (lignes.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text('Aucun élève.', style: TextStyle(color: gris))),
         ]);
 
+    // Filtre de classe, à la façon de la page Élèves.
+    final menuClasse = SizedBox(
+      width: telephone ? double.infinity : 220,
+      height: 36,
+      child: DropdownButtonHideUnderline(
+        child: Container(
+          padding: const EdgeInsets.only(left: 12, right: 8),
+          decoration: BoxDecoration(border: Border.all(color: bordure), borderRadius: BorderRadius.circular(6), color: schema.surface),
+          child: DropdownButton<String?>(
+            value: _classeId,
+            isExpanded: true,
+            isDense: true,
+            icon: Icon(Icons.keyboard_arrow_down, size: 18, color: gris),
+            style: TextStyle(fontFamily: policeTexte, fontSize: 14, color: schema.onSurface),
+            items: [
+              DropdownMenuItem<String?>(value: null, child: Text('Toutes les classes  ${m.recouvrement.length}')),
+              for (final e in ordreClasses)
+                DropdownMenuItem<String?>(value: e.key, child: Text('${e.value.nom}  ${e.value.n}', overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (v) => setState(() {
+              _classeId = v;
+              _affiches = 100;
+            }),
+          ),
+        ),
+      ),
+    );
+    final champRecherche = SizedBox(
+      width: telephone ? double.infinity : 260,
+      height: 36,
+      child: TextField(
+        onChanged: (v) => setState(() {
+          _recherche = v;
+          _affiches = 100;
+        }),
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          prefixIcon: Icon(Icons.search, size: 18, color: gris),
+          prefixIconConstraints: const BoxConstraints(minWidth: 36),
+          hintText: 'Nom ou matricule',
+          hintStyle: TextStyle(fontSize: 14, color: gris),
+        ),
+      ),
+    );
+
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 1600),
         child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
-      // En-tête dans la page, comme les autres : retour, titre, classe.
-      Row(children: [
-        IconButton(
-          tooltip: 'Retour',
-          visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.arrow_back, size: 20),
-          onPressed: () => Navigator.of(context).maybePop(),
-        ),
-        const SizedBox(width: 4),
-        const Text('Recouvrement', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
-        const SizedBox(width: 12),
-        Text('${widget.classe} · ${toutes.length} élève(s)', style: TextStyle(fontSize: 14, color: gris)),
-      ]),
-      const SizedBox(height: 16),
-      Wrap(spacing: 32, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        _chiffre(context, 'Recouvrement', _taux(paye, du)),
-        _chiffre(context, 'Dû', gnf(du)),
-        _chiffre(context, 'Réglé', gnf(paye)),
-        _chiffre(context, 'Reste', gnf(du - paye)),
-        _chiffre(context, 'En retard', '${toutes.where((l) => l.retard > 0).length} élève(s)'),
-      ]),
-      const SizedBox(height: 16),
-      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Segments<String>(
-          valeur: _filtre,
-          choix: {
-            'tous': 'Tous (${toutes.length})',
-            'retard': 'En retard (${toutes.where((l) => l.retard > 0).length})',
-            'soldes': 'Soldés (${toutes.where((l) => l.du > 0 && l.reste <= 0).length})',
-          },
-          onChanged: (v) => setState(() => _filtre = v),
-        ),
-        OutlinedButton.icon(
-          onPressed: lignes.isEmpty ? null : () => _imprimer(m, colonnes, lignes),
-          icon: const Icon(Icons.print_outlined, size: 16),
-          label: const Text('Imprimer'),
-        ),
-        if (!telephone)
-          OutlinedButton.icon(
-            onPressed: lignes.isEmpty ? null : () => _exporter(colonnes, lignes),
-            icon: const Icon(Icons.download_outlined, size: 16),
-            label: const Text('Excel'),
-          ),
-      ]),
-      const SizedBox(height: 12),
-      Text('Chaque case : ce qui reste à payer. En rouge : en retard (date limite et délai de grâce passés).',
-          style: TextStyle(fontSize: 13, color: gris)),
-      const SizedBox(height: 12),
-      if (telephone) cartes() else tableau,
-    ]),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+              child: Wrap(crossAxisAlignment: WrapCrossAlignment.end, spacing: 12, children: [
+                const Text('Recouvrement', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text('${m.annee ?? ''} · $nomClasse', style: TextStyle(fontSize: 14, color: gris)),
+                ),
+              ]),
+            ),
+            Wrap(spacing: 8, children: [
+              OutlinedButton.icon(
+                onPressed: lignes.isEmpty ? null : () => _imprimer(m, colonnes, lignes, nomClasse, toutesClasses),
+                icon: const Icon(Icons.print_outlined, size: 16),
+                label: const Text('Imprimer'),
+              ),
+              if (!telephone)
+                OutlinedButton.icon(
+                  onPressed: lignes.isEmpty ? null : () => _exporter(colonnes, lignes, nomClasse),
+                  icon: const Icon(Icons.download_outlined, size: 16),
+                  label: const Text('Excel'),
+                ),
+            ]),
+          ]),
+          const SizedBox(height: 16),
+          // Les grands chiffres, pour la classe choisie (ou toute l'école).
+          Wrap(spacing: 32, runSpacing: 12, children: [
+            _chiffre(context, 'Recouvrement', _taux(paye, du)),
+            _chiffre(context, 'Dû', gnf(du)),
+            _chiffre(context, 'Réglé', gnf(paye)),
+            _chiffre(context, 'Reste', gnf(du - paye)),
+            _chiffre(context, 'En retard', '$enRetard élève(s)', alerte: enRetard > 0),
+          ]),
+          const SizedBox(height: 16),
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            menuClasse,
+            Segments<String>(
+              valeur: _filtre,
+              choix: {
+                'tous': 'Tous (${toutes.length})',
+                'retard': 'En retard ($enRetard)',
+                'soldes': 'Soldés ($soldes)',
+              },
+              onChanged: (v) => setState(() {
+                _filtre = v;
+                _affiches = 100;
+              }),
+            ),
+            champRecherche,
+          ]),
+          const SizedBox(height: 12),
+          Text('Chaque case : ce qui reste à payer. En rouge : en retard (date limite et délai de grâce passés). '
+              'Touchez un élève pour ouvrir sa fiche.',
+              style: TextStyle(fontSize: 13, color: gris)),
+          const SizedBox(height: 12),
+          if (telephone) cartes() else tableau,
+          if (lignes.length > visibles.length) ...[
+            const SizedBox(height: 12),
+            Center(
+              child: OutlinedButton(
+                onPressed: () => setState(() => _affiches += 200),
+                child: Text('Afficher plus (${lignes.length - visibles.length} autres)'),
+              ),
+            ),
+          ],
+        ]),
       ),
     );
   }
 
-  Widget _chiffre(BuildContext context, String libelle, String valeur) =>
+  Widget _chiffre(BuildContext context, String libelle, String valeur, {bool alerte = false}) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Text(libelle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 2),
-        Text(valeur, style: _chiffresDep.copyWith(fontSize: 18, fontWeight: FontWeight.w600)),
+        Text(valeur, style: _chiffresDep.copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: alerte ? Couleurs.retard : null)),
       ]);
 
-  Future<void> _imprimer(_Mesures m, List<String> colonnes, List<_LigneRecouvrement> lignes) async {
+  Future<void> _imprimer(_Mesures m, List<String> colonnes, List<_LigneRecouvrement> lignes, String classe, bool toutes) async {
     final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [widget.espace.orgId]);
     final pdf = await etatRecouvrementPdf(
       ecole: Map.of(ecole),
-      classe: widget.classe,
+      classe: classe,
       annee: m.annee ?? '',
       colonnes: colonnes,
       lignes: [
         for (final l in lignes)
           (
-            nom: l.nom,
+            nom: toutes ? '${l.nom} (${l.classe})' : l.nom,
             matricule: l.matricule,
             cases: [for (final k in colonnes) l.cases[k] == null ? null : l.cases[k]!.du - l.cases[k]!.paye],
             du: l.du,
@@ -522,27 +419,41 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
       ],
       images: await _imagesEcole(widget.espace.orgId),
     );
-    await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Recouvrement ${widget.classe}');
+    await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Recouvrement $classe');
   }
 
-  Future<void> _exporter(List<String> colonnes, List<_LigneRecouvrement> lignes) async {
+  Future<void> _exporter(List<String> colonnes, List<_LigneRecouvrement> lignes, String classe) async {
     final messager = ScaffoldMessenger.of(context);
     final classeur = xl.Excel.createExcel();
     final feuille = classeur['Recouvrement'];
     classeur.setDefaultSheet('Recouvrement');
     xl.TextCellValue t(Object? v) => xl.TextCellValue(v == null ? '' : '$v');
     feuille.appendRow([
-      t('Élève'), t('Matricule'),
+      t('Élève'), t('Matricule'), t('Classe'),
       for (final k in colonnes) t('$k (reste)'),
       t('Dû (GNF)'), t('Réglé (GNF)'), t('Reste (GNF)'),
     ]);
     for (final l in lignes) {
       feuille.appendRow([
-        t(l.nom), t(l.matricule),
+        t(l.nom), t(l.matricule), t(l.classe),
         for (final k in colonnes) l.cases[k] == null ? t('') : xl.IntCellValue(l.cases[k]!.du - l.cases[k]!.paye),
         xl.IntCellValue(l.du), xl.IntCellValue(l.paye), xl.IntCellValue(l.reste),
       ]);
     }
-    await _enregistrerClasseur(messager, classeur, 'Recouvrement', 'recouvrement-${widget.classe.replaceAll(' ', '-')}.xlsx');
+    await _enregistrerClasseur(messager, classeur, 'Recouvrement', 'recouvrement-${classe.replaceAll(' ', '-')}.xlsx');
+  }
+}
+
+Future<void> _enregistrerClasseur(ScaffoldMessengerState messager, xl.Excel classeur, String feuille, String nom) async {
+  for (final f in classeur.tables.keys.toList()) {
+    if (f != feuille) classeur.delete(f);
+  }
+  final octets = classeur.encode();
+  if (octets == null) return;
+  try {
+    await FilePicker.saveFile(dialogTitle: 'Exporter', fileName: nom, bytes: Uint8List.fromList(octets));
+    messager.showSnackBar(const SnackBar(content: Text('Fichier exporté.')));
+  } catch (_) {
+    messager.showSnackBar(const SnackBar(content: Text("Impossible d'enregistrer le fichier sur cet appareil.")));
   }
 }
