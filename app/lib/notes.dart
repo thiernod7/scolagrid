@@ -225,7 +225,7 @@ class _NotesScreenState extends State<NotesScreen> {
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1400),
+        constraints: const BoxConstraints(maxWidth: 1600),
         child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
           enTete,
           if (periode.isNotEmpty) ...[
@@ -979,13 +979,13 @@ class _Resultats extends StatelessWidget {
       Widget c(double l, Widget w, {bool droite = true}) => SizedBox(
           width: l,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Align(alignment: droite ? Alignment.centerRight : Alignment.centerLeft, child: w),
           ));
       const entete = TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
       // La colonne des noms prend la place libre : le tableau remplit son cadre.
       tableau = LayoutBuilder(builder: (context, contraintes) {
-        final fixe = 48.0 + (matieres.length + 1) * largeurCol + 48 + 2;
+        final fixe = 48.0 + (matieres.length + 1) * largeurCol + 48 + 2 + 16;
         final largeurNom = (contraintes.maxWidth - fixe).clamp(220.0, double.infinity);
         return Container(
         clipBehavior: Clip.antiAlias,
@@ -994,7 +994,7 @@ class _Resultats extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.fromLTRB(8, 12, 8, 12),
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
               child: Row(children: [
                 c(48, const Text('Rang', style: entete)),
@@ -1014,7 +1014,7 @@ class _Resultats extends StatelessWidget {
             ),
             for (final e in ordre)
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.fromLTRB(8, 14, 8, 14),
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
                 child: Row(children: [
                   c(48, Text(rangLisible(rang[e['id']]), style: const TextStyle(fontSize: 13))),

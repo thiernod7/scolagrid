@@ -289,7 +289,10 @@ if (etape === 'connexion') {
   });
   await etapeSure('recouvrement', async () => {
     await aller('Recouvrement', 'Choisissez une classe'); await pause(4000); await photo('61-recouvrement');
-    await page.mouse.click(700, 290); await pause(5000); await semantique();
+    // La CE2 A (3e ligne), sous les grands chiffres de l'année.
+    const ce2a = page.getByText(/^CE2 A$/);
+    if (await ce2a.count()) await ce2a.first().click(); else await page.mouse.click(700, 400);
+    await pause(5000); await semantique();
     await photo('62-recouvrement-classe');
     await retour();
   });

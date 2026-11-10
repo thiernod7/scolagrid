@@ -85,7 +85,7 @@ class RecouvrementScreen extends StatelessWidget {
 
     Widget cellule(double? l, Widget w, {int flex = 1, bool droite = false}) {
       final c = Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Align(alignment: droite ? Alignment.centerRight : Alignment.centerLeft, child: w),
       );
       return l == null ? Expanded(flex: flex, child: c) : SizedBox(width: l, child: c);
@@ -110,8 +110,9 @@ class RecouvrementScreen extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (!telephone)
           Container(
-            height: 36,
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
+            height: 44,
+            padding: const EdgeInsets.only(left: 8),
+            decoration: BoxDecoration(color: schema.surface, border: Border(bottom: BorderSide(color: bordure))),
             child: Row(children: [
               cellule(null, const Text('Classe', style: entete), flex: 2),
               cellule(80, const Text('Élèves', style: entete), droite: true),
@@ -120,7 +121,7 @@ class RecouvrementScreen extends StatelessWidget {
               cellule(150, const Text('Reste', style: entete), droite: true),
               cellule(140, const Text('Recouvrement', style: entete)),
               cellule(110, const Text('En retard', style: entete), droite: true),
-              const SizedBox(width: 32),
+              const SizedBox(width: 48),
             ]),
           ),
         if (classes.isEmpty)
@@ -136,7 +137,7 @@ class RecouvrementScreen extends StatelessWidget {
               onTap: () => ouvrir(l),
               hoverColor: Couleurs.doux(context).withValues(alpha: .5),
               child: Container(
-                padding: EdgeInsets.symmetric(vertical: 10, horizontal: telephone ? 12 : 0),
+                padding: telephone ? const EdgeInsets.symmetric(vertical: 12, horizontal: 14) : const EdgeInsets.fromLTRB(8, 18, 0, 18),
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
                 child: telephone
                     ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -169,7 +170,7 @@ class RecouvrementScreen extends StatelessWidget {
                             Text(retard == 0 ? '—' : '$retard élève(s)',
                                 style: TextStyle(fontSize: 14, color: retard > 0 ? Couleurs.retard : gris)),
                             droite: true),
-                        SizedBox(width: 32, child: Icon(Icons.chevron_right, size: 18, color: gris)),
+                        SizedBox(width: 48, child: Icon(Icons.chevron_right, size: 18, color: gris)),
                       ]),
               ),
             );
@@ -180,7 +181,7 @@ class RecouvrementScreen extends StatelessWidget {
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1400),
+        constraints: const BoxConstraints(maxWidth: 1600),
         child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
@@ -192,26 +193,39 @@ class RecouvrementScreen extends StatelessWidget {
                     child: Text('${m.annee ?? ''} · ${_taux(paye, du)} recouvré', style: TextStyle(fontSize: 14, color: gris)),
                   ),
                 ]),
-                const SizedBox(height: 2),
-                Text('${gnf(paye)} réglés sur ${gnf(du)} · reste ${gnf(du - paye)}', style: TextStyle(fontSize: 13, color: gris)),
               ]),
             ),
             if (!telephone)
-              PopupMenuButton<String>(
-                tooltip: 'Exporter',
-                icon: const Icon(Icons.more_horiz),
-                onSelected: (_) => _exporterClasses(context, classes),
-                itemBuilder: (_) => const [PopupMenuItem(value: 'x', child: _ItemMenu(Icons.download_outlined, 'Exporter en Excel'))],
+              OutlinedButton.icon(
+                onPressed: classes.isEmpty ? null : () => _exporterClasses(context, classes),
+                icon: const Icon(Icons.download_outlined, size: 16),
+                label: const Text('Excel'),
               ),
           ]),
-          const SizedBox(height: 4),
-          Text('Choisissez une classe pour voir chaque élève, tranche par tranche.', style: TextStyle(fontSize: 12, color: gris)),
+          const SizedBox(height: 16),
+          // Les grands chiffres de l'année, comme les tuiles de l'accueil.
+          Wrap(spacing: 32, runSpacing: 12, children: [
+            _chiffreRecouvrement(context, 'Recouvrement', _taux(paye, du)),
+            _chiffreRecouvrement(context, 'Dû', gnf(du)),
+            _chiffreRecouvrement(context, 'Réglé', gnf(paye)),
+            _chiffreRecouvrement(context, 'Reste', gnf(du - paye)),
+            _chiffreRecouvrement(context, 'En retard', '${m.recouvrement.where((x) => x.retard > 0).length} élève(s)'),
+          ]),
+          const SizedBox(height: 16),
+          Text('Choisissez une classe pour voir chaque élève, tranche par tranche.', style: TextStyle(fontSize: 13, color: gris)),
           const SizedBox(height: 12),
           tableau,
         ]),
       ),
     );
   }
+
+  Widget _chiffreRecouvrement(BuildContext context, String libelle, String valeur) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Text(libelle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 2),
+        Text(valeur, style: _chiffresDep.copyWith(fontSize: 18, fontWeight: FontWeight.w600)),
+      ]);
 
   Future<void> _exporterClasses(BuildContext context, List<List<_LigneRecouvrement>> classes) async {
     final messager = ScaffoldMessenger.of(context);
@@ -262,7 +276,6 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text('Recouvrement · ${widget.classe}'), titleSpacing: 0),
         body: _AvecRecouvrement(orgId: widget.espace.orgId, builder: _contenu),
       );
 
@@ -282,7 +295,7 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
     int somme(int Function(_LigneRecouvrement) f) => lignes.fold(0, (s, x) => s + f(x));
     final du = somme((x) => x.du), paye = somme((x) => x.paye);
     const entete = TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
-    const largeurNom = 220.0, largeurCol = 118.0;
+    const largeurCol = 124.0;
 
     // Une case : ce qui reste à payer ; « payé » si soldé ; en rouge si en retard.
     Widget casePour(_CaseRecouvrement? c) {
@@ -300,7 +313,7 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
           onTap: auClic,
           child: Container(
             color: fond,
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.fromLTRB(8, 16, 8, 16),
             decoration: fond == null ? BoxDecoration(border: Border(bottom: BorderSide(color: bordure))) : null,
             child: Row(children: cases),
           ),
@@ -308,7 +321,7 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
     Widget c(double l, Widget w, {bool droite = true}) => SizedBox(
         width: l,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Align(alignment: droite ? Alignment.centerRight : Alignment.centerLeft, child: w),
         ));
 
@@ -322,7 +335,10 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
       }
     }
 
-    final tableau = Container(
+    // La colonne des noms prend la place libre : le tableau remplit son cadre.
+    final tableau = LayoutBuilder(builder: (context, place) {
+      final largeurNom = (place.maxWidth - 16 - 2 - largeurCol * (colonnes.length + 3)).clamp(240.0, double.infinity);
+      return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
       child: SingleChildScrollView(
@@ -379,6 +395,7 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
         ]),
       ),
     );
+    });
 
     // Téléphone : une carte par élève, ses tranches en dessous (pas de tableau à faire glisser).
     Widget cartes() => Column(children: [
@@ -420,15 +437,33 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
           if (lignes.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text('Aucun élève.', style: TextStyle(color: gris))),
         ]);
 
-    return ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
-      Wrap(spacing: 24, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1600),
+        child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
+      // En-tête dans la page, comme les autres : retour, titre, classe.
+      Row(children: [
+        IconButton(
+          tooltip: 'Retour',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.arrow_back, size: 20),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        const SizedBox(width: 4),
+        const Text('Recouvrement', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+        const SizedBox(width: 12),
+        Text('${widget.classe} · ${toutes.length} élève(s)', style: TextStyle(fontSize: 14, color: gris)),
+      ]),
+      const SizedBox(height: 16),
+      Wrap(spacing: 32, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
         _chiffre(context, 'Recouvrement', _taux(paye, du)),
         _chiffre(context, 'Dû', gnf(du)),
         _chiffre(context, 'Réglé', gnf(paye)),
         _chiffre(context, 'Reste', gnf(du - paye)),
         _chiffre(context, 'En retard', '${toutes.where((l) => l.retard > 0).length} élève(s)'),
       ]),
-      const SizedBox(height: 14),
+      const SizedBox(height: 16),
       Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         Segments<String>(
           valeur: _filtre,
@@ -451,18 +486,21 @@ class _RecouvrementClasseScreenState extends State<_RecouvrementClasseScreen> {
             label: const Text('Excel'),
           ),
       ]),
-      const SizedBox(height: 6),
+      const SizedBox(height: 12),
       Text('Chaque case : ce qui reste à payer. En rouge : en retard (date limite et délai de grâce passés).',
-          style: TextStyle(fontSize: 12, color: gris)),
-      const SizedBox(height: 10),
+          style: TextStyle(fontSize: 13, color: gris)),
+      const SizedBox(height: 12),
       if (telephone) cartes() else tableau,
-    ]);
+    ]),
+      ),
+    );
   }
 
   Widget _chiffre(BuildContext context, String libelle, String valeur) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Text(libelle, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        Text(valeur, style: _chiffresDep.copyWith(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(valeur, style: _chiffresDep.copyWith(fontSize: 18, fontWeight: FontWeight.w600)),
       ]);
 
   Future<void> _imprimer(_Mesures m, List<String> colonnes, List<_LigneRecouvrement> lignes) async {
