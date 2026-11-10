@@ -290,7 +290,9 @@ if (etape === 'connexion') {
     if (await resultats.count()) await resultats.first().click(); else await page.mouse.click(384, 228);
     await pause(3000); await photo('65-notes-resultats');
     // Les réglages : périodes et leurs sessions, types, absences, mentions.
-    await page.mouse.click(874, 92); await pause(1500); await semantique();
+    const menuNotes = page.getByRole('button', { name: /Périodes, types, clôture/ });
+    if (await menuNotes.count()) await menuNotes.first().click(); else await page.mouse.click(874, 92);
+    await pause(1500); await semantique(); await photo('67a-notes-menu');
     const reglages = page.getByText(/Périodes, sessions/);
     if (await reglages.count()) await reglages.first().click(); else await page.mouse.click(1000, 130);
     await pause(3000); await semantique(); await photo('67-notes-reglages');
