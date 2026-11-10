@@ -123,9 +123,11 @@ Future<void> _preparerNotes(String orgId, Map<String, Object?> annee) async {
       for (var i = 0; i < periodes.length; i++) {
         final (libelle, d, f) = periodes[i];
         await tx.execute(
-            '''INSERT INTO periodes_evaluation (id, organisation_id, annee_id, cycle, ordre, libelle, debut, fin, bareme, statut, created_at, updated_at)
-               VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, 'ouverte', ?, ?)''',
-            [orgId, annee['id'], cycle, i + 1, libelle, _date(d), _date(f), cycle == 'primaire' ? 10 : 20, m0, m0]);
+            '''INSERT INTO periodes_evaluation (id, organisation_id, annee_id, cycle, ordre, libelle, debut, fin, bareme, nature, statut,
+                 created_at, updated_at)
+               VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ouverte', ?, ?)''',
+            [orgId, annee['id'], cycle, i + 1, libelle, _date(d), _date(f), cycle == 'primaire' ? 10 : 20,
+              cycle == 'maternelle' ? 'appreciations' : 'numerique', m0, m0]);
       }
     }
     // Les sessions (mensuelles, puis la composition) de chaque période qui n'en a pas.
@@ -254,13 +256,7 @@ class _NotesScreenState extends State<NotesScreen> {
     ]);
 
     final Widget corps;
-    if (cycle == 'maternelle') {
-      corps = Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text("La maternelle s'évalue par appréciations (acquis, en cours, non acquis) : ce sera dans un prochain lot.",
-            style: TextStyle(color: gris)),
-      );
-    } else if (periodes.isEmpty) {
+    if (periodes.isEmpty) {
       corps = Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: Couleurs.infoFond, borderRadius: BorderRadius.circular(8)),
@@ -334,7 +330,8 @@ class _NotesScreenState extends State<NotesScreen> {
           enTete,
           if (periode.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('${periode['libelle']} : du ${_dateLisible(periode['debut'])} au ${_dateLisible(periode['fin'])} · notes sur ${periode['bareme']}',
+            Text('${periode['libelle']} : du ${_dateLisible(periode['debut'])} au ${_dateLisible(periode['fin'])} · '
+                '${periode['nature'] == 'appreciations' ? 'acquis : acquis, en cours, non acquis (pas de moyenne)' : 'notes sur ${periode['bareme']}'}',
                 style: TextStyle(fontSize: 12, color: gris)),
           ],
           const SizedBox(height: 16),
@@ -734,18 +731,19 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
     super.dispose();
   }
 
-  Future<void> _enregistrer(Map<String, Object?> ev, String eleveId, {double? valeur, required String etat}) async {
+  Future<void> _enregistrer(Map<String, Object?> ev, String eleveId, {double? valeur, String? acquis, required String etat}) async {
     final id = _idNote(widget.evaluationId, eleveId);
     final existe = await db.getOptional('SELECT 1 FROM notes WHERE id = ?', [id]);
     final m0 = _maintenant();
     if (existe != null) {
-      await db.execute('UPDATE notes SET valeur = ?, etat = ?, saisi_par = ?, updated_at = ? WHERE id = ?',
-          [etat == 'note' ? valeur : null, etat, monId, m0, id]);
+      await db.execute('UPDATE notes SET valeur = ?, acquis = ?, etat = ?, saisi_par = ?, updated_at = ? WHERE id = ?',
+          [etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat, monId, m0, id]);
     } else {
       await db.execute(
-          '''INSERT INTO notes (id, organisation_id, evaluation_id, eleve_id, valeur, etat, bareme, saisi_par, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-          [id, widget.espace.orgId, widget.evaluationId, eleveId, etat == 'note' ? valeur : null, etat, ev['bareme'], monId, m0, m0]);
+          '''INSERT INTO notes (id, organisation_id, evaluation_id, eleve_id, valeur, acquis, etat, bareme, saisi_par, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+          [id, widget.espace.orgId, widget.evaluationId, eleveId, etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat,
+            ev['bareme'], monId, m0, m0]);
     }
   }
 
@@ -770,7 +768,7 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
   @override
   Widget build(BuildContext context) => Requete(
         '''SELECT ev.*, m.nom AS matiere, t.libelle AS type, c.nom AS classe, p.libelle AS periode, p.bareme, p.statut AS statut_periode,
-             s.libelle AS session, s.statut AS statut_session
+             s.libelle AS session, s.statut AS statut_session, p.nature
            FROM evaluations ev JOIN matieres m ON m.id = ev.matiere_id JOIN types_evaluation t ON t.id = ev.type_id
            JOIN classes c ON c.id = ev.classe_id JOIN periodes_evaluation p ON p.id = ev.periode_id
            LEFT JOIN sessions_evaluation s ON s.id = ev.session_id
@@ -806,7 +804,7 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
               ],
             ),
             body: Requete(
-              '''SELECT e.id, e.nom, e.prenoms, e.matricule, n.valeur, n.etat
+              '''SELECT e.id, e.nom, e.prenoms, e.matricule, n.valeur, n.etat, n.acquis
                  FROM inscriptions i JOIN eleves e ON e.id = i.eleve_id
                  LEFT JOIN notes n ON n.eleve_id = e.id AND n.evaluation_id = ?
                  WHERE i.classe_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
@@ -826,6 +824,9 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
     final valeurs = [for (final e in eleves) if (e['etat'] == 'note' && e['valeur'] != null) (e['valeur'] as num).toDouble()];
     final moy = valeurs.isEmpty ? null : valeurs.reduce((a, b) => a + b) / valeurs.length;
     final ordre = [for (final e in eleves) e['id'] as String];
+    // Maternelle : on observe des acquis, pas de chiffre (ni moyenne, ni rang).
+    final parAcquis = ev['nature'] == 'appreciations';
+    int combien(String a) => eleves.where((e) => e['etat'] == 'note' && e['acquis'] == a).length;
 
     Widget repere(String libelle, String valeur, {Color? couleur}) =>
         Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -840,15 +841,21 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text('${ev['type']} du ${_dateLisible(ev['date_evaluation'])}${ev['libelle'] != null ? ' · ${ev['libelle']}' : ''}',
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-        Text('${ev['session'] ?? 'Hors session'} · ${ev['periode']} · notes sur $bareme'
+        Text('${ev['session'] ?? 'Hors session'} · ${ev['periode']} · ${parAcquis ? 'acquis (maternelle)' : 'notes sur $bareme'}'
             '${ev['statut_session'] == 'cloturee' ? ' · session clôturée' : ''}',
             style: TextStyle(fontSize: 13, color: gris)),
         const SizedBox(height: 12),
         Wrap(spacing: 28, runSpacing: 10, children: [
           repere('Saisies', '$saisies / ${eleves.length}', couleur: saisies >= eleves.length ? Couleurs.regle : Couleurs.attente),
-          repere('Moyenne', noteLisible(moy), couleur: moy != null && moy < bareme / 2 ? Couleurs.retard : null),
-          repere('Plus haute', noteLisible(valeurs.isEmpty ? null : valeurs.reduce((a, b) => a > b ? a : b))),
-          repere('Plus basse', noteLisible(valeurs.isEmpty ? null : valeurs.reduce((a, b) => a < b ? a : b))),
+          if (parAcquis) ...[
+            repere('Acquis', '${combien('acquis')}', couleur: Couleurs.regle),
+            repere('En cours', '${combien('en_cours')}', couleur: Couleurs.attente),
+            repere('Non acquis', '${combien('non_acquis')}', couleur: Couleurs.retard),
+          ] else ...[
+            repere('Moyenne', noteLisible(moy), couleur: moy != null && moy < bareme / 2 ? Couleurs.retard : null),
+            repere('Plus haute', noteLisible(valeurs.isEmpty ? null : valeurs.reduce((a, b) => a > b ? a : b))),
+            repere('Plus basse', noteLisible(valeurs.isEmpty ? null : valeurs.reduce((a, b) => a < b ? a : b))),
+          ],
         ]),
         const SizedBox(height: 10),
         ClipRRect(
@@ -865,8 +872,12 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
           const Etat('Lecture seule : période clôturée ou pas de droit de saisie', icone: Icons.lock_outline),
         ] else ...[
           const SizedBox(height: 8),
-          Text('Tapez la note puis Entrée pour passer à l\'élève suivant. Tout s\'enregistre seul, même sans internet. '
-              'Le menu ⋮ : absent, dispensé, non concerné.', style: TextStyle(fontSize: 12, color: gris)),
+          Text(
+              parAcquis
+                  ? 'Choisissez pour chaque enfant : acquis, en cours ou non acquis. Tout s\'enregistre seul, même sans internet.'
+                  : 'Tapez la note puis Entrée pour passer à l\'élève suivant. Tout s\'enregistre seul, même sans internet. '
+                      'Le menu ⋮ : absent, dispensé, non concerné.',
+              style: TextStyle(fontSize: 12, color: gris)),
         ],
       ]),
     );
@@ -911,6 +922,26 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
                           padding: const EdgeInsets.only(right: 4),
                           child: Etat(_etatsCourts[etat] ?? etat, ton: etat == 'absent' ? Ton.retard : Ton.neutre),
                         )
+                      else if (parAcquis)
+                        // Trois choix d'un geste : acquis, en cours, non acquis.
+                        Wrap(spacing: 4, children: [
+                          for (final (cle, court, couleur) in const [
+                            ('acquis', 'A', Couleurs.regle),
+                            ('en_cours', 'EC', Couleurs.attente),
+                            ('non_acquis', 'NA', Couleurs.retard),
+                          ])
+                            Tooltip(
+                              message: niveauxAcquis[cle]!,
+                              child: ChoiceChip(
+                                label: Text(court),
+                                selected: etat == 'note' && e['acquis'] == cle,
+                                selectedColor: couleur.withValues(alpha: .18),
+                                labelStyle: TextStyle(fontWeight: FontWeight.w600, color: etat == 'note' && e['acquis'] == cle ? couleur : null),
+                                visualDensity: VisualDensity.compact,
+                                onSelected: ouverte ? (_) => _enregistrer(ev, id, etat: 'note', acquis: cle) : null,
+                              ),
+                            ),
+                        ])
                       else
                         SizedBox(
                           width: 104,
@@ -1010,21 +1041,35 @@ class _Resultats extends StatelessWidget {
           'SELECT id, nom, coefficient FROM matieres WHERE niveau_id = ? ORDER BY nom',
           parametres: [classe['niveau_id']],
           builder: (context, matieres) => Requete(
-            '''SELECT n.eleve_id, n.valeur, n.etat, ev.matiere_id, t.poids, t.compte
+            '''SELECT n.eleve_id, n.valeur, n.etat, n.acquis, ev.matiere_id, ev.date_evaluation, t.poids, t.compte
                FROM notes n JOIN evaluations ev ON ev.id = n.evaluation_id JOIN types_evaluation t ON t.id = ev.type_id
                WHERE ev.classe_id = ? AND ev.periode_id = ? AND (? IS NULL OR ev.session_id = ?)''',
             parametres: [classe['id'], periode['id'], session?['id'], session?['id']],
-            builder: (context, notes) => _contenu(context, eleves, matieres, notes),
+            builder: (context, notes) => Requete(
+              // Les règles de l'école (traitement de l'absence) et les mentions du cycle.
+              '''SELECT 'regle' AS sorte, absences AS libelle, NULL AS minimum FROM regles_notes WHERE organisation_id = ?
+                 UNION ALL
+                 SELECT 'mention', libelle, minimum FROM mentions_notes WHERE organisation_id = ? AND cycle = ?''',
+              parametres: [espace.orgId, espace.orgId, classe['cycle']],
+              builder: (context, reglages) => _contenu(context, eleves, matieres, notes, reglages),
+            ),
           ),
         ),
       );
 
-  Widget _contenu(BuildContext context, Lignes eleves, Lignes matieres, Lignes notes) {
+  Widget _contenu(BuildContext context, Lignes eleves, Lignes matieres, Lignes notes, Lignes reglages) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
     final bordure = Theme.of(context).dividerColor;
     final telephone = MediaQuery.sizeOf(context).width < 640;
     final bareme = periode['bareme'] as int? ?? 20;
+    final absences = reglages.where((r) => r['sorte'] == 'regle').map((r) => '${r['libelle']}').firstOrNull ?? 'justifie_exclu';
+    final seuils = [
+      for (final r in reglages)
+        if (r['sorte'] == 'mention') (minimum: (r['minimum'] as num).toDouble(), libelle: '${r['libelle']}'),
+    ];
+    final mentions = seuils.isEmpty ? mentionsParDefaut(bareme) : seuils;
+    if (periode['nature'] == 'appreciations') return _acquis(context, eleves, matieres, notes);
 
     // Moyennes par élève et par matière, à partir de toutes les notes.
     final parEleveMatiere = <String, List<NoteCalcul>>{};
@@ -1041,7 +1086,7 @@ class _Resultats extends StatelessWidget {
     for (final e in eleves) {
       final id = e['id'] as String;
       moy[id] = {
-        for (final m in matieres) m['id'] as String: moyenneMatiere(parEleveMatiere['$id|${m['id']}'] ?? const []),
+        for (final m in matieres) m['id'] as String: moyenneMatiere(parEleveMatiere['$id|${m['id']}'] ?? const [], absences: absences),
       };
       generale[id] = moyenneGenerale([
         for (final m in matieres) (moy[id]![m['id']], (m['coefficient'] as num? ?? 1).toDouble()),
@@ -1077,6 +1122,7 @@ class _Resultats extends StatelessWidget {
         classe: '${classe['nom']}',
         periode: session == null ? '${periode['libelle']}' : '${session!['libelle']}',
         session: session != null,
+        mentions: mentions,
         bareme: bareme,
         effectif: eleves.length,
         moyenneClasse: moyClasse,
@@ -1277,6 +1323,106 @@ class _Resultats extends StatelessWidget {
   }
 }
 
+extension on _Resultats {
+  /// Maternelle : un tableau d'acquis (dernière observation de chaque domaine),
+  /// sans moyenne ni rang ; le bulletin est un tableau d'acquis.
+  Widget _acquis(BuildContext context, Lignes eleves, Lignes matieres, Lignes notes) {
+    final schema = Theme.of(context).colorScheme;
+    final gris = schema.onSurfaceVariant;
+    final bordure = Theme.of(context).dividerColor;
+    String? acquisDe(String eleve, String matiere) => acquisRetenu([
+          for (final n in notes)
+            if (n['eleve_id'] == eleve && n['matiere_id'] == matiere && n['etat'] == 'note')
+              (date: '${n['date_evaluation']}', acquis: n['acquis'] as String?),
+        ]);
+    Widget pastille(String? a) => a == null
+        ? Text('—', style: TextStyle(color: gris))
+        : Etat(switch (a) { 'acquis' => 'Acquis', 'en_cours' => 'En cours', _ => 'Non acquis' },
+            ton: switch (a) { 'acquis' => Ton.regle, 'en_cours' => Ton.attente, _ => Ton.retard });
+
+    Future<void> imprimer(List<Map<String, Object?>> qui) async {
+      final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [espace.orgId]);
+      final pdf = await bulletinsAcquisPdf(
+        ecole: Map.of(ecole),
+        annee: '${annee['libelle']}',
+        classe: '${classe['nom']}',
+        periode: '${(session ?? periode)['libelle']}',
+        effectif: eleves.length,
+        bulletins: [
+          for (final e in qui)
+            (
+              nom: '${e['nom']} ${e['prenoms']}',
+              matricule: '${e['matricule']}',
+              lignes: [for (final m in matieres) (domaine: '${m['nom']}', acquis: acquisDe(e['id'] as String, m['id'] as String))],
+              appreciation: e['appreciation'] as String?,
+            ),
+        ],
+        images: await _imagesEcole(espace.orgId),
+      );
+      await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Bulletins ${classe['nom']} ${(session ?? periode)['libelle']}');
+    }
+
+    if (matieres.isEmpty) {
+      return Text('Aucun domaine (matière) pour ce niveau : ajoutez-les dans Paramètres › Matières.', style: TextStyle(color: gris));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(
+          child: Text('Maternelle : pour chaque domaine, la dernière observation de la période. Pas de moyenne ni de rang.',
+              style: TextStyle(fontSize: 13, color: gris)),
+        ),
+        FilledButton.icon(
+          onPressed: eleves.isEmpty ? null : () => imprimer(eleves),
+          icon: const Icon(Icons.print_outlined, size: 16),
+          label: const Text('Bulletins de la classe'),
+        ),
+      ]),
+      const SizedBox(height: 12),
+      Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
+              child: Row(children: [
+                const SizedBox(width: 220, child: Text('Élève', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                for (final m in matieres)
+                  SizedBox(
+                      width: 130,
+                      child: Text('${m['nom']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                const SizedBox(width: 48),
+              ]),
+            ),
+            for (final e in eleves)
+              Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
+                child: Row(children: [
+                  SizedBox(
+                      width: 220,
+                      child: Text('${e['nom']} ${e['prenoms']}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+                  for (final m in matieres)
+                    SizedBox(width: 130, child: Align(alignment: Alignment.centerLeft, child: pastille(acquisDe(e['id'] as String, m['id'] as String)))),
+                  SizedBox(
+                    width: 48,
+                    child: IconButton(
+                      tooltip: 'Imprimer son bulletin',
+                      icon: const Icon(Icons.print_outlined, size: 18),
+                      onPressed: () => imprimer([e]),
+                    ),
+                  ),
+                ]),
+              ),
+          ]),
+        ),
+      ),
+    ]);
+  }
+}
+
 /// Périodes (par cycle) et types d'évaluation : réglés par la direction.
 class _ReglagesNotesScreen extends StatelessWidget {
   const _ReglagesNotesScreen({required this.espace, required this.annee});
@@ -1289,6 +1435,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
     var debut = DateTime.parse('${p['debut']}');
     var fin = DateTime.parse('${p['fin']}');
     var bareme = p['bareme'] as int? ?? 20;
+    var nature = '${p['nature'] ?? 'numerique'}';
     Widget date(String titre, DateTime v, ValueChanged<DateTime> change) => InkWell(
           onTap: () async {
             final d = await _choisirDate(context, v, premier: DateTime(v.year - 1), dernier: DateTime(v.year + 2));
@@ -1303,12 +1450,15 @@ class _ReglagesNotesScreen extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(child: date('Fin', fin, (d) => maj(() => fin = d))),
           ]),
-          _liste('Notes sur', bareme, const {10: '10', 20: '20'}, (v) => maj(() => bareme = v)),
-          const Text('Le barème ne change plus dès qu\'une note est saisie dans la période.', style: TextStyle(fontSize: 12)),
+          _liste('Évaluation', nature, const {'numerique': 'Notes chiffrées', 'appreciations': 'Acquis (maternelle) : sans moyenne ni rang'},
+              (v) => maj(() => nature = v)),
+          if (nature == 'numerique') _liste('Notes sur', bareme, const {10: '10', 20: '20'}, (v) => maj(() => bareme = v)),
+          const Text('Le barème et la façon d\'évaluer ne changent plus dès qu\'une note est saisie dans la période.',
+              style: TextStyle(fontSize: 12)),
         ]);
     if (!ok || libelle.text.trim().length < 2 || fin.isBefore(debut)) return;
     await _modifier('periodes_evaluation', p['id'] as String,
-        {'libelle': libelle.text.trim(), 'debut': _date(debut), 'fin': _date(fin), 'bareme': bareme});
+        {'libelle': libelle.text.trim(), 'debut': _date(debut), 'fin': _date(fin), 'bareme': bareme, 'nature': nature});
   }
 
   /// Une session : son nom, sa nature (type), sa fenêtre dans la période, et le
@@ -1376,6 +1526,78 @@ class _ReglagesNotesScreen extends StatelessWidget {
     }
   }
 
+  /// Le traitement de l'absence dans les moyennes : au choix de l'école.
+  Future<void> _absences(BuildContext context, String actuel, String? regleId) async {
+    var choix = actuel;
+    final ok = await _formulaire(context, "Absences et moyennes", (maj) => [
+          for (final e in traitementsAbsence.entries)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(choix == e.key ? Icons.radio_button_checked : Icons.radio_button_unchecked, size: 20),
+              onTap: () => maj(() => choix = e.key),
+              title: Text(e.value),
+            ),
+          const Text('« Justifié exclu, non justifié 0 » protège l\'élève malade sans laisser d\'échappatoire : c\'est le réglage conseillé.',
+              style: TextStyle(fontSize: 12)),
+        ]);
+    if (!ok || choix == actuel) return;
+    if (regleId == null) {
+      await _inserer('regles_notes', {'organisation_id': espace.orgId, 'absences': choix});
+    } else {
+      await _modifier('regles_notes', regleId, {'absences': choix});
+    }
+  }
+
+  /// Les mentions d'un cycle, dans son barème (sur 10 au primaire, sur 20 ensuite).
+  Future<void> _mentions(BuildContext context, String cycle, int bareme, Lignes actuelles) async {
+    final messager = ScaffoldMessenger.of(context);
+    final depart = actuelles.isEmpty
+        ? mentionsParDefaut(bareme)
+        : [for (final m in actuelles) (minimum: (m['minimum'] as num).toDouble(), libelle: '${m['libelle']}')];
+    final tries = [...depart]..sort((a, b) => b.minimum.compareTo(a.minimum));
+    final libelles = [for (var i = 0; i < 5; i++) TextEditingController(text: i < tries.length ? tries[i].libelle : '')];
+    final minimums = [
+      for (var i = 0; i < 5; i++) TextEditingController(text: i < tries.length ? noteLisible(tries[i].minimum).replaceAll(',00', '') : ''),
+    ];
+    final ok = await _formulaire(context, 'Mentions · ${cycles[cycle] ?? cycle} (sur $bareme)', (_) => [
+          for (var i = 0; i < 5; i++)
+            Row(children: [
+              Expanded(flex: 3, child: TextField(controller: libelles[i], decoration: _champ('Mention ${i + 1}'))),
+              const SizedBox(width: 10),
+              Expanded(
+                  flex: 2,
+                  child: TextField(
+                      controller: minimums[i],
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: _champ('À partir de'))),
+            ]),
+          Text('Laissez une ligne vide pour l\'enlever. Le dernier seuil (souvent 0 : « Insuffisant ») couvre tout le reste.',
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ]);
+    if (!ok) return;
+    final nouvelles = <SeuilMention>[];
+    for (var i = 0; i < 5; i++) {
+      final l = libelles[i].text.trim();
+      final v = double.tryParse(minimums[i].text.trim().replaceAll(',', '.'));
+      if (l.isEmpty && minimums[i].text.trim().isEmpty) continue;
+      if (l.length < 2 || v == null || v < 0 || v > bareme || nouvelles.any((x) => x.minimum == v)) {
+        messager.showSnackBar(SnackBar(content: Text('Mention ${i + 1} : un nom et un seuil entre 0 et $bareme, différent des autres.')));
+        return;
+      }
+      nouvelles.add((minimum: v, libelle: l));
+    }
+    final m0 = _maintenant();
+    await db.writeTransaction((tx) async {
+      await tx.execute('DELETE FROM mentions_notes WHERE organisation_id = ? AND cycle = ?', [espace.orgId, cycle]);
+      for (var i = 0; i < nouvelles.length; i++) {
+        await tx.execute(
+            '''INSERT INTO mentions_notes (id, organisation_id, cycle, minimum, libelle, ordre, created_at, updated_at)
+               VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?)''',
+            [espace.orgId, cycle, nouvelles[i].minimum, nouvelles[i].libelle, i + 1, m0, m0]);
+      }
+    });
+  }
+
   Future<void> _type(BuildContext context, Map<String, Object?>? t) async {
     final libelle = TextEditingController(text: '${t?['libelle'] ?? ''}');
     final poids = TextEditingController(text: t == null ? '1' : noteLisible((t['poids'] as num).toDouble()).replaceAll(',00', ''));
@@ -1424,7 +1646,12 @@ class _ReglagesNotesScreen extends StatelessWidget {
                  FROM sessions_evaluation s JOIN types_evaluation t ON t.id = s.type_id
                  JOIN periodes_evaluation p ON p.id = s.periode_id WHERE p.annee_id = ? ORDER BY s.debut, s.ordre''',
               parametres: [annee['id']],
-              builder: (context, sessions) {
+              builder: (context, sessions) => Requete(
+                '''SELECT 'regle' AS sorte, id, absences AS libelle, NULL AS cycle, NULL AS minimum FROM regles_notes WHERE organisation_id = ?
+                   UNION ALL
+                   SELECT 'mention', id, libelle, cycle, minimum FROM mentions_notes WHERE organisation_id = ?''',
+                parametres: [espace.orgId, espace.orgId],
+                builder: (context, reglages) {
               final gris = Theme.of(context).colorScheme.onSurfaceVariant;
               final parCycle = <String, List<Map<String, Object?>>>{};
               for (final p in periodes) {
@@ -1450,7 +1677,8 @@ class _ReglagesNotesScreen extends StatelessWidget {
                       child: ListTile(
                         dense: true,
                         title: Text('${p['libelle']}'),
-                        subtitle: Text('du ${_dateLisible(p['debut'])} au ${_dateLisible(p['fin'])} · notes sur ${p['bareme']}'),
+                        subtitle: Text('du ${_dateLisible(p['debut'])} au ${_dateLisible(p['fin'])} · '
+                            '${p['nature'] == 'appreciations' ? 'acquis (sans moyenne)' : 'notes sur ${p['bareme']}'}'),
                         trailing: p['statut'] == 'cloturee' ? const Etat('Clôturée', icone: Icons.lock_outline) : const Icon(Icons.edit_outlined, size: 18),
                         onTap: p['statut'] == 'cloturee' ? null : () => _periode(context, p),
                       ),
@@ -1533,8 +1761,47 @@ class _ReglagesNotesScreen extends StatelessWidget {
                 Text('Le poids joue entre les notes d\'une même matière ; le coefficient (Paramètres › Matières) entre les matières. '
                     'La session dit quand (une fenêtre), le type dit la nature et le poids.',
                     style: TextStyle(fontSize: 12, color: gris)),
+                const SizedBox(height: 20),
+                Text('RÈGLES DE CALCUL', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris)),
+                const SizedBox(height: 6),
+                Builder(builder: (context) {
+                  final regle = reglages.where((r) => r['sorte'] == 'regle').firstOrNull;
+                  final absences = '${regle?['libelle'] ?? 'justifie_exclu'}';
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    child: ListTile(
+                      dense: true,
+                      title: const Text('Absences'),
+                      subtitle: Text(traitementsAbsence[absences] ?? absences),
+                      trailing: const Icon(Icons.edit_outlined, size: 18),
+                      onTap: () => _absences(context, absences, regle?['id'] as String?),
+                    ),
+                  );
+                }),
+                // Les mentions de chaque cycle noté (la maternelle n'a pas de mention).
+                for (final e in parCycle.entries)
+                  if (e.value.any((p) => p['nature'] != 'appreciations'))
+                    Builder(builder: (context) {
+                      final bareme = e.value.firstWhere((p) => p['nature'] != 'appreciations')['bareme'] as int? ?? 20;
+                      final siennes = [for (final r in reglages) if (r['sorte'] == 'mention' && r['cycle'] == e.key) r];
+                      final seuils = siennes.isEmpty
+                          ? mentionsParDefaut(bareme)
+                          : ([for (final r in siennes) (minimum: (r['minimum'] as num).toDouble(), libelle: '${r['libelle']}')]
+                            ..sort((a, b) => b.minimum.compareTo(a.minimum)));
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        child: ListTile(
+                          dense: true,
+                          title: Text('Mentions · ${cycles[e.key] ?? e.key} (sur $bareme)${siennes.isEmpty ? ' · par défaut' : ''}'),
+                          subtitle: Text(seuils.map((x) => '${x.libelle} ≥ ${noteLisible(x.minimum).replaceAll(',00', '')}').join(' · ')),
+                          trailing: const Icon(Icons.edit_outlined, size: 18),
+                          onTap: () => _mentions(context, e.key, bareme, siennes),
+                        ),
+                      );
+                    }),
               ]);
-              },
+                },
+              ),
             ),
           ),
         ),

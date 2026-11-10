@@ -156,6 +156,8 @@ streams:
       - SELECT * FROM periodes_evaluation WHERE organisation_id IN orgs_notes
       - SELECT * FROM types_evaluation WHERE organisation_id IN orgs_notes
       - SELECT * FROM sessions_evaluation WHERE organisation_id IN orgs_notes
+      - SELECT * FROM regles_notes WHERE organisation_id IN orgs_notes
+      - SELECT * FROM mentions_notes WHERE organisation_id IN orgs_notes
       - SELECT * FROM evaluations WHERE organisation_id IN orgs_notes
       - SELECT * FROM notes WHERE organisation_id IN orgs_notes
       - SELECT * FROM appreciations WHERE organisation_id IN orgs_notes

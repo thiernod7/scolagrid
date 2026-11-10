@@ -40,5 +40,26 @@ void main() {
     expect(rangLisible(1), '1er');
     expect(noteLisible(12.875), '12,88');
     expect(mention(7, 10), 'Bien');
+    expect(mention(4.5, 10), 'Insuffisant');
+    expect(mention(16, 20), 'Très bien');
+  });
+
+  test('Traitement de l\'absence au choix de l\'école', () {
+    const notes = [
+      NoteCalcul(valeur: 12, etat: 'note', poids: 1),
+      NoteCalcul(valeur: null, etat: 'absent', poids: 1),
+      NoteCalcul(valeur: null, etat: 'absent_justifie', poids: 1),
+    ];
+    expect(moyenneMatiere(notes), 6); // (12 + 0) / 2
+    expect(moyenneMatiere(notes, absences: 'toujours_zero'), 4); // (12 + 0 + 0) / 3
+    expect(moyenneMatiere(notes, absences: 'toujours_exclu'), 12);
+  });
+
+  test('Mentions personnalisées et acquis de maternelle', () {
+    final seuils = [(minimum: 15.0, libelle: 'Excellent'), (minimum: 10.0, libelle: 'Admis'), (minimum: 0.0, libelle: 'Faible')];
+    expect(mentionSelon(15, seuils), 'Excellent');
+    expect(mentionSelon(9.99, seuils), 'Faible');
+    expect(acquisRetenu([(date: '2026-10-10', acquis: 'non_acquis'), (date: '2026-11-20', acquis: 'en_cours'), (date: '2026-11-25', acquis: null)]),
+        'en_cours');
   });
 }

@@ -9,6 +9,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'caisse.dart';
+import 'notes_calcul.dart';
 
 class LigneRecu {
   const LigneRecu({required this.eleve, required this.matricule, required this.classe, required this.frais, required this.montant});
@@ -690,20 +691,14 @@ Future<Uint8List> bulletinsPdf({
   ImagesEcole images = const ImagesEcole(),
   /// Bulletin de session (suivi mensuel) : allégé, sans appréciation ni signatures.
   bool session = false,
+  /// Seuils de mention du cycle (dans son barème) ; par défaut ceux du barème.
+  List<SeuilMention>? mentions,
 }) {
   final doc = pw.Document(title: 'Bulletins $classe $periode');
   String n(double? v) => v == null ? '—' : v.toStringAsFixed(2).replaceAll('.', ',');
   String c(double v) => v == v.roundToDouble() ? '${v.toInt()}' : n(v);
   String r(int? x) => x == null ? '—' : (x == 1 ? '1er' : '${x}e');
-  String? mentionDe(double? m) {
-    if (m == null) return null;
-    final s = m * 20 / bareme;
-    if (s >= 16) return 'Très bien';
-    if (s >= 14) return 'Bien';
-    if (s >= 12) return 'Assez bien';
-    if (s >= 10) return 'Passable';
-    return null;
-  }
+  String? mentionDe(double? m) => mentionSelon(m, mentions ?? mentionsParDefaut(bareme));
 
   const st = pw.TextStyle(fontSize: 9);
   final gras = pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold);
@@ -796,6 +791,80 @@ Future<Uint8List> bulletinsPdf({
             pw.Column(children: [pw.Text('Signature des parents', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 50)]),
             pw.Column(children: [pw.Text('La direction', style: const pw.TextStyle(fontSize: 9)), _signer(ecole, images, hauteur: 50)]),
           ]),
+      ]),
+    ));
+  }
+  return doc.save();
+}
+
+/// Bulletin de maternelle : un tableau d'acquis par domaine (matière), sans
+/// moyenne ni rang (spécification §5.5, §8.11), avec l'appréciation et les signatures.
+Future<Uint8List> bulletinsAcquisPdf({
+  required Map<String, Object?> ecole,
+  required String annee,
+  required String classe,
+  required String periode,
+  required int effectif,
+  required List<({String nom, String matricule, List<({String domaine, String? acquis})> lignes, String? appreciation})> bulletins,
+  ImagesEcole images = const ImagesEcole(),
+}) {
+  final doc = pw.Document(title: 'Bulletins $classe $periode');
+  const st = pw.TextStyle(fontSize: 10);
+  final gras = pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold);
+  pw.Widget cel(String t, {pw.TextStyle? style, bool centre = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+      child: pw.Text(t, textAlign: centre ? pw.TextAlign.center : pw.TextAlign.left, style: style ?? st));
+  for (final b in bulletins) {
+    doc.addPage(pw.Page(
+      pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.all(32)),
+      build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        _enTete(ecole, images, titre: 13, petit: 8),
+        pw.Divider(),
+        pw.Center(child: pw.Text('BULLETIN — ${periode.toUpperCase()}', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold))),
+        pw.Center(child: pw.Text('Année scolaire $annee', style: const pw.TextStyle(fontSize: 10))),
+        pw.SizedBox(height: 12),
+        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+          pw.Text('Élève : ${b.nom}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          pw.Text('Matricule : ${b.matricule}', style: const pw.TextStyle(fontSize: 10)),
+        ]),
+        pw.Text('Classe : $classe · effectif : $effectif', style: const pw.TextStyle(fontSize: 10)),
+        pw.SizedBox(height: 10),
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey600, width: .5),
+          columnWidths: const {0: pw.FlexColumnWidth(4), 1: pw.FlexColumnWidth(1.2), 2: pw.FlexColumnWidth(1.6), 3: pw.FlexColumnWidth(1.4)},
+          children: [
+            pw.TableRow(decoration: const pw.BoxDecoration(color: PdfColors.grey200), children: [
+              cel('Domaine', style: gras),
+              cel('Acquis', style: gras, centre: true),
+              cel("En cours d'acquisition", style: gras, centre: true),
+              cel('Non acquis', style: gras, centre: true),
+            ]),
+            for (final l in b.lignes)
+              pw.TableRow(children: [
+                cel(l.domaine),
+                cel(l.acquis == 'acquis' ? 'X' : '', centre: true, style: gras),
+                cel(l.acquis == 'en_cours' ? 'X' : '', centre: true, style: gras),
+                cel(l.acquis == 'non_acquis' ? 'X' : '', centre: true, style: gras),
+              ]),
+          ],
+        ),
+        pw.SizedBox(height: 14),
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.all(8),
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey600, width: .5)),
+          child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text('Appréciation', style: gras),
+            pw.SizedBox(height: 4),
+            pw.Text(b.appreciation ?? '', style: const pw.TextStyle(fontSize: 10)),
+            pw.SizedBox(height: b.appreciation == null ? 30 : 6),
+          ]),
+        ),
+        pw.Spacer(),
+        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+          pw.Column(children: [pw.Text('Signature des parents', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 50)]),
+          pw.Column(children: [pw.Text('La direction', style: const pw.TextStyle(fontSize: 9)), _signer(ecole, images, hauteur: 50)]),
+        ]),
       ]),
     ));
   }
