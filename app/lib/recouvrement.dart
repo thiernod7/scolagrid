@@ -119,7 +119,9 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
     final soldes = toutes.where((l) => l.du > 0 && l.reste <= 0).length;
     final nomClasse = _classeId == null ? 'Toutes les classes' : classes[_classeId]!.nom;
     const entete = TextStyle(fontSize: 13, fontWeight: FontWeight.w600);
-    const largeurCol = 124.0, largeurClasse = 110.0;
+    // Avec la colonne Classe en plus, des colonnes un peu plus étroites : tout tient à l'écran.
+    final largeurCol = toutesClasses ? 108.0 : 124.0;
+    const largeurClasse = 96.0;
 
     // Une case : ce qui reste à payer ; « payé » si soldé ; en rouge si en retard.
     Widget casePour(_CaseRecouvrement? c) {
@@ -167,7 +169,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
     // La colonne des noms prend la place libre : le tableau remplit son cadre.
     final tableau = LayoutBuilder(builder: (context, place) {
       final fixe = largeurCol * (colonnes.length + 3) + (toutesClasses ? largeurClasse : 0) + 16 + 2;
-      final largeurNom = (place.maxWidth - fixe).clamp(240.0, double.infinity);
+      final largeurNom = (place.maxWidth - fixe).clamp(200.0, double.infinity);
       return Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(8), border: Border.all(color: bordure)),
