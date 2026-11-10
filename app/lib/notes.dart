@@ -47,7 +47,7 @@ List<(String, DateTime, DateTime)> _periodesParDefaut(String cycle, DateTime deb
 
 const _moisNoms = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
-/// Les sessions proposées pour une période : une « Évaluation de <mois> » par mois,
+/// Les sessions proposées pour une période : une « Évaluation de (mois) » par mois,
 /// puis la composition sur les deux dernières semaines. Même découpage que le
 /// serveur (scolagrid.sessions_par_defaut, migration 041).
 List<(String, DateTime, DateTime, bool)> _sessionsParDefaut(String periode, DateTime debut, DateTime fin, {required bool avecCompo}) {
@@ -1444,7 +1444,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 8, bottom: 4),
                     child: Text(cycles[e.key] ?? e.key, style: const TextStyle(fontWeight: FontWeight.w600)),
                   ),
-                  for (final p in e.value)
+                  for (final p in e.value) ...[
                     Card(
                       margin: const EdgeInsets.only(bottom: 6),
                       child: ListTile(
@@ -1507,6 +1507,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
                           ]),
                       ]),
                     ),
+                  ],
                 ],
                 const SizedBox(height: 20),
                 Row(children: [
