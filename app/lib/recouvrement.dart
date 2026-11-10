@@ -123,12 +123,36 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
     final largeurCol = toutesClasses ? 108.0 : 124.0;
     const largeurClasse = 96.0;
 
+    // L'échéance sous le nom de la colonne (« 15/10 »), quand c'est une tranche datée.
+    String? echeance(String k) {
+      final d = m.colonnesRecouvrement[k]?.$2;
+      return d == null ? null : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+    }
+
     // Une case : ce que l'élève a VERSÉ sur cette tranche (comme l'état papier).
     // Soldée : écrit normalement ; échéance passée et pas soldée : en rouge ;
     // pas encore due : en gris. Le détail (attendu, reste) au survol.
-    Widget casePour(_CaseRecouvrement? c) {
+    Widget casePour(_CaseRecouvrement? c, {_LigneRecouvrement? ligne, String? colonne}) {
       if (c == null || c.du <= 0) return Text('—', style: TextStyle(color: gris));
       final reste = c.du - c.paye;
+      // Un montant versé s'ouvre : les reçus qui le composent (souligné en pointillé).
+      if (c.paye > 0 && ligne != null && colonne != null) {
+        return InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: () => _recusDeLaCase(context, m, ligne, colonne, colonnes, echeance(colonne)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Text(_sansUnite(c.paye),
+                style: _chiffresDep.copyWith(
+                    fontSize: 13,
+                    color: reste <= 0 ? schema.onSurface : (c.retard ? Couleurs.retard : gris),
+                    fontWeight: reste > 0 && c.retard ? FontWeight.w600 : null,
+                    decoration: TextDecoration.underline,
+                    decorationStyle: TextDecorationStyle.dotted,
+                    decorationColor: gris)),
+          ),
+        );
+      }
       return Tooltip(
         message: reste <= 0
             ? 'Soldé : ${gnf(c.paye)} versés'
@@ -141,11 +165,6 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
       );
     }
 
-    // L'échéance sous le nom de la colonne (« 15/10 »), quand c'est une tranche datée.
-    String? echeance(String k) {
-      final d = m.colonnesRecouvrement[k]?.$2;
-      return d == null ? null : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
-    }
 
     void ouvrirEleve(_LigneRecouvrement l) =>
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: l.eleveId)));
@@ -221,7 +240,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
                       ]),
                       droite: false),
                   if (toutesClasses) c(largeurClasse, Text(l.classe, style: const TextStyle(fontSize: 13)), droite: false),
-                  for (final k in colonnes) c(largeurCol, casePour(l.cases[k])),
+                  for (final k in colonnes) c(largeurCol, casePour(l.cases[k], ligne: l, colonne: k)),
                   c(largeurCol, Text(_sansUnite(l.du), style: _chiffresDep.copyWith(fontSize: 13))),
                   c(largeurCol, Text(_sansUnite(l.paye), style: _chiffresDep.copyWith(fontSize: 13))),
                   c(
@@ -287,7 +306,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
                         if (l.cases[k] != null && l.cases[k]!.du > 0)
                           Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                             Text(k, style: TextStyle(fontSize: 11, color: gris)),
-                            casePour(l.cases[k]),
+                            casePour(l.cases[k], ligne: l, colonne: k),
                           ]),
                     ]),
                   ]),
@@ -402,7 +421,7 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
           ]),
           const SizedBox(height: 12),
           Text('Chaque case : ce que l\'élève a versé sur la tranche. En rouge : échéance passée, tranche pas soldée. '
-              'Survolez un montant pour voir l\'attendu et le reste ; touchez un élève pour ouvrir sa fiche.',
+              'Montant souligné : touchez-le pour voir les reçus. Touchez un élève pour ouvrir sa fiche.',
               style: TextStyle(fontSize: 13, color: gris)),
           const SizedBox(height: 12),
           if (telephone) cartes() else tableau,
@@ -416,6 +435,116 @@ class _RecouvrementScreenState extends State<RecouvrementScreen> {
             ),
           ],
         ]),
+      ),
+    );
+  }
+
+  /// Les reçus qui composent une case : l'imputation suit l'ordre des tranches
+  /// (les versements de scolarité remplissent la 1re tranche, puis la suivante).
+  Future<void> _recusDeLaCase(BuildContext context, _Mesures m, _LigneRecouvrement l, String colonne, List<String> colonnes,
+      String? echeance) async {
+    final c = l.cases[colonne]!;
+    final tranche = m.colonnesRecouvrement[colonne]?.$1 == 1;
+    final type = tranche ? "f.type_frais = 'scolarite'" : (colonne == 'Autres frais' ? "f.type_frais = 'optionnel'" : "f.type_frais NOT IN ('scolarite', 'optionnel')");
+    final versements = await db.getAll('''
+        SELECT e.id, e.numero, e.date_effective, e.mode, e.reference, e.payeur_nom, e.total_gnf, l.montant_gnf
+        FROM lignes_encaissement l
+        JOIN encaissements e ON e.id = l.encaissement_id AND e.statut = 'valide' AND e.confirmation <> 'rejete'
+        JOIN frais f ON f.id = l.frais_id
+        JOIN annees_scolaires a ON a.id = e.annee_id AND a.en_cours = 1
+        WHERE l.eleve_id = ? AND $type
+        ORDER BY e.date_effective, e.created_at''', [l.eleveId]);
+    // La part de chaque reçu dans cette case.
+    final parts = <(Map<String, Object?>, int)>[];
+    if (tranche) {
+      var avant = 0;
+      for (final k in colonnes) {
+        if (k == colonne) break;
+        if (m.colonnesRecouvrement[k]?.$1 == 1) avant += l.cases[k]?.du ?? 0;
+      }
+      final fin = avant + c.du;
+      var cumul = 0;
+      for (final v in versements) {
+        final montant = v['montant_gnf'] as int? ?? 0;
+        final debut = cumul;
+        cumul += montant;
+        final part = (cumul < fin ? cumul : fin) - (debut > avant ? debut : avant);
+        if (part > 0) parts.add((v, part));
+      }
+    } else {
+      for (final v in versements) {
+        parts.add((v, v['montant_gnf'] as int? ?? 0));
+      }
+    }
+    if (!context.mounted) return;
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogue) => AlertDialog(
+        titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('$colonne · ${l.nom}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text('${echeance == null ? '' : 'Échéance $echeance · '}attendu ${gnf(c.du)}', style: TextStyle(fontSize: 13, color: gris)),
+        ]),
+        content: SizedBox(
+          width: 400,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Divider(height: 1),
+            Flexible(
+              child: ListView(shrinkWrap: true, children: [
+                if (parts.isEmpty)
+                  Padding(padding: const EdgeInsets.all(20), child: Text('Aucun reçu trouvé.', style: TextStyle(color: gris))),
+                for (final (v, part) in parts)
+                  InkWell(
+                    onTap: () {
+                      Navigator.pop(dialogue);
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => RecuScreen(espace: widget.espace, encaissementId: v['id'] as String)));
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Row(children: [
+                          Expanded(child: Text('${v['numero']}', style: styleMono.copyWith(fontSize: 12))),
+                          Text(gnf(part), style: _chiffresDep.copyWith(fontSize: 14, fontWeight: FontWeight.w600)),
+                        ]),
+                        const SizedBox(height: 2),
+                        Text(
+                            [
+                              _dateLisible(v['date_effective']),
+                              modesPaiement[v['mode']] ?? '${v['mode']}',
+                              if (v['reference'] != null) '${v['reference']}',
+                              if ((v['total_gnf'] as int? ?? 0) != part) 'versement de ${gnf(v['total_gnf'])}',
+                            ].join(' · '),
+                            style: TextStyle(fontSize: 12, color: gris)),
+                        Text('Payé par ${v['payeur_nom']}', style: TextStyle(fontSize: 12, color: gris)),
+                      ]),
+                    ),
+                  ),
+              ]),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 12, 10),
+              child: Row(children: [
+                Expanded(
+                    child: Text(c.du - c.paye > 0 ? 'Reste ${gnf(c.du - c.paye)}' : 'Tranche soldée',
+                        style: TextStyle(fontSize: 13, color: gris))),
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogue);
+                    Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => FicheEleveScreen(espace: widget.espace, eleveId: l.eleveId)));
+                  },
+                  icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                  label: const Text('Tous les reçus'),
+                ),
+              ]),
+            ),
+          ]),
+        ),
       ),
     );
   }
