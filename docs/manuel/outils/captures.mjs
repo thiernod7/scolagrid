@@ -289,6 +289,13 @@ if (etape === 'connexion') {
     const resultats = page.getByRole('button', { name: 'Résultats' });
     if (await resultats.count()) await resultats.first().click(); else await page.mouse.click(384, 228);
     await pause(3000); await photo('65-notes-resultats');
+    // Les réglages : périodes et leurs sessions, types, absences, mentions.
+    await page.mouse.click(874, 92); await pause(1500); await semantique();
+    const reglages = page.getByText(/Périodes, sessions/);
+    if (await reglages.count()) await reglages.first().click(); else await page.mouse.click(1000, 130);
+    await pause(3000); await semantique(); await photo('67-notes-reglages');
+    await page.mouse.wheel(0, 1500); await pause(1500); await photo('67b-notes-regles-mentions');
+    await retour();
   });
   await etapeSure('recouvrement', async () => {
     await aller('Recouvrement', 'Recouvrement'); await pause(4000); await photo('61-recouvrement');
