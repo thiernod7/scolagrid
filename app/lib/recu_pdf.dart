@@ -688,6 +688,8 @@ Future<Uint8List> bulletinsPdf({
           })>
       bulletins,
   ImagesEcole images = const ImagesEcole(),
+  /// Bulletin de session (suivi mensuel) : allégé, sans appréciation ni signatures.
+  bool session = false,
 }) {
   final doc = pw.Document(title: 'Bulletins $classe $periode');
   String n(double? v) => v == null ? '—' : v.toStringAsFixed(2).replaceAll('.', ',');
@@ -717,7 +719,9 @@ Future<Uint8List> bulletinsPdf({
       build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         _enTete(ecole, images, titre: 13, petit: 8),
         pw.Divider(),
-        pw.Center(child: pw.Text('BULLETIN DE NOTES — ${periode.toUpperCase()}', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold))),
+        pw.Center(
+            child: pw.Text('${session ? 'BULLETIN DE SESSION' : 'BULLETIN DE NOTES'} — ${periode.toUpperCase()}',
+                style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold))),
         pw.Center(child: pw.Text('Année scolaire $annee', style: const pw.TextStyle(fontSize: 10))),
         pw.SizedBox(height: 12),
         pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
@@ -769,8 +773,13 @@ Future<Uint8List> bulletinsPdf({
             pw.Text('Plus faible moyenne : ${n(plusFaible)}', style: const pw.TextStyle(fontSize: 9)),
           ]),
         ]),
-        pw.SizedBox(height: 12),
-        pw.Container(
+        if (session) ...[
+          pw.SizedBox(height: 12),
+          pw.Text('Bulletin de suivi : le bulletin officiel est celui de la période.',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+        ],
+        if (!session) pw.SizedBox(height: 12),
+        if (!session) pw.Container(
           width: double.infinity,
           padding: const pw.EdgeInsets.all(8),
           decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey600, width: .5)),
@@ -782,12 +791,69 @@ Future<Uint8List> bulletinsPdf({
           ]),
         ),
         pw.Spacer(),
-        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
-          pw.Column(children: [pw.Text('Signature des parents', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 50)]),
-          pw.Column(children: [pw.Text('La direction', style: const pw.TextStyle(fontSize: 9)), _signer(ecole, images, hauteur: 50)]),
-        ]),
+        if (!session)
+          pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            pw.Column(children: [pw.Text('Signature des parents', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 50)]),
+            pw.Column(children: [pw.Text('La direction', style: const pw.TextStyle(fontSize: 9)), _signer(ecole, images, hauteur: 50)]),
+          ]),
       ]),
     ));
   }
+  return doc.save();
+}
+
+/// Calendrier des évaluations d'une classe pour une session (ou une période),
+/// à afficher au mur de la classe : date, matière, nature, enseignant.
+Future<Uint8List> calendrierEvaluationsPdf({
+  required Map<String, Object?> ecole,
+  required String classe,
+  required String titre,
+  required String fenetre,
+  required List<({String date, String matiere, String type, String enseignant})> epreuves,
+  ImagesEcole images = const ImagesEcole(),
+}) {
+  final doc = pw.Document(title: 'Calendrier $classe $titre');
+  const st = pw.TextStyle(fontSize: 11);
+  final gras = pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold);
+  pw.Widget cel(String t, {pw.TextStyle? style}) =>
+      pw.Padding(padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6), child: pw.Text(t, style: style ?? st));
+  // Les jours chargés (trois épreuves ou plus) ressortent en gris.
+  final parJour = <String, int>{};
+  for (final e in epreuves) {
+    parJour[e.date] = (parJour[e.date] ?? 0) + 1;
+  }
+  doc.addPage(pw.Page(
+    pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.all(36)),
+    build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      _enTete(ecole, images, titre: 13, petit: 8),
+      pw.Divider(),
+      pw.SizedBox(height: 6),
+      pw.Center(child: pw.Text('CALENDRIER DES ÉVALUATIONS — $classe', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold))),
+      pw.Center(child: pw.Text(titre, style: const pw.TextStyle(fontSize: 12))),
+      pw.Center(child: pw.Text(fenetre, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700))),
+      pw.SizedBox(height: 16),
+      if (epreuves.isEmpty)
+        pw.Text('Aucune épreuve prévue pour le moment.', style: st)
+      else
+        pw.Table(
+          border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey400, width: .5)),
+          columnWidths: const {0: pw.FixedColumnWidth(90), 1: pw.FlexColumnWidth(3), 2: pw.FlexColumnWidth(2), 3: pw.FlexColumnWidth(3)},
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: 1))),
+              children: [cel('Date', style: gras), cel('Matière', style: gras), cel('Nature', style: gras), cel('Enseignant', style: gras)],
+            ),
+            for (final e in epreuves)
+              pw.TableRow(
+                decoration: (parJour[e.date] ?? 0) >= 3 ? const pw.BoxDecoration(color: PdfColors.grey200) : null,
+                children: [cel(e.date), cel(e.matiere), cel(e.type), cel(e.enseignant)],
+              ),
+          ],
+        ),
+      pw.Spacer(),
+      pw.Text('Dates prévisionnelles : un report reste possible dans la fenêtre de la session.',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+    ]),
+  ));
   return doc.save();
 }

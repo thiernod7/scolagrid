@@ -614,9 +614,28 @@ const schema = Schema([
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
+  // Sessions d'évaluation (lot 2) : fenêtres nommées de la période (migration 041).
+  Table('sessions_evaluation', [
+    Column.text('organisation_id'),
+    Column.text('periode_id'),
+    Column.text('type_id'),
+    Column.text('libelle'),
+    Column.text('debut'),
+    Column.text('fin'),
+    Column.integer('ordre'),
+    Column.integer('epreuves_attendues'),
+    Column.text('statut'),
+    Column.text('cloturee_par'),
+    Column.text('cloturee_le'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_periode', [IndexedColumn('periode_id')]),
+  ]),
   Table('evaluations', [
     Column.text('organisation_id'),
     Column.text('periode_id'),
+    Column.text('session_id'),
     Column.text('classe_id'),
     Column.text('matiere_id'),
     Column.text('type_id'),

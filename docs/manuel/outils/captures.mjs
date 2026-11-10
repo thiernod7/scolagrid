@@ -281,10 +281,13 @@ if (etape === 'connexion') {
     if (await ce2a.count()) { await ce2a.last().click(); } else { await page.mouse.click(420, 203); }
     await pause(3000); await semantique();
     await photo('63b-notes-evaluations');
-    await page.mouse.click(700, 310); await pause(3500); await semantique(); await photo('66-notes-saisie');
+    // Le menu des sessions (sous la période) : octobre, novembre, composition.
+    await page.mouse.click(400, 178); await pause(1500); await semantique(); await photo('63c-notes-sessions');
+    await page.keyboard.press('Escape'); await pause(1000);
+    await page.mouse.click(700, 370); await pause(3500); await semantique(); await photo('66-notes-saisie');
     await retour();
     const resultats = page.getByRole('button', { name: 'Résultats' });
-    if (await resultats.count()) await resultats.first().click(); else await page.mouse.click(384, 166);
+    if (await resultats.count()) await resultats.first().click(); else await page.mouse.click(384, 228);
     await pause(3000); await photo('65-notes-resultats');
   });
   await etapeSure('recouvrement', async () => {
