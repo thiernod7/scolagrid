@@ -295,6 +295,9 @@ if (etape === 'connexion') {
     if (await ce2a.count()) await ce2a.last().click(); else await page.mouse.click(350, 199 + 48 * 3);
     await pause(3000); await semantique();
     await photo('62-recouvrement-classe');
+    // Un montant versé (1re tranche du premier élève) : les reçus qui le composent.
+    await page.mouse.click(765, 345); await pause(2500); await semantique(); await photo('62b-recouvrement-recus');
+    await page.keyboard.press('Escape'); await pause(1000);
   });
   await etapeSure('menu-depenses', async () => { await aller('Dépenses', 'Nouvelle dépense'); await photo('58-depenses'); });
   for (const r of ['Personnel', 'Postes']) await etapeSure(r, async () => { await aller(r); await pause(2000); await arbre(r); await photo(`60-${r.toLowerCase()}`); });
