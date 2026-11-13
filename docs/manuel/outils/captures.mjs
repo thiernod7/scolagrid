@@ -289,6 +289,13 @@ if (etape === 'connexion') {
     const resultats = page.getByRole('button', { name: 'Résultats' });
     if (await resultats.count()) await resultats.first().click(); else await page.mouse.click(384, 228);
     await pause(3000); await photo('65-notes-resultats');
+    // Fin d'année : moyennes des périodes, moyenne annuelle, proposition, décision.
+    const finAnnee = page.getByRole('button', { name: "Fin d'année" });
+    if (await finAnnee.count()) await finAnnee.first().click(); else await page.mouse.click(490, 216);
+    await pause(3000); await semantique(); await photo('68-notes-fin-annee');
+    const res = page.getByRole('button', { name: 'Résultats' });
+    if (await res.count()) await res.first().click(); else await page.mouse.click(384, 216);
+    await pause(2000);
     // Les réglages : périodes et leurs sessions, types, absences, mentions.
     const menuNotes = page.getByRole('button', { name: /Périodes, types, clôture/ });
     if (await menuNotes.count()) await menuNotes.first().click(); else await page.mouse.click(874, 92);
