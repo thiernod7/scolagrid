@@ -19,6 +19,74 @@ const _etatsCourts = {
   'non_note': 'Non noté',
 };
 
+/// Écrit la note d'un élève à une épreuve (en local ; envoyée au serveur dès que possible).
+/// [etat] null : la case est vidée.
+Future<void> _ecrireNote(String orgId, String evaluationId, String eleveId, int bareme,
+    {double? valeur, String? acquis, String? etat, String? motif}) async {
+  final id = _idNote(evaluationId, eleveId);
+  if (etat == null) {
+    await db.execute('DELETE FROM notes WHERE id = ?', [id]);
+    return;
+  }
+  final existe = await db.getOptional('SELECT 1 FROM notes WHERE id = ?', [id]);
+  final m0 = _maintenant();
+  if (existe != null) {
+    await db.execute('UPDATE notes SET valeur = ?, acquis = ?, etat = ?, motif = ?, saisi_par = ?, updated_at = ? WHERE id = ?',
+        [etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat, motif, monId, m0, id]);
+  } else {
+    await db.execute(
+        '''INSERT INTO notes (id, organisation_id, evaluation_id, eleve_id, valeur, acquis, etat, motif, bareme, saisi_par, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+        [id, orgId, evaluationId, eleveId, etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat, motif, bareme, monId, m0, m0]);
+  }
+}
+
+/// Ce qu'on tape dans une case du carnet : une note (virgule ou point), ou un code
+/// (a : absent, aj : absent justifié, d : dispensé, nc : non concerné, nn : non noté ;
+/// en maternelle A, EC, NA). Null : case vide. Une erreur : texte illisible.
+({String? etat, double? valeur, String? acquis, String? erreur}) _lireCase(String texte, int bareme, {bool parAcquis = false}) {
+  final t = texte.trim().toLowerCase().replaceAll(',', '.').replaceAll(' ', '');
+  if (t.isEmpty) return (etat: null, valeur: null, acquis: null, erreur: null);
+  const codes = {
+    'a': 'absent', 'abs': 'absent',
+    'aj': 'absent_justifie', 'abs.j': 'absent_justifie', 'absj': 'absent_justifie',
+    'd': 'dispense', 'disp': 'dispense',
+    'nc': 'non_concerne',
+    'nn': 'non_note',
+  };
+  if (parAcquis) {
+    // En maternelle, « a » veut dire acquis (l'absence s'écrit « abs »).
+    const acquis = {'a': 'acquis', 'ac': 'acquis', 'ec': 'en_cours', 'na': 'non_acquis'};
+    if (acquis.containsKey(t)) return (etat: 'note', valeur: null, acquis: acquis[t], erreur: null);
+    if (t != 'a' && codes.containsKey(t)) return (etat: codes[t], valeur: null, acquis: null, erreur: null);
+    return (etat: null, valeur: null, acquis: null, erreur: 'A, EC ou NA');
+  }
+  if (codes.containsKey(t)) return (etat: codes[t], valeur: null, acquis: null, erreur: null);
+  final v = double.tryParse(t);
+  if (v == null || v < 0 || v > bareme) return (etat: null, valeur: null, acquis: null, erreur: 'Entre 0 et $bareme');
+  return (etat: 'note', valeur: v, acquis: null, erreur: null);
+}
+
+/// Ce qu'affiche une case du carnet pour une note enregistrée.
+String _texteCase(Object? etat, Object? valeur, Object? acquis) => switch (etat) {
+      null => '',
+      'note' => acquis != null
+          ? switch (acquis) { 'acquis' => 'A', 'en_cours' => 'EC', _ => 'NA' }
+          : noteLisible((valeur as num?)?.toDouble()).replaceAll(',00', ''),
+      'absent' => 'abs',
+      'absent_justifie' => 'abs.j',
+      'dispense' => 'disp',
+      'non_concerne' => 'nc',
+      _ => 'nn',
+    };
+
+/// Ouvre la saisie d'une épreuve : le pavé sur téléphone, la liste détaillée ailleurs.
+Future<void> _ouvrirSaisie(BuildContext context, Espace espace, String evaluationId) =>
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => MediaQuery.sizeOf(context).width < 640
+            ? _SaisiePaveScreen(espace: espace, evaluationId: evaluationId)
+            : _SaisieNotesScreen(espace: espace, evaluationId: evaluationId)));
+
 /// Une note par élève et par évaluation : le même identifiant sur tous les postes,
 /// pour que deux saisies hors ligne de la même case se remplacent au lieu de se refuser.
 String _idNote(String evaluation, String eleve) {
@@ -352,6 +420,11 @@ class _NotesScreenState extends State<NotesScreen> {
         const SizedBox(height: 12),
         if (_onglet == 2)
           _FinAnnee(espace: _e, annee: annee, classe: classe, periodes: periodes, peutDecider: _planifie)
+        // Sur ordinateur, le carnet de notes (élèves × épreuves) ; sur téléphone, la liste des épreuves
+        // (chacune s'ouvre sur le pavé de saisie).
+        else if (_onglet == 0 && !telephone)
+          _CarnetNotes(
+              espace: _e, classe: classe, periode: periode, session: session, sessions: sessions, peutSaisir: _saisit && !close && !sessionClose)
         else if (_onglet == 0)
           _Evaluations(
               espace: _e, classe: classe, periode: periode, session: session, sessions: sessions, peutSaisir: _saisit && !close && !sessionClose)
@@ -451,7 +524,7 @@ class _Evaluations extends StatelessWidget {
   final Lignes sessions;
   final bool peutSaisir;
 
-  Future<void> _nouvelle(BuildContext context, {String? matiereChoisie}) async {
+  Future<void> _nouvelle(BuildContext context, {String? matiereChoisie, bool ouvrirSaisie = true}) async {
     final messager = ScaffoldMessenger.of(context);
     final matieres = {
       for (final m in await db.getAll('SELECT id, nom FROM matieres WHERE niveau_id = ? ORDER BY nom', [classe['niveau_id']]))
@@ -551,9 +624,7 @@ class _Evaluations extends StatelessWidget {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
         [id, espace.orgId, periode['id'], laS?['id'], classe['id'], matiere, type, _date(date),
           libelle.text.trim().isEmpty ? null : libelle.text.trim(), monId, m0, m0]);
-    if (context.mounted) {
-      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => _SaisieNotesScreen(espace: espace, evaluationId: id)));
-    }
+    if (context.mounted && ouvrirSaisie) await _ouvrirSaisie(context, espace, id);
   }
 
   @override
@@ -592,7 +663,9 @@ class _Evaluations extends StatelessWidget {
       final moy = (ev['moyenne'] as num?)?.toDouble();
       return InkWell(
         onTap: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => _SaisieNotesScreen(espace: espace, evaluationId: ev['id'] as String))),
+            .push(MaterialPageRoute(builder: (_) => MediaQuery.sizeOf(context).width < 640
+                ? _SaisiePaveScreen(espace: espace, evaluationId: ev['id'] as String)
+                : _SaisieNotesScreen(espace: espace, evaluationId: ev['id'] as String))),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(children: [
@@ -788,21 +861,9 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
     super.dispose();
   }
 
-  Future<void> _enregistrer(Map<String, Object?> ev, String eleveId, {double? valeur, String? acquis, required String etat}) async {
-    final id = _idNote(widget.evaluationId, eleveId);
-    final existe = await db.getOptional('SELECT 1 FROM notes WHERE id = ?', [id]);
-    final m0 = _maintenant();
-    if (existe != null) {
-      await db.execute('UPDATE notes SET valeur = ?, acquis = ?, etat = ?, motif = ?, saisi_par = ?, updated_at = ? WHERE id = ?',
-          [etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat, _motif, monId, m0, id]);
-    } else {
-      await db.execute(
-          '''INSERT INTO notes (id, organisation_id, evaluation_id, eleve_id, valeur, acquis, etat, motif, bareme, saisi_par, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-          [id, widget.espace.orgId, widget.evaluationId, eleveId, etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat,
-            _motif, ev['bareme'], monId, m0, m0]);
-    }
-  }
+  Future<void> _enregistrer(Map<String, Object?> ev, String eleveId, {double? valeur, String? acquis, required String etat}) =>
+      _ecrireNote(widget.espace.orgId, widget.evaluationId, eleveId, ev['bareme'] as int? ?? 20,
+          valeur: valeur, acquis: acquis, etat: etat, motif: _motif);
 
   /// Lit la note tapée (virgule ou point) ; vide : on retire la note.
   Future<void> _valeurTapee(Map<String, Object?> ev, String eleveId, String texte) async {
