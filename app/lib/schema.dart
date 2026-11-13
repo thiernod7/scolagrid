@@ -605,10 +605,51 @@ const schema = Schema([
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
+  // Historique des notes (écrit par le serveur) et décisions de fin d'année (migration 043).
+  Table('notes_historique', [
+    Column.text('organisation_id'),
+    Column.text('note_id'),
+    Column.text('evaluation_id'),
+    Column.text('eleve_id'),
+    Column.real('avant_valeur'),
+    Column.text('avant_etat'),
+    Column.text('avant_acquis'),
+    Column.real('apres_valeur'),
+    Column.text('apres_etat'),
+    Column.text('apres_acquis'),
+    Column.text('motif'),
+    Column.text('par'),
+    Column.text('le'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_evaluation', [IndexedColumn('evaluation_id')]),
+  ]),
+  Table('decisions_annee', [
+    Column.text('organisation_id'),
+    Column.text('annee_id'),
+    Column.text('inscription_id'),
+    Column.text('eleve_id'),
+    Column.real('moyenne_annuelle'),
+    Column.text('proposition'),
+    Column.text('decision'),
+    Column.text('motif'),
+    Column.text('par'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_inscription', [IndexedColumn('inscription_id')]),
+  ]),
   // Règles de calcul de l'école et mentions par cycle (migration 042).
   Table('regles_notes', [
     Column.text('organisation_id'),
     Column.text('absences'),
+    // Lot 4-5 (migration 043) : délai de remise, moyenne annuelle, seuils de passage.
+    Column.integer('delai_remise_jours'),
+    Column.text('moyenne_annuelle'),
+    Column.integer('poids_derniere'),
+    Column.real('seuil_passage_10'),
+    Column.real('seuil_passage_20'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -660,6 +701,9 @@ const schema = Schema([
     Column.text('date_evaluation'),
     Column.text('libelle'),
     Column.text('cree_par'),
+    // Remise des notes : indicateur de suivi, pas un verrou (migration 043).
+    Column.text('remise_le'),
+    Column.text('remise_par'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [
@@ -673,6 +717,8 @@ const schema = Schema([
     Column.text('acquis'),
     Column.text('etat'),
     Column.integer('bareme'),
+    // Motif d'une correction dans une session clôturée (migration 043).
+    Column.text('motif'),
     Column.text('saisi_par'),
     Column.text('created_at'),
     Column.text('updated_at'),

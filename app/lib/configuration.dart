@@ -35,6 +35,7 @@ part 'eleves.dart';
 part 'familles.dart';
 part 'encaissement.dart';
 part 'fiche_eleve.dart';
+part 'fin_annee.dart';
 part 'frais.dart';
 part 'horloge.dart';
 part 'identite.dart';

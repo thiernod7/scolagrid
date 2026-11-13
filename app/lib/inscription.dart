@@ -297,7 +297,8 @@ class _InscrireScreenState extends State<InscrireScreen> {
     Map<String, Object?>? precedente;
     if (widget.eleveId != null) {
       final p = await db.getOptional('''
-          SELECT i.id, i.statut, c.niveau_id, n.nom AS niveau, n.ordre, n.niveau_final, a.libelle AS annee
+          SELECT i.id, i.statut, c.niveau_id, n.nom AS niveau, n.ordre, n.niveau_final, a.libelle AS annee,
+            (SELECT d.decision FROM decisions_annee d WHERE d.inscription_id = i.id) AS decision
           FROM inscriptions i JOIN classes c ON c.id = i.classe_id JOIN niveaux n ON n.id = c.niveau_id
           JOIN annees_scolaires a ON a.id = i.annee_id
           WHERE i.eleve_id = ? AND a.debut < ? AND i.statut <> 'annule'
@@ -307,15 +308,22 @@ class _InscrireScreenState extends State<InscrireScreen> {
     return (classes: classes, frais: frais, precedente: precedente);
   }
 
-  /// Réinscription : on propose le niveau au-dessus de celui de l'an dernier.
+  /// Réinscription : on propose le niveau au-dessus de celui de l'an dernier, ou
+  /// le même si le conseil de fin d'année a décidé un redoublement.
   void _proposerNiveau() {
     _niveau = null;
     _classe = null;
     final p = _precedente;
-    if (p == null || p['niveau_final'] == 1) return;
-    final suivant = _classes.where((c) => (c['ordre_niveau'] as int? ?? 0) > (p['ordre'] as int? ?? 0)).firstOrNull;
-    if (suivant == null) return;
-    _niveau = suivant['niveau_id'] as String;
+    if (p == null || p['decision'] == 'exclu') return;
+    if (p['decision'] == 'redouble') {
+      if (_classes.any((c) => c['niveau_id'] == p['niveau_id'])) _niveau = p['niveau_id'] as String;
+    } else {
+      if (p['niveau_final'] == 1) return;
+      final suivant = _classes.where((c) => (c['ordre_niveau'] as int? ?? 0) > (p['ordre'] as int? ?? 0)).firstOrNull;
+      if (suivant == null) return;
+      _niveau = suivant['niveau_id'] as String;
+    }
+    if (_niveau == null) return;
     final dansNiveau = _classes.where((x) => x['niveau_id'] == _niveau).toList();
     if (dansNiveau.length == 1) _classe = dansNiveau.first['id'] as String;
   }
@@ -1352,8 +1360,10 @@ class _InscrireScreenState extends State<InscrireScreen> {
     final ordre = _classes.where((c) => c['niveau_id'] == niveau).firstOrNull?['ordre_niveau'] as int?;
     final ordrePrecedent = p['ordre'] as int? ?? 0;
     return [
-      _Bandeau(ton: Ton.info, icone: Icons.history_edu, enfants: [
+      _Bandeau(ton: p['decision'] == 'exclu' ? Ton.retard : Ton.info, icone: Icons.history_edu, enfants: [
         Text("L'an dernier (${p['annee']}) : ${p['niveau']}."),
+        // La décision du conseil de fin d'année, reprise sans ressaisie.
+        if (p['decision'] != null) Text('Décision du conseil : ${decisionsAnnee[p['decision']] ?? p['decision']}.'),
       ]),
       if (p['niveau_final'] == 1 && p['statut'] != 'diplome')
         _Bandeau(ton: Ton.regle, icone: Icons.school_outlined, enfants: [

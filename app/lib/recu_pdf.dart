@@ -871,6 +871,83 @@ Future<Uint8List> bulletinsAcquisPdf({
   return doc.save();
 }
 
+/// Bulletin de fin d'année : le rappel des moyennes de chaque période (la
+/// progression), la moyenne et le rang annuels, la décision du conseil, les
+/// signatures du directeur et du professeur principal (spécification §9.5).
+Future<Uint8List> bulletinsAnnuelsPdf({
+  required Map<String, Object?> ecole,
+  required String annee,
+  required String classe,
+  required int bareme,
+  required int effectif,
+  required List<
+          ({
+            String nom,
+            String matricule,
+            List<({String libelle, double? moyenne})> periodes,
+            double? moyenne,
+            int? rang,
+            String? decision,
+          })>
+      bulletins,
+  ImagesEcole images = const ImagesEcole(),
+}) {
+  final doc = pw.Document(title: 'Bulletins de fin d\'année $classe');
+  String n(double? v) => v == null ? '—' : v.toStringAsFixed(2).replaceAll('.', ',');
+  String r(int? x) => x == null ? '—' : (x == 1 ? '1er' : '${x}e');
+  const st = pw.TextStyle(fontSize: 11);
+  final gras = pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold);
+  pw.Widget cel(String t, {pw.TextStyle? style, bool droite = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      child: pw.Text(t, textAlign: droite ? pw.TextAlign.right : pw.TextAlign.left, style: style ?? st));
+  for (final b in bulletins) {
+    doc.addPage(pw.Page(
+      pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.all(32)),
+      build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        _enTete(ecole, images, titre: 13, petit: 8),
+        pw.Divider(),
+        pw.Center(child: pw.Text('BULLETIN DE FIN D\'ANNÉE', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold))),
+        pw.Center(child: pw.Text('Année scolaire $annee', style: const pw.TextStyle(fontSize: 10))),
+        pw.SizedBox(height: 12),
+        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+          pw.Text('Élève : ${b.nom}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          pw.Text('Matricule : ${b.matricule}', style: const pw.TextStyle(fontSize: 10)),
+        ]),
+        pw.Text('Classe : $classe · effectif : $effectif', style: const pw.TextStyle(fontSize: 10)),
+        pw.SizedBox(height: 12),
+        pw.Table(
+          border: pw.TableBorder.all(color: PdfColors.grey600, width: .5),
+          columnWidths: const {0: pw.FlexColumnWidth(3), 1: pw.FlexColumnWidth(1.5)},
+          children: [
+            pw.TableRow(decoration: const pw.BoxDecoration(color: PdfColors.grey200), children: [
+              cel('Période', style: gras),
+              cel('Moyenne /$bareme', style: gras, droite: true),
+            ]),
+            for (final p in b.periodes) pw.TableRow(children: [cel(p.libelle), cel(n(p.moyenne), droite: true)]),
+          ],
+        ),
+        pw.SizedBox(height: 14),
+        pw.Text('MOYENNE ANNUELLE : ${n(b.moyenne)} / $bareme', style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+        pw.Text('Rang annuel : ${r(b.rang)} sur $effectif', style: const pw.TextStyle(fontSize: 11)),
+        if (mention(b.moyenne, bareme) != null) pw.Text('Mention : ${mention(b.moyenne, bareme)}', style: const pw.TextStyle(fontSize: 11)),
+        pw.SizedBox(height: 16),
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.all(10),
+          decoration: pw.BoxDecoration(border: pw.Border.all(color: PdfColors.grey700, width: .8)),
+          child: pw.Text('DÉCISION DU CONSEIL : ${b.decision ?? '……………………………………'}', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+        ),
+        pw.Spacer(),
+        pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+          pw.Column(children: [pw.Text('Le Professeur principal', style: const pw.TextStyle(fontSize: 9)), pw.SizedBox(height: 50)]),
+          pw.Column(children: [pw.Text('Le Directeur', style: const pw.TextStyle(fontSize: 9)), _signer(ecole, images, hauteur: 50)]),
+        ]),
+      ]),
+    ));
+  }
+  return doc.save();
+}
+
 /// Calendrier des évaluations d'une classe pour une session (ou une période),
 /// à afficher au mur de la classe : date, matière, nature, enseignant.
 Future<Uint8List> calendrierEvaluationsPdf({

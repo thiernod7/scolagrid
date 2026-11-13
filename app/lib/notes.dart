@@ -45,6 +45,40 @@ List<(String, DateTime, DateTime)> _periodesParDefaut(String cycle, DateTime deb
   ];
 }
 
+/// « On saisit hors ligne, on ne publie pas hors ligne » (spécification §10) :
+/// le rang, les bulletins et les clôtures attendent que tout soit synchronisé.
+Future<bool> _synchronise() async {
+  final statut = db.currentStatus;
+  if (!statut.connected || statut.lastSyncedAt == null) return false;
+  return (await db.getUploadQueueStats()).count == 0;
+}
+
+/// Prévient et refuse quand le poste n'est pas à jour avec le serveur.
+Future<bool> _toutEstSynchronise(BuildContext context) async {
+  final messager = ScaffoldMessenger.of(context);
+  if (await _synchronise()) return true;
+  messager.showSnackBar(const SnackBar(
+      content: Text('Connectez-vous à internet et attendez la fin de l\'envoi des notes : '
+          'une clôture vaut pour tous les postes, elle se fait synchronisé.')));
+  return false;
+}
+
+/// Reconstruit son contenu selon l'état de la synchronisation (connecté, envois en attente).
+class _SelonSynchro extends StatelessWidget {
+  const _SelonSynchro({required this.builder});
+
+  final Widget Function(BuildContext context, bool synchronise) builder;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder(
+        stream: db.statusStream,
+        builder: (context, _) => FutureBuilder<bool>(
+          future: _synchronise(),
+          builder: (context, s) => builder(context, s.data ?? false),
+        ),
+      );
+}
+
 const _moisNoms = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
 /// Les sessions proposées pour une période : une « Évaluation de (mois) » par mois,
@@ -148,7 +182,7 @@ class _NotesScreenState extends State<NotesScreen> {
   String? _classeId;
   String? _periodeId;
   String? _sessionId; // null : toute la période
-  int _onglet = 0; // 0 évaluations, 1 résultats
+  int _onglet = 0; // 0 évaluations, 1 résultats, 2 fin d'année
 
   Espace get _e => widget.espace;
   bool get _planifie => _e.fondateur || _e.droits.contains('planifier_evaluations');
@@ -305,7 +339,10 @@ class _NotesScreenState extends State<NotesScreen> {
         ]),
         const SizedBox(height: 14),
         Row(children: [
-          Segments<int>(valeur: _onglet, choix: const {0: 'Évaluations', 1: 'Résultats'}, onChanged: (v) => setState(() => _onglet = v)),
+          Segments<int>(
+              valeur: _onglet,
+              choix: const {0: 'Évaluations', 1: 'Résultats', 2: 'Fin d\'année'},
+              onChanged: (v) => setState(() => _onglet = v)),
           const Spacer(),
           if (close)
             const Etat('Période clôturée', ton: Ton.neutre, icone: Icons.lock_outline)
@@ -313,7 +350,9 @@ class _NotesScreenState extends State<NotesScreen> {
             const Etat('Session clôturée', ton: Ton.neutre, icone: Icons.lock_outline),
         ]),
         const SizedBox(height: 12),
-        if (_onglet == 0)
+        if (_onglet == 2)
+          _FinAnnee(espace: _e, annee: annee, classe: classe, periodes: periodes, peutDecider: _planifie)
+        else if (_onglet == 0)
           _Evaluations(
               espace: _e, classe: classe, periode: periode, session: session, sessions: sessions, peutSaisir: _saisit && !close && !sessionClose)
         else
@@ -342,6 +381,8 @@ class _NotesScreenState extends State<NotesScreen> {
   }
 
   Future<void> _cloturer(Map<String, Object?> periode, bool cloturer) async {
+    if (!await _toutEstSynchronise(context)) return;
+    if (!mounted) return;
     final ok = await _confirmer(
         context,
         cloturer
@@ -354,6 +395,8 @@ class _NotesScreenState extends State<NotesScreen> {
 
   /// Clôturer une session fige ses notes : ses bulletins (mensuels) peuvent sortir.
   Future<void> _cloturerSession(Map<String, Object?> session, bool cloturer) async {
+    if (!await _toutEstSynchronise(context)) return;
+    if (!mounted) return;
     final ok = await _confirmer(
         context,
         cloturer
@@ -519,6 +562,7 @@ class _Evaluations extends StatelessWidget {
         parametres: [classe['niveau_id']],
         builder: (context, matieres) => Requete(
           '''SELECT ev.*, t.libelle AS type, t.compte, t.poids, s.libelle AS session, s.statut AS statut_session,
+               coalesce((SELECT r.delai_remise_jours FROM regles_notes r WHERE r.organisation_id = ev.organisation_id), 15) AS delai,
                (SELECT count(*) FROM notes n WHERE n.evaluation_id = ev.id AND n.etat <> 'non_note') AS saisies,
                (SELECT avg(n.valeur) FROM notes n WHERE n.evaluation_id = ev.id AND n.etat = 'note') AS moyenne
              FROM evaluations ev JOIN types_evaluation t ON t.id = ev.type_id
@@ -570,6 +614,17 @@ class _Evaluations extends StatelessWidget {
                       if (ev['statut_session'] == 'cloturee') 'session close',
                     ].join(' · '),
                     style: TextStyle(fontSize: 12, color: gris)),
+                // La remise des notes : rendue, attendue, ou en retard (délai de l'école après l'épreuve).
+                Builder(builder: (context) {
+                  if (ev['remise_le'] != null) {
+                    return const Text('notes remises', style: TextStyle(fontSize: 11, color: Couleurs.regle));
+                  }
+                  final date = DateTime.tryParse('${ev['date_evaluation']}');
+                  final delai = ev['delai'] as int? ?? 15;
+                  final retard = date == null ? 0 : DateTime.now().difference(date).inDays - delai;
+                  return Text(retard > 0 ? 'remise en retard de $retard jour(s)' : 'notes à remettre',
+                      style: TextStyle(fontSize: 11, color: retard > 0 ? Couleurs.retard : Couleurs.attente));
+                }),
               ]),
             ),
             SizedBox(
@@ -716,6 +771,8 @@ class _SaisieNotesScreen extends StatefulWidget {
 }
 
 class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
+  /// Session clôturée : une correction demande un motif, gardé dans l'historique.
+  String? _motif;
   final _champs = <String, TextEditingController>{};
   final _focus = <String, FocusNode>{};
   final _erreurs = <String, String>{};
@@ -736,14 +793,14 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
     final existe = await db.getOptional('SELECT 1 FROM notes WHERE id = ?', [id]);
     final m0 = _maintenant();
     if (existe != null) {
-      await db.execute('UPDATE notes SET valeur = ?, acquis = ?, etat = ?, saisi_par = ?, updated_at = ? WHERE id = ?',
-          [etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat, monId, m0, id]);
+      await db.execute('UPDATE notes SET valeur = ?, acquis = ?, etat = ?, motif = ?, saisi_par = ?, updated_at = ? WHERE id = ?',
+          [etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat, _motif, monId, m0, id]);
     } else {
       await db.execute(
-          '''INSERT INTO notes (id, organisation_id, evaluation_id, eleve_id, valeur, acquis, etat, bareme, saisi_par, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+          '''INSERT INTO notes (id, organisation_id, evaluation_id, eleve_id, valeur, acquis, etat, motif, bareme, saisi_par, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
           [id, widget.espace.orgId, widget.evaluationId, eleveId, etat == 'note' ? valeur : null, etat == 'note' ? acquis : null, etat,
-            ev['bareme'], monId, m0, m0]);
+            _motif, ev['bareme'], monId, m0, m0]);
     }
   }
 
@@ -777,17 +834,23 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
         builder: (context, l) {
           if (l.isEmpty) return const Scaffold(body: Center(child: Text('Évaluation introuvable.')));
           final ev = l.first;
-          final ouverte = ev['statut_periode'] == 'ouverte' &&
-              ev['statut_session'] != 'cloturee' &&
-              (widget.espace.fondateur ||
-                  widget.espace.droits.contains('saisir_notes') ||
-                  widget.espace.droits.contains('planifier_evaluations'));
+          final aLeDroit = widget.espace.fondateur ||
+              widget.espace.droits.contains('saisir_notes') ||
+              widget.espace.droits.contains('planifier_evaluations');
+          // Session clôturée (période ouverte) : correction possible, avec un motif.
+          final corrigeable = aLeDroit && ev['statut_periode'] == 'ouverte' && ev['statut_session'] == 'cloturee';
+          final ouverte = aLeDroit && ev['statut_periode'] == 'ouverte' && (ev['statut_session'] != 'cloturee' || _motif != null);
           return Scaffold(
             appBar: AppBar(
               titleSpacing: 0,
               title: Text('${ev['matiere']} · ${ev['classe']}', style: const TextStyle(fontSize: 17)),
               actions: [
-                if (ouverte)
+                IconButton(
+                  tooltip: 'Historique des modifications',
+                  icon: const Icon(Icons.history),
+                  onPressed: () => _historique(context, ev),
+                ),
+                if (ouverte && ev['statut_session'] != 'cloturee')
                   PopupMenuButton<String>(
                     onSelected: (v) async {
                       if (v == 'supprimer' &&
@@ -810,13 +873,72 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
                  WHERE i.classe_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
                  ORDER BY e.nom, e.prenoms''',
               parametres: [widget.evaluationId, ev['classe_id']],
-              builder: (context, eleves) => _lignes(context, ev, eleves, ouverte),
+              builder: (context, eleves) => _lignes(context, ev, eleves, ouverte, corrigeable: corrigeable, aLeDroit: aLeDroit),
             ),
           );
         },
       );
 
-  Widget _lignes(BuildContext context, Map<String, Object?> ev, Lignes eleves, bool ouverte) {
+  /// Toutes les modifications des notes de l'épreuve : avant, après, qui, quand, motif.
+  Future<void> _historique(BuildContext context, Map<String, Object?> ev) async {
+    final l = await db.getAll('''
+        SELECT h.*, e.nom, e.prenoms, p.nom_complet AS auteur FROM notes_historique h
+        JOIN eleves e ON e.id = h.eleve_id LEFT JOIN personnes p ON p.id = h.par
+        WHERE h.evaluation_id = ? ORDER BY h.le DESC''', [widget.evaluationId]);
+    if (!context.mounted) return;
+    String valeur(Object? v, Object? etat, Object? acquis) => etat == null
+        ? '—'
+        : etat == 'supprimee'
+            ? 'effacée'
+            : etat == 'note'
+                ? (acquis != null ? niveauxAcquis['$acquis'] ?? '$acquis' : noteLisible((v as num?)?.toDouble()))
+                : _etatsCourts['$etat'] ?? '$etat';
+    await showDialog<void>(
+      context: context,
+      builder: (dialogue) => AlertDialog(
+        title: const Text('Historique des modifications'),
+        content: SizedBox(
+          width: 480,
+          child: l.isEmpty
+              ? const Text('Aucune modification : les notes sont telles que saisies la première fois.')
+              : ListView(shrinkWrap: true, children: [
+                  for (final h in l)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('${h['nom']} ${h['prenoms']} : ${valeur(h['avant_valeur'], h['avant_etat'], h['avant_acquis'])}'
+                          ' → ${valeur(h['apres_valeur'], h['apres_etat'], h['apres_acquis'])}'),
+                      subtitle: Text([
+                        _dateLisible(h['le']),
+                        if (h['auteur'] != null) 'par ${h['auteur']}',
+                        if (h['motif'] != null) 'motif : ${h['motif']}',
+                      ].join(' · ')),
+                    ),
+                ]),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogue), child: const Text('Fermer'))],
+      ),
+    );
+  }
+
+  /// La remise : l'enseignant déclare sa saisie terminée (indicateur pour la direction).
+  Future<void> _remettre(Map<String, Object?> ev, bool remettre) async {
+    await db.execute('UPDATE evaluations SET remise_le = ?, remise_par = ?, updated_at = ? WHERE id = ?',
+        [remettre ? _maintenant() : null, remettre ? monId : null, _maintenant(), widget.evaluationId]);
+  }
+
+  /// Corriger une note d'une session clôturée : le motif vaut pour toute la correction.
+  Future<void> _demanderMotif() async {
+    final c = TextEditingController();
+    final ok = await _formulaire(context, 'Corriger une note (session clôturée)', (_) => [
+          const Text('Les bulletins de cette session sont peut-être déjà sortis : la correction est tracée avec son motif.'),
+          TextField(controller: c, autofocus: true, maxLength: 200, decoration: _champ('Motif', aide: 'Par exemple : erreur de report de la copie')),
+        ], valider: () => 'Corriger');
+    if (ok && c.text.trim().length >= 3) setState(() => _motif = c.text.trim());
+  }
+
+  Widget _lignes(BuildContext context, Map<String, Object?> ev, Lignes eleves, bool ouverte,
+      {bool corrigeable = false, bool aLeDroit = false}) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
     final bareme = ev['bareme'] as int? ?? 20;
@@ -867,9 +989,30 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
             color: saisies >= eleves.length ? Couleurs.regle : Couleurs.attente,
           ),
         ),
+        const SizedBox(height: 10),
+        // La remise : un indicateur pour la direction, pas un verrou.
+        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          if (ev['remise_le'] != null)
+            Etat('Notes remises le ${_dateLisible(ev['remise_le'])}', ton: Ton.regle, icone: Icons.task_alt)
+          else
+            const Etat('Notes pas encore remises', ton: Ton.attente),
+          if (aLeDroit)
+            TextButton(
+              onPressed: () => _remettre(ev, ev['remise_le'] == null),
+              child: Text(ev['remise_le'] == null ? 'J\'ai terminé : remettre les notes' : 'Annuler la remise'),
+            ),
+          if (corrigeable && _motif == null)
+            OutlinedButton.icon(
+              onPressed: _demanderMotif,
+              icon: const Icon(Icons.edit_note, size: 16),
+              label: const Text('Corriger une note (motif)'),
+            ),
+          if (_motif != null) Etat('Correction : $_motif', ton: Ton.attente, icone: Icons.edit_note),
+        ]),
         if (!ouverte) ...[
           const SizedBox(height: 10),
-          const Etat('Lecture seule : période clôturée ou pas de droit de saisie', icone: Icons.lock_outline),
+          Etat(corrigeable ? 'Session clôturée : corrigez avec un motif' : 'Lecture seule : période clôturée ou pas de droit de saisie',
+              icone: Icons.lock_outline),
         ] else ...[
           const SizedBox(height: 8),
           Text(
@@ -1051,13 +1194,15 @@ class _Resultats extends StatelessWidget {
                  UNION ALL
                  SELECT 'mention', libelle, minimum FROM mentions_notes WHERE organisation_id = ? AND cycle = ?''',
               parametres: [espace.orgId, espace.orgId, classe['cycle']],
-              builder: (context, reglages) => _contenu(context, eleves, matieres, notes, reglages),
+              builder: (context, reglages) => _SelonSynchro(
+                builder: (context, synchronise) => _contenu(context, eleves, matieres, notes, reglages, synchronise),
+              ),
             ),
           ),
         ),
       );
 
-  Widget _contenu(BuildContext context, Lignes eleves, Lignes matieres, Lignes notes, Lignes reglages) {
+  Widget _contenu(BuildContext context, Lignes eleves, Lignes matieres, Lignes notes, Lignes reglages, bool synchronise) {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
     final bordure = Theme.of(context).dividerColor;
@@ -1092,7 +1237,8 @@ class _Resultats extends StatelessWidget {
         for (final m in matieres) (moy[id]![m['id']], (m['coefficient'] as num? ?? 1).toDouble()),
       ]);
     }
-    final rang = rangs(generale);
+    // Hors ligne ou envois en attente : pas de rang (un rang provisoire faux est pire que pas de rang).
+    final rang = synchronise ? rangs(generale) : <String, int>{};
     final rangMatiere = {
       for (final m in matieres) m['id'] as String: rangs({for (final e in eleves) e['id'] as String: moy[e['id']]![m['id']]}),
     };
@@ -1193,7 +1339,7 @@ class _Resultats extends StatelessWidget {
           Text(valeur, style: _chiffresDep.copyWith(fontSize: 16, fontWeight: FontWeight.w600)),
         ]),
       FilledButton.icon(
-        onPressed: eleves.isEmpty ? null : () => imprimer(ordre),
+        onPressed: eleves.isEmpty || !synchronise ? null : () => imprimer(ordre),
         icon: const Icon(Icons.print_outlined, size: 16),
         label: Text(session == null ? 'Bulletins de la classe' : 'Bulletins de la session'),
       ),
@@ -1204,7 +1350,7 @@ class _Resultats extends StatelessWidget {
           icon: const Icon(Icons.more_horiz, size: 18),
           onSelected: (v) => v == 'bulletin' ? imprimer([e]) : apprecier(e),
           itemBuilder: (_) => [
-            const PopupMenuItem(value: 'bulletin', child: _ItemMenu(Icons.print_outlined, 'Imprimer son bulletin')),
+            if (synchronise) const PopupMenuItem(value: 'bulletin', child: _ItemMenu(Icons.print_outlined, 'Imprimer son bulletin')),
             // L'appréciation est celle du bulletin de période (le bulletin de session n'en a pas).
             if (peutSaisir && session == null)
               const PopupMenuItem(value: 'appreciation', child: _ItemMenu(Icons.rate_review_outlined, 'Appréciation')),
@@ -1308,6 +1454,14 @@ class _Resultats extends StatelessWidget {
     }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (!synchronise)
+        Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: Couleurs.attenteFond, borderRadius: BorderRadius.circular(8)),
+          child: const Text('Poste pas à jour (hors ligne ou notes en attente d\'envoi) : les moyennes sont celles de ce poste, '
+              'le rang et les bulletins attendent la synchronisation, pour ne rien publier de faux.'),
+        ),
       entete,
       const SizedBox(height: 6),
       Text(
@@ -1457,8 +1611,50 @@ class _ReglagesNotesScreen extends StatelessWidget {
               style: TextStyle(fontSize: 12)),
         ]);
     if (!ok || libelle.text.trim().length < 2 || fin.isBefore(debut)) return;
-    await _modifier('periodes_evaluation', p['id'] as String,
-        {'libelle': libelle.text.trim(), 'debut': _date(debut), 'fin': _date(fin), 'bareme': bareme, 'nature': nature});
+    // Les périodes couvrent l'année sans trou ni chevauchement (spécification §2.5) :
+    // déplacer une limite décale la période voisine, et leurs sessions suivent.
+    final messager = ScaffoldMessenger.of(context);
+    final aDebut = DateTime.parse('${annee['debut']}'), aFin = DateTime.parse('${annee['fin']}');
+    if (debut.isBefore(aDebut) || fin.isAfter(aFin)) {
+      messager.showSnackBar(SnackBar(content: Text('La période doit rester dans l\'année (${_dateLisible(annee['debut'])} – ${_dateLisible(annee['fin'])}).')));
+      return;
+    }
+    final voisines = await db.getAll('SELECT * FROM periodes_evaluation WHERE annee_id = ? AND cycle = ? AND id <> ? ORDER BY ordre',
+        [annee['id'], p['cycle'], p['id']]);
+    final avant = voisines.where((x) => (x['ordre'] as int) < (p['ordre'] as int)).lastOrNull;
+    final apres = voisines.where((x) => (x['ordre'] as int) > (p['ordre'] as int)).firstOrNull;
+    DateTime jour(DateTime d, int plus) => DateTime(d.year, d.month, d.day + plus);
+    for (final (voisine, nouveauDebut, nouvelleFin) in [
+      if (avant != null) (avant, DateTime.parse('${avant['debut']}'), jour(debut, -1)),
+      if (apres != null) (apres, jour(fin, 1), DateTime.parse('${apres['fin']}')),
+    ]) {
+      if (nouvelleFin.isBefore(nouveauDebut)) {
+        messager.showSnackBar(SnackBar(content: Text('« ${voisine['libelle']} » disparaîtrait : changez d\'abord ses dates.')));
+        return;
+      }
+      if (voisine['statut'] == 'cloturee' &&
+          (_date(nouveauDebut) != '${voisine['debut']}' || _date(nouvelleFin) != '${voisine['fin']}')) {
+        messager.showSnackBar(SnackBar(content: Text('« ${voisine['libelle']} » est clôturée : ses dates ne bougent plus.')));
+        return;
+      }
+    }
+    final m0 = _maintenant();
+    await db.writeTransaction((tx) async {
+      Future<void> poser(String id, DateTime d, DateTime f, [Map<String, Object?> autres = const {}]) async {
+        await tx.execute('UPDATE periodes_evaluation SET debut = ?, fin = ?, updated_at = ? WHERE id = ?', [_date(d), _date(f), m0, id]);
+        for (final e in autres.entries) {
+          await tx.execute('UPDATE periodes_evaluation SET ${e.key} = ? WHERE id = ?', [e.value, id]);
+        }
+        // Les sessions restent dans leur période : on rogne celles qui débordent.
+        await tx.execute("UPDATE sessions_evaluation SET debut = ?, updated_at = ? WHERE periode_id = ? AND debut < ? AND fin >= ? AND statut = 'ouverte'",
+            [_date(d), m0, id, _date(d), _date(d)]);
+        await tx.execute("UPDATE sessions_evaluation SET fin = ?, updated_at = ? WHERE periode_id = ? AND fin > ? AND debut <= ? AND statut = 'ouverte'",
+            [_date(f), m0, id, _date(f), _date(f)]);
+      }
+      await poser(p['id'] as String, debut, fin, {'libelle': libelle.text.trim(), 'bareme': bareme, 'nature': nature});
+      if (avant != null) await poser(avant['id'] as String, DateTime.parse('${avant['debut']}'), jour(debut, -1));
+      if (apres != null) await poser(apres['id'] as String, jour(fin, 1), DateTime.parse('${apres['fin']}'));
+    });
   }
 
   /// Une session : son nom, sa nature (type), sa fenêtre dans la période, et le
@@ -1526,25 +1722,62 @@ class _ReglagesNotesScreen extends StatelessWidget {
     }
   }
 
-  /// Le traitement de l'absence dans les moyennes : au choix de l'école.
-  Future<void> _absences(BuildContext context, String actuel, String? regleId) async {
-    var choix = actuel;
-    final ok = await _formulaire(context, "Absences et moyennes", (maj) => [
+  /// Les règles de l'école : absences, délai de remise, moyenne annuelle, seuils de passage.
+  Future<void> _regles(BuildContext context, Map<String, Object?>? r) async {
+    final messager = ScaffoldMessenger.of(context);
+    var absences = '${r?['absences'] ?? 'justifie_exclu'}';
+    var annuelle = '${r?['moyenne_annuelle'] ?? 'simple'}';
+    final delai = TextEditingController(text: '${r?['delai_remise_jours'] ?? 15}');
+    final poids = TextEditingController(text: '${r?['poids_derniere'] ?? 2}');
+    String nb(Object? v, num defaut) => noteLisible(((v as num?) ?? defaut).toDouble()).replaceAll(',00', '');
+    final seuil10 = TextEditingController(text: nb(r?['seuil_passage_10'], 5));
+    final seuil20 = TextEditingController(text: nb(r?['seuil_passage_20'], 10));
+    final ok = await _formulaire(context, 'Règles de calcul', (maj) => [
+          const Text('Absences', style: TextStyle(fontWeight: FontWeight.w600)),
           for (final e in traitementsAbsence.entries)
             ListTile(
+              dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: Icon(choix == e.key ? Icons.radio_button_checked : Icons.radio_button_unchecked, size: 20),
-              onTap: () => maj(() => choix = e.key),
+              leading: Icon(absences == e.key ? Icons.radio_button_checked : Icons.radio_button_unchecked, size: 20),
+              onTap: () => maj(() => absences = e.key),
               title: Text(e.value),
             ),
-          const Text('« Justifié exclu, non justifié 0 » protège l\'élève malade sans laisser d\'échappatoire : c\'est le réglage conseillé.',
-              style: TextStyle(fontSize: 12)),
+          TextField(
+              controller: delai,
+              keyboardType: TextInputType.number,
+              decoration: _champ('Délai de remise des notes (jours après l\'épreuve)', aide: 'Au-delà : alerte pour la direction, sans blocage')),
+          _liste('Moyenne annuelle', annuelle, const {'simple': 'Simple (moyenne des périodes)', 'ponderee': 'Pondérée : la dernière période pèse plus'},
+              (v) => maj(() => annuelle = v)),
+          if (annuelle == 'ponderee')
+            TextField(controller: poids, keyboardType: TextInputType.number, decoration: _champ('Poids de la dernière période', aide: '2 : elle compte double')),
+          Row(children: [
+            Expanded(child: TextField(controller: seuil10, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _champ('Passage (sur 10)'))),
+            const SizedBox(width: 12),
+            Expanded(child: TextField(controller: seuil20, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _champ('Passage (sur 20)'))),
+          ]),
+          const Text('Le calcul propose « Admis » ou « Redouble » ; le conseil décide.', style: TextStyle(fontSize: 12)),
         ]);
-    if (!ok || choix == actuel) return;
-    if (regleId == null) {
-      await _inserer('regles_notes', {'organisation_id': espace.orgId, 'absences': choix});
+    if (!ok) return;
+    final d = int.tryParse(delai.text.trim());
+    final w = int.tryParse(poids.text.trim());
+    final s10 = double.tryParse(seuil10.text.trim().replaceAll(',', '.'));
+    final s20 = double.tryParse(seuil20.text.trim().replaceAll(',', '.'));
+    if (d == null || d < 1 || d > 90 || w == null || w < 1 || w > 5 || s10 == null || s10 < 0 || s10 > 10 || s20 == null || s20 < 0 || s20 > 20) {
+      messager.showSnackBar(const SnackBar(content: Text('Délai entre 1 et 90 jours, poids entre 1 et 5, seuils dans leur barème.')));
+      return;
+    }
+    final valeurs = {
+      'absences': absences,
+      'delai_remise_jours': d,
+      'moyenne_annuelle': annuelle,
+      'poids_derniere': w,
+      'seuil_passage_10': s10,
+      'seuil_passage_20': s20,
+    };
+    if (r == null) {
+      await _inserer('regles_notes', {...valeurs, 'organisation_id': espace.orgId});
     } else {
-      await _modifier('regles_notes', regleId, {'absences': choix});
+      await _modifier('regles_notes', r['id'] as String, valeurs);
     }
   }
 
@@ -1764,20 +1997,32 @@ class _ReglagesNotesScreen extends StatelessWidget {
                 const SizedBox(height: 20),
                 Text('RÈGLES DE CALCUL', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris)),
                 const SizedBox(height: 6),
-                Builder(builder: (context) {
-                  final regle = reglages.where((r) => r['sorte'] == 'regle').firstOrNull;
-                  final absences = '${regle?['libelle'] ?? 'justifie_exclu'}';
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    child: ListTile(
-                      dense: true,
-                      title: const Text('Absences'),
-                      subtitle: Text(traitementsAbsence[absences] ?? absences),
-                      trailing: const Icon(Icons.edit_outlined, size: 18),
-                      onTap: () => _absences(context, absences, regle?['id'] as String?),
-                    ),
-                  );
-                }),
+                Requete(
+                  'SELECT * FROM regles_notes WHERE organisation_id = ?',
+                  parametres: [espace.orgId],
+                  builder: (context, l) {
+                    final r = l.isEmpty ? null : Map<String, Object?>.from(l.first);
+                    final absences = '${r?['absences'] ?? 'justifie_exclu'}';
+                    String nb(Object? v, num defaut) => noteLisible(((v as num?) ?? defaut).toDouble()).replaceAll(',00', '');
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      child: ListTile(
+                        dense: true,
+                        title: const Text('Absences, remise des notes, fin d\'année'),
+                        subtitle: Text([
+                          traitementsAbsence[absences] ?? absences,
+                          'remise sous ${r?['delai_remise_jours'] ?? 15} jours',
+                          r?['moyenne_annuelle'] == 'ponderee'
+                              ? 'moyenne annuelle pondérée (dernière ×${r?['poids_derniere'] ?? 2})'
+                              : 'moyenne annuelle simple',
+                          'passage ${nb(r?['seuil_passage_10'], 5)}/10 et ${nb(r?['seuil_passage_20'], 10)}/20',
+                        ].join(' · ')),
+                        trailing: const Icon(Icons.edit_outlined, size: 18),
+                        onTap: () => _regles(context, r),
+                      ),
+                    );
+                  },
+                ),
                 // Les mentions de chaque cycle noté (la maternelle n'a pas de mention).
                 for (final e in parCycle.entries)
                   if (e.value.any((p) => p['nature'] != 'appreciations'))
