@@ -424,7 +424,19 @@ class _NotesScreenState extends State<NotesScreen> {
         // (chacune s'ouvre sur le pavé de saisie).
         else if (_onglet == 0 && !telephone)
           _CarnetNotes(
-              espace: _e, classe: classe, periode: periode, session: session, sessions: sessions, peutSaisir: _saisit && !close && !sessionClose)
+            espace: _e,
+            annee: annee,
+            classe: classe,
+            periode: periode,
+            session: session,
+            sessions: sessions,
+            peutSaisir: _saisit && !close && !sessionClose,
+            changerClasse: (v) => setState(() {
+              _classeId = v;
+              _periodeId = null;
+              _sessionId = null;
+            }),
+          )
         else if (_onglet == 0)
           _Evaluations(
               espace: _e, classe: classe, periode: periode, session: session, sessions: sessions, peutSaisir: _saisit && !close && !sessionClose)
