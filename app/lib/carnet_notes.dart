@@ -192,6 +192,10 @@ class _CarnetNotesState extends State<_CarnetNotes> {
 
     // --- À gauche : mes classes et matières ---------------------------------------------
     final q = nomSimplifie(_cherche);
+    final ordonnes = [
+      ...services.where((x) => x['classe_id'] == _classe['id']),
+      ...services.where((x) => x['classe_id'] != _classe['id']),
+    ];
     final rail = Container(
       width: 270,
       decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: bordure)),
@@ -217,7 +221,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           padding: const EdgeInsets.only(left: 6, bottom: 6),
           child: Text('MES CLASSES ET MATIÈRES', style: TextStyle(fontSize: 11, letterSpacing: .6, fontWeight: FontWeight.w600, color: gris)),
         ),
-        for (final s in services)
+        for (final s in ordonnes)
           if (q.isEmpty || nomSimplifie('${s['classe']} ${s['matiere']}').contains(q))
             Builder(builder: (context) {
               final actif = s['classe_id'] == _classe['id'] && s['matiere_id'] == matiere['matiere_id'];
@@ -302,6 +306,11 @@ class _CarnetNotesState extends State<_CarnetNotes> {
     }
 
     // Les bandeaux de session : ils regroupent les colonnes de la même session.
+    // « Évaluation d'octobre » s'affiche « Octobre » (le nom complet au survol).
+    String courtSession(String l) {
+      final c = l.replaceFirst(RegExp(r"^Évaluation (de |d')"), '');
+      return c.isEmpty ? l : c[0].toUpperCase() + c.substring(1);
+    }
     final bandeaux = <({String libelle, int n, bool compo})>[];
     for (final ev in epreuves) {
       final libelle = '${ev['session'] ?? 'Hors session'}';
@@ -338,7 +347,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           // Case vide : teintée (orange dans l'épreuve choisie) pour voir tout de suite ce qui manque.
           color: etat == null
               ? (actif ? Couleurs.attenteFond : Couleurs.doux(context).withValues(alpha: .6))
-              : (actif ? Couleurs.infoFond.withValues(alpha: .5) : null),
+              : (actif ? const Color(0x0D2F72C4) : null),
           border: Border(left: BorderSide(color: bordure)),
         ),
         child: Focus(
@@ -424,12 +433,15 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                       color: b.libelle == 'Hors session' ? null : (b.compo ? Couleurs.attenteFond : Couleurs.infoFond),
                       border: Border(left: BorderSide(color: bordure)),
                     ),
-                    child: Text(b.libelle,
+                    child: Tooltip(
+                      message: b.libelle,
+                      child: Text(courtSession(b.libelle),
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: b.libelle == 'Hors session' ? gris : (b.compo ? Couleurs.attente : Couleurs.info))),
+                    ),
                   ),
                 Container(width: _largeurMoy, height: 30, decoration: BoxDecoration(border: Border(left: BorderSide(color: bordure)))),
               ]),
