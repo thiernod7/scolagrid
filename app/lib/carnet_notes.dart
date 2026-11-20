@@ -44,7 +44,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
   /// Ce que la base contient pour chaque case (pour n'enregistrer que ce qui a changé).
   final _enBase = <String, String>{};
 
-  static const _largeurNom = 240.0, _largeurCase = 112.0, _largeurTotal = 104.0, _largeurMoy = 124.0, _hauteurLigne = 56.0;
+  static const _largeurNomMin = 180.0, _largeurCase = 112.0, _largeurTotal = 104.0, _largeurMoy = 124.0, _hauteurLigne = 56.0;
 
   /// La case où l'on tape : enregistrée si l'on change de classe ou de période sans la quitter.
   Future<void> Function()? _enCours;
@@ -165,6 +165,8 @@ class _CarnetNotesState extends State<_CarnetNotes> {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
     final bordure = Theme.of(context).dividerColor;
+    // Largeur d'une colonne d'épreuve, ajustée à la place disponible (voir plus bas).
+    var largeurCase = _largeurCase;
     // Saisir ici : le droit, et pour un enseignant, cette matière dans cette classe.
     final saisir = widget.peutSaisir && (widget.cours?.saisit(_classe['id'], matiere['matiere_id']) ?? true);
     final parCase = {for (final n in notes) '${n['evaluation_id']}|${n['eleve_id']}': n};
@@ -321,7 +323,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
       return InkWell(
         onTap: () => setState(() => _epreuveId = ev['id'] as String),
         child: Container(
-          width: _largeurCase,
+          width: largeurCase,
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
           decoration: BoxDecoration(
             color: actif ? Couleurs.infoFond : null,
@@ -384,7 +386,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                   : (v != null && v < _bareme / 2 ? Couleurs.retard : null))
               : (etat == 'absent' ? Couleurs.retard : gris);
       return Container(
-        width: _largeurCase,
+        width: largeurCase,
         height: _hauteurLigne,
         decoration: BoxDecoration(
           // Case vide : teintée (orange dans l'épreuve choisie) pour voir tout de suite ce qui manque.
@@ -454,7 +456,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
       final st = stats(ev);
       final complet = st.saisies >= eleves.length;
       return Container(
-        width: _largeurCase,
+        width: largeurCase,
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(border: Border(left: BorderSide(color: bordure))),
         child: Column(children: [
@@ -480,7 +482,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                 SizedBox(width: nomL),
                 for (final b in bandeaux)
                   Container(
-                    width: _largeurCase * b.n,
+                    width: largeurCase * b.n,
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     decoration: BoxDecoration(
                       color: b.libelle == 'Hors session' ? null : (b.compo ? Couleurs.attenteFond : Couleurs.infoFond),
@@ -750,10 +752,12 @@ class _CarnetNotesState extends State<_CarnetNotes> {
         )
       else
         // La colonne des noms s'élargit : total et moyenne restent collés à droite, comme sur un bulletin.
-        LayoutBuilder(
-          builder: (context, c) => carnetDe(
-              math.max(_largeurNom, c.maxWidth - 2 - epreuves.length * _largeurCase - _largeurTotal - _largeurMoy).floorToDouble()),
-        ),
+        // Les colonnes d'épreuves se resserrent (jusqu'à 84 px) pour que tout tienne ; au-delà, on fait défiler.
+        LayoutBuilder(builder: (context, c) {
+          final dispo = c.maxWidth - 2 - _largeurTotal - _largeurMoy;
+          largeurCase = ((dispo - _largeurNomMin) / epreuves.length).clamp(84.0, _largeurCase).floorToDouble();
+          return carnetDe(math.max(_largeurNomMin, dispo - epreuves.length * largeurCase).floorToDouble());
+        }),
       const SizedBox(height: 12),
       Wrap(spacing: 18, runSpacing: 6, children: [
         Text.rich(TextSpan(style: TextStyle(fontSize: 12, color: gris), children: const [
