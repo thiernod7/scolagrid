@@ -33,8 +33,10 @@ class MiseEnRouteScreen extends StatelessWidget {
             WHERE f.organisation_id = ?) AS frais,
            (SELECT count(*) FROM pieces_dossier WHERE organisation_id = ? AND actif = 1) AS pieces,
            (SELECT count(*) FROM eleves WHERE organisation_id = ?) AS eleves,
-           (SELECT count(*) FROM ce_poste) AS poste''',
-      parametres: [o, o, o, o, o, o, o, o],
+           (SELECT count(*) FROM ce_poste) AS poste,
+           (SELECT count(*) FROM periodes_evaluation p JOIN annees_scolaires a ON a.id = p.annee_id AND a.en_cours = 1
+            WHERE a.organisation_id = ?) AS periodes''',
+      parametres: [o, o, o, o, o, o, o, o, o],
       builder: (context, l) {
         final r = l.first;
         int n(String c) => r[c] as int? ?? 0;
@@ -57,6 +59,15 @@ class MiseEnRouteScreen extends StatelessWidget {
             fait: n('frais') > 0, facultatif: false, cle: 'frais'),
           (titre: 'Pièces du dossier', detail: n('pieces') == 0 ? 'Facultatif : la liste proposée convient au départ.' : '${n('pieces')} pièces',
             fait: n('pieces') > 0, facultatif: true, cle: 'pieces'),
+          (
+            titre: 'Évaluations',
+            detail: n('periodes') == 0
+                ? 'Avant les premières notes : périodes, sessions et types (un modèle par défaut est proposé).'
+                : '${n('periodes')} périodes',
+            fait: n('periodes') > 0,
+            facultatif: true,
+            cle: 'periodes_eval'
+          ),
         ];
         final pret = etapes.where((e) => !e.facultatif).every((e) => e.fait);
         Widget pastille(int i, bool fait) => CircleAvatar(

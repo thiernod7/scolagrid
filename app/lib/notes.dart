@@ -337,21 +337,18 @@ class _NotesScreenState extends State<NotesScreen> {
             _sessionId = null;
           }),
         ),
-      if (_planifie)
+      if (_planifie && periode.isNotEmpty)
         PopupMenuButton<String>(
-          tooltip: 'Périodes, types, clôture',
+          tooltip: 'Clôture',
           icon: const Icon(Icons.more_horiz),
           onSelected: (v) async {
-            if (v == 'reglages') {
-              await Navigator.of(context).push(MaterialPageRoute(builder: (_) => _ReglagesNotesScreen(espace: _e, annee: annee)));
-            } else if (v == 'cloturer' && periode.isNotEmpty) {
+            if (v == 'cloturer' && periode.isNotEmpty) {
               await _cloturer(periode, !close);
             } else if (v == 'session' && session != null) {
               await _cloturerSession(session, !sessionClose);
             }
           },
           itemBuilder: (_) => [
-            const PopupMenuItem(value: 'reglages', child: _ItemMenu(Icons.tune, 'Périodes, sessions et types d\'évaluation')),
             if (session != null && !close)
               PopupMenuItem(
                 value: 'session',
@@ -381,9 +378,9 @@ class _NotesScreenState extends State<NotesScreen> {
           const SizedBox(height: 12),
           if (_planifie)
             FilledButton.icon(
-              onPressed: () => _preparerNotes(_e.orgId, annee),
-              icon: const Icon(Icons.auto_fix_high, size: 16),
-              label: const Text('Créer les périodes et les types par défaut'),
+              onPressed: () => _ouvrirReglages(PartieReglagesNotes.periodes),
+              icon: const Icon(Icons.settings_outlined, size: 16),
+              label: const Text('Régler les évaluations (Paramètres)'),
             )
           else
             const Text('La direction (droit « Planifier les évaluations ») doit les créer.'),
@@ -410,10 +407,10 @@ class _NotesScreenState extends State<NotesScreen> {
             label: const Text('Calendrier'),
           ),
           if (sessions.isEmpty && _planifie && !close)
-            OutlinedButton.icon(
-              onPressed: () => db.writeTransaction((tx) => _preparerSessions(tx, _e.orgId, [periode])),
-              icon: const Icon(Icons.auto_fix_high, size: 16),
-              label: const Text('Créer les sessions (mensuelles + composition)'),
+            TextButton.icon(
+              onPressed: () => _ouvrirReglages(PartieReglagesNotes.periodes),
+              icon: const Icon(Icons.settings_outlined, size: 16),
+              label: const Text('Créer les sessions (Paramètres)'),
             ),
         ]),
         // Les pages (saisie, bulletins, fin d'année) sont dans le menu « Évaluations ».
@@ -473,6 +470,10 @@ class _NotesScreenState extends State<NotesScreen> {
       ),
     );
   }
+
+  /// Paramètres › Évaluations, ouvert par-dessus la page (on revient ici ensuite).
+  Future<void> _ouvrirReglages(PartieReglagesNotes partie) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ReglagesEvaluationsScreen(espace: _e, partie: partie)));
 
   Future<void> _cloturer(Map<String, Object?> periode, bool cloturer) async {
     if (!await _toutEstSynchronise(context)) return;
@@ -1659,12 +1660,37 @@ extension on _Resultats {
   }
 }
 
-/// Périodes (par cycle) et types d'évaluation : réglés par la direction.
+/// Les trois rubriques « Évaluations » de Paramètres.
+enum PartieReglagesNotes { periodes, types, calcul }
+
+/// Paramètres › Évaluations : l'année en cours, puis la partie demandée.
+/// Modifiable par qui planifie les évaluations ; la direction peut lire.
+class ReglagesEvaluationsScreen extends StatelessWidget {
+  const ReglagesEvaluationsScreen({super.key, required this.espace, required this.partie});
+
+  final Espace espace;
+  final PartieReglagesNotes partie;
+
+  @override
+  Widget build(BuildContext context) => Requete(
+        'SELECT * FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1',
+        parametres: [espace.orgId],
+        builder: (context, annees) => annees.isEmpty
+            ? _Page(titre: _ReglagesNotesScreen.titres[partie.index], corps: _vide("Créez d'abord l'année scolaire (Paramètres › Année scolaire)."))
+            : _ReglagesNotesScreen(espace: espace, annee: annees.first, partie: partie, modifiable: espace.gereMatieres),
+      );
+}
+
+/// Périodes et sessions, types d'évaluation, règles de calcul et mentions.
 class _ReglagesNotesScreen extends StatelessWidget {
-  const _ReglagesNotesScreen({required this.espace, required this.annee});
+  const _ReglagesNotesScreen({required this.espace, required this.annee, required this.partie, required this.modifiable});
+
+  static const titres = ['Périodes et sessions', "Types d'évaluation", 'Calcul et mentions'];
 
   final Espace espace;
   final Map<String, Object?> annee;
+  final PartieReglagesNotes partie;
+  final bool modifiable;
 
   Future<void> _periode(BuildContext context, Map<String, Object?> p) async {
     final libelle = TextEditingController(text: '${p['libelle']}');
@@ -1948,9 +1974,9 @@ class _ReglagesNotesScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text("Périodes, sessions et types d'évaluation"), titleSpacing: 0),
-        body: Requete(
+  Widget build(BuildContext context) => _Page(
+        titre: titres[partie.index],
+        corps: Requete(
           'SELECT * FROM periodes_evaluation WHERE annee_id = ? ORDER BY cycle, ordre',
           parametres: [annee['id']],
           builder: (context, periodes) => Requete(
@@ -1972,10 +1998,20 @@ class _ReglagesNotesScreen extends StatelessWidget {
               for (final p in periodes) {
                 parCycle.putIfAbsent('${p['cycle']}', () => []).add(p);
               }
-              return ListView(padding: const EdgeInsets.all(16), children: [
+              final m = modifiable;
+              return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
+                if (!m)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text('Lecture seule : le droit « Planifier les évaluations » permet de modifier.',
+                        style: TextStyle(fontSize: 12, color: gris)),
+                  ),
+                if (partie == PartieReglagesNotes.periodes) ...[
                 Text('PÉRIODES · ${annee['libelle']}', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris)),
                 const SizedBox(height: 6),
-                if (periodes.isEmpty)
+                if (periodes.isEmpty && !m)
+                  Text('Aucune période pour cette année.', style: TextStyle(color: gris)),
+                if (periodes.isEmpty && m)
                   FilledButton.icon(
                     onPressed: () => _preparerNotes(espace.orgId, annee),
                     icon: const Icon(Icons.auto_fix_high, size: 16),
@@ -1995,7 +2031,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
                         subtitle: Text('du ${_dateLisible(p['debut'])} au ${_dateLisible(p['fin'])} · '
                             '${p['nature'] == 'appreciations' ? 'acquis (sans moyenne)' : 'notes sur ${p['bareme']}'}'),
                         trailing: p['statut'] == 'cloturee' ? const Etat('Clôturée', icone: Icons.lock_outline) : const Icon(Icons.edit_outlined, size: 18),
-                        onTap: p['statut'] == 'cloturee' ? null : () => _periode(context, p),
+                        onTap: p['statut'] == 'cloturee' || !m ? null : () => _periode(context, p),
                       ),
                     ),
                     // Ses sessions : les fenêtres où les matières placent leurs épreuves.
@@ -2004,7 +2040,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         for (final x in sessions.where((x) => x['periode_id'] == p['id']))
                           InkWell(
-                            onTap: p['statut'] == 'cloturee' ? null : () => _session(context, p, x, types),
+                            onTap: p['statut'] == 'cloturee' || !m ? null : () => _session(context, p, x, types),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 6),
                               child: Row(children: [
@@ -2020,7 +2056,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
                                         style: TextStyle(fontSize: 12, color: gris)),
                                   ])),
                                 ),
-                                if (p['statut'] != 'cloturee' && x['epreuves'] == 0)
+                                if (m && p['statut'] != 'cloturee' && x['epreuves'] == 0)
                                   IconButton(
                                     tooltip: 'Supprimer cette session',
                                     visualDensity: VisualDensity.compact,
@@ -2034,7 +2070,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
                               ]),
                             ),
                           ),
-                        if (p['statut'] != 'cloturee')
+                        if (m && p['statut'] != 'cloturee')
                           Wrap(spacing: 8, children: [
                             TextButton.icon(
                               onPressed: () => _session(context, p, null, types),
@@ -2052,10 +2088,14 @@ class _ReglagesNotesScreen extends StatelessWidget {
                     ),
                   ],
                 ],
-                const SizedBox(height: 20),
+                Text('Une session est une fenêtre de la période (« Évaluation d\'octobre », « Composition ») : '
+                    'chaque matière y place ses épreuves ; ses notes donnent un bulletin de suivi.',
+                    style: TextStyle(fontSize: 12, color: gris)),
+                ],
+                if (partie == PartieReglagesNotes.types) ...[
                 Row(children: [
                   Expanded(child: Text("TYPES D'ÉVALUATION", style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris))),
-                  TextButton.icon(onPressed: () => _type(context, null), icon: const Icon(Icons.add, size: 16), label: const Text('Ajouter')),
+                  if (m) TextButton.icon(onPressed: () => _type(context, null), icon: const Icon(Icons.add, size: 16), label: const Text('Ajouter')),
                 ]),
                 for (final t in types)
                   Card(
@@ -2068,15 +2108,16 @@ class _ReglagesNotesScreen extends StatelessWidget {
                         if (t['compte'] != 1) 'hors moyenne',
                         if (t['unique_par_periode'] == 1) 'une par période',
                       ].join(' · ')),
-                      trailing: const Icon(Icons.edit_outlined, size: 18),
-                      onTap: () => _type(context, t),
+                      trailing: m ? const Icon(Icons.edit_outlined, size: 18) : null,
+                      onTap: m ? () => _type(context, t) : null,
                     ),
                   ),
                 const SizedBox(height: 12),
                 Text('Le poids joue entre les notes d\'une même matière ; le coefficient (Paramètres › Matières) entre les matières. '
                     'La session dit quand (une fenêtre), le type dit la nature et le poids.',
                     style: TextStyle(fontSize: 12, color: gris)),
-                const SizedBox(height: 20),
+                ],
+                if (partie == PartieReglagesNotes.calcul) ...[
                 Text('RÈGLES DE CALCUL', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris)),
                 const SizedBox(height: 6),
                 Requete(
@@ -2099,8 +2140,8 @@ class _ReglagesNotesScreen extends StatelessWidget {
                               : 'moyenne annuelle simple',
                           'passage ${nb(r?['seuil_passage_10'], 5)}/10 et ${nb(r?['seuil_passage_20'], 10)}/20',
                         ].join(' · ')),
-                        trailing: const Icon(Icons.edit_outlined, size: 18),
-                        onTap: () => _regles(context, r),
+                        trailing: m ? const Icon(Icons.edit_outlined, size: 18) : null,
+                        onTap: m ? () => _regles(context, r) : null,
                       ),
                     );
                   },
@@ -2121,11 +2162,15 @@ class _ReglagesNotesScreen extends StatelessWidget {
                           dense: true,
                           title: Text('Mentions · ${cycles[e.key] ?? e.key} (sur $bareme)${siennes.isEmpty ? ' · par défaut' : ''}'),
                           subtitle: Text(seuils.map((x) => '${x.libelle} ≥ ${noteLisible(x.minimum).replaceAll(',00', '')}').join(' · ')),
-                          trailing: const Icon(Icons.edit_outlined, size: 18),
-                          onTap: () => _mentions(context, e.key, bareme, siennes),
+                          trailing: m ? const Icon(Icons.edit_outlined, size: 18) : null,
+                          onTap: m ? () => _mentions(context, e.key, bareme, siennes) : null,
                         ),
                       );
                     }),
+                if (periodes.isEmpty)
+                  Text('Les mentions apparaissent une fois les périodes créées (Périodes et sessions).',
+                      style: TextStyle(fontSize: 12, color: gris)),
+                ],
               ]);
                 },
               ),

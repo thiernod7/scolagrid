@@ -358,6 +358,13 @@ final _reglages = <_Reglage>[
       (e) => ClassesScreen(espace: e)),
   _Reglage('pieces', 'Pièces du dossier', 'Ce que les familles fournissent', Icons.folder_open_outlined, 'Scolarité',
       (e) => PiecesDossierScreen(espace: e)),
+  // Les évaluations : réglées une fois par an par la direction des études.
+  _Reglage('periodes_eval', 'Périodes et sessions', 'Trimestres ou semestres, barème, sessions du mois', Icons.date_range_outlined,
+      'Évaluations', (e) => ReglagesEvaluationsScreen(espace: e, partie: PartieReglagesNotes.periodes)),
+  _Reglage('types_eval', "Types d'évaluation", 'Évaluation, composition, examen blanc, poids', Icons.category_outlined, 'Évaluations',
+      (e) => ReglagesEvaluationsScreen(espace: e, partie: PartieReglagesNotes.types)),
+  _Reglage('calcul_notes', 'Calcul et mentions', 'Absences, remise des notes, moyenne annuelle, passage, mentions',
+      Icons.calculate_outlined, 'Évaluations', (e) => ReglagesEvaluationsScreen(espace: e, partie: PartieReglagesNotes.calcul)),
   _Reglage('frais', 'Frais scolaires', 'Inscription, scolarité en tranches, options', Icons.payments_outlined, 'Argent',
       (e) => FraisScreen(espace: e)),
   _Reglage('reductions', 'Réductions', 'Fratrie, paiement annuel, bourses', Icons.percent, 'Argent',
@@ -388,6 +395,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   bool _voit(String cle) => switch (cle) {
         'demarrage' || 'ecole' || 'regles' || 'pieces' => _e.gestionnaire,
         'annee' || 'niveaux' || 'matieres' || 'classes' => _e.gestionnaire || _e.gereMatieres,
+        'periodes_eval' || 'types_eval' || 'calcul_notes' => _e.gestionnaire || _e.gereMatieres,
         'frais' || 'reductions' || 'remboursements' => _e.gestionnaire || _e.voitFinances,
         _ => false,
       };
@@ -395,7 +403,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   /// Qui peut modifier (le serveur applique les mêmes règles).
   bool _modifie(String cle) => switch (cle) {
         'demarrage' || 'ecole' || 'classes' || 'frais' => _e.gestionnaire,
-        'matieres' => _e.gereMatieres,
+        'matieres' || 'periodes_eval' || 'types_eval' || 'calcul_notes' => _e.gereMatieres,
         'annee' || 'niveaux' || 'reductions' || 'remboursements' || 'regles' || 'pieces' => _e.fondateur,
         _ => false,
       };
@@ -430,6 +438,12 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       'remboursements': (true, "Ce que l'école accepte de rembourser"),
       'regles': (true, 'Documents si arriérés, seuil, redoublements'),
       'pieces': (true, 'Ce que les familles fournissent'),
+      'periodes_eval': (
+        n('periodes') > 0,
+        n('periodes') == 0 ? 'À créer avant les premières notes' : '${n('periodes')} périodes · ${n('sessions')} sessions',
+      ),
+      'types_eval': (n('types_eval') > 0, n('types_eval') == 0 ? 'Créés avec les périodes' : '${n('types_eval')} types'),
+      'calcul_notes': (true, 'Absences, remise, moyenne annuelle, passage, mentions'),
     };
   }
 
@@ -448,8 +462,13 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
            (SELECT nom FROM organisations WHERE id = ?) AS ecole,
            (SELECT count(*) FROM sites WHERE organisation_id = ? AND code IS NULL) AS sites_sans_code,
            (SELECT responsable_nom FROM organisations WHERE id = ?) AS responsable,
-           (SELECT count(*) FROM eleves WHERE organisation_id = ?) AS eleves''',
-      parametres: [o, o, o, o, o, o, o, o, o, o, o],
+           (SELECT count(*) FROM eleves WHERE organisation_id = ?) AS eleves,
+           (SELECT count(*) FROM periodes_evaluation p JOIN annees_scolaires a ON a.id = p.annee_id AND a.en_cours = 1
+            WHERE a.organisation_id = ?) AS periodes,
+           (SELECT count(*) FROM sessions_evaluation s JOIN periodes_evaluation p ON p.id = s.periode_id
+            JOIN annees_scolaires a ON a.id = p.annee_id AND a.en_cours = 1 WHERE a.organisation_id = ?) AS sessions,
+           (SELECT count(*) FROM types_evaluation WHERE organisation_id = ? AND actif = 1) AS types_eval''',
+      parametres: [o, o, o, o, o, o, o, o, o, o, o, o, o, o],
       builder: (context, l) {
         final r = l.first;
         final etat = _etat(r);

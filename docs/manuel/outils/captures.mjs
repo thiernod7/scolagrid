@@ -297,14 +297,18 @@ if (etape === 'connexion') {
     await aller('Bulletins', 'Bulletins'); await pause(3000); await photo('65-notes-resultats');
     await aller("Fin d'année", "Fin d'année"); await pause(3000); await semantique(); await photo('68-notes-fin-annee');
     await aller('Saisie des notes', 'Saisie des notes'); await pause(2000);
-    // Les réglages : périodes et leurs sessions, types, absences, mentions.
-    const menuNotes = page.getByRole('button', { name: /Périodes, types, clôture/ });
+    // Le menu « … » ne garde que la clôture.
+    const menuNotes = page.getByRole('button', { name: /Clôture/ });
     if (await menuNotes.count()) await menuNotes.first().click(); else await page.mouse.click(965, 92);
     await pause(1500); await semantique(); await photo('67a-notes-menu');
-    await page.mouse.click(750, 104);
-    await pause(3000); await semantique(); await photo('67-notes-reglages');
-    await page.mouse.wheel(0, 1500); await pause(1500); await photo('67b-notes-regles-mentions');
-    await retour();
+    await page.keyboard.press('Escape'); await pause(800);
+    // Les réglages des évaluations sont dans Paramètres (groupe « Évaluations »).
+    await aller('Paramètres', 'Paramètres'); await pause(2000); await semantique();
+    for (const [texte, nom] of [['Périodes et sessions', '67-notes-reglages'], ["Types d'évaluation", '67c-notes-types'], ['Calcul et mentions', '67b-notes-regles-mentions']]) {
+      const lien = page.getByText(texte, { exact: false });
+      if (!(await lien.count())) continue;
+      await lien.first().click(); await pause(3000); await semantique(); await photo(nom);
+    }
   });
   await etapeSure('recouvrement', async () => {
     await aller('Recouvrement', 'Recouvrement'); await pause(4000); await photo('61-recouvrement');
