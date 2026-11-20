@@ -650,6 +650,8 @@ const schema = Schema([
     Column.integer('poids_derniere'),
     Column.real('seuil_passage_10'),
     Column.real('seuil_passage_20'),
+    // Évaluations mensuelles : dates libres, ou calendrier préparé et publié (migration 045).
+    Column.text('calendrier_mensuel'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -686,6 +688,11 @@ const schema = Schema([
     Column.text('statut'),
     Column.text('cloturee_par'),
     Column.text('cloturee_le'),
+    // Calendrier : libre, en préparation (à programmer avant), publié (migration 045).
+    Column.text('calendrier'),
+    Column.text('programmation_avant'),
+    Column.text('publie_le'),
+    Column.text('publie_par'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [
@@ -720,6 +727,10 @@ const schema = Schema([
     // Remise des notes : indicateur de suivi, pas un verrou (migration 043).
     Column.text('remise_le'),
     Column.text('remise_par'),
+    // Date prévue au calendrier publié (la date réelle peut changer), heure et durée (migration 045).
+    Column.text('date_prevue'),
+    Column.text('heure'),
+    Column.integer('duree_min'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [

@@ -49,6 +49,7 @@ part 'carnet_notes.dart';
 part 'notes.dart';
 part 'personnel.dart';
 part 'photo.dart';
+part 'programmation.dart';
 part 'poste.dart';
 part 'recouvrement.dart';
 part 'reductions.dart';

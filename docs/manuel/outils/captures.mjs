@@ -308,6 +308,14 @@ if (etape === 'connexion') {
       const lien = page.getByText(texte, { exact: false });
       if (!(await lien.count())) continue;
       await lien.first().click(); await pause(3000); await semantique(); await photo(nom);
+      // Depuis « Périodes et sessions » : programmer la composition en préparation.
+      if (nom === '67-notes-reglages') {
+        const prog = page.getByRole('button', { name: 'Programmer le calendrier' });
+        if (await prog.count()) {
+          await prog.first().click(); await pause(3500); await semantique(); await photo('70-programmer-calendrier');
+          await retour();
+        }
+      }
     }
   });
   await etapeSure('recouvrement', async () => {

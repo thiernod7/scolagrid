@@ -955,51 +955,77 @@ Future<Uint8List> calendrierEvaluationsPdf({
   required String classe,
   required String titre,
   required String fenetre,
-  required List<({String date, String matiere, String type, String enseignant})> epreuves,
+  required List<EpreuveCalendrier> epreuves,
   ImagesEcole images = const ImagesEcole(),
+  String? pied,
+}) =>
+    calendriersEvaluationsPdf(ecole: ecole, titre: titre, fenetre: fenetre, classes: [(classe, epreuves)], images: images, pied: pied);
+
+/// Une ligne du calendrier : date, heure et durée (facultatives), matière, nature, enseignant.
+typedef EpreuveCalendrier = ({String date, String heure, String matiere, String type, String enseignant});
+
+/// Le calendrier d'une session pour plusieurs classes : une page par classe.
+Future<Uint8List> calendriersEvaluationsPdf({
+  required Map<String, Object?> ecole,
+  required String titre,
+  required String fenetre,
+  required List<(String, List<EpreuveCalendrier>)> classes,
+  ImagesEcole images = const ImagesEcole(),
+  String? pied,
 }) {
-  final doc = pw.Document(title: 'Calendrier $classe $titre');
+  final doc = pw.Document(title: 'Calendrier $titre');
   const st = pw.TextStyle(fontSize: 11);
   final gras = pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold);
   pw.Widget cel(String t, {pw.TextStyle? style}) =>
       pw.Padding(padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6), child: pw.Text(t, style: style ?? st));
-  // Les jours chargés (trois épreuves ou plus) ressortent en gris.
-  final parJour = <String, int>{};
-  for (final e in epreuves) {
-    parJour[e.date] = (parJour[e.date] ?? 0) + 1;
-  }
-  doc.addPage(pw.Page(
-    pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.all(36)),
-    build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      _enTete(ecole, images, titre: 13, petit: 8),
-      pw.Divider(),
-      pw.SizedBox(height: 6),
-      pw.Center(child: pw.Text('CALENDRIER DES ÉVALUATIONS — $classe', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold))),
-      pw.Center(child: pw.Text(titre, style: const pw.TextStyle(fontSize: 12))),
-      pw.Center(child: pw.Text(fenetre, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700))),
-      pw.SizedBox(height: 16),
-      if (epreuves.isEmpty)
-        pw.Text('Aucune épreuve prévue pour le moment.', style: st)
-      else
-        pw.Table(
-          border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey400, width: .5)),
-          columnWidths: const {0: pw.FixedColumnWidth(90), 1: pw.FlexColumnWidth(3), 2: pw.FlexColumnWidth(2), 3: pw.FlexColumnWidth(3)},
-          children: [
-            pw.TableRow(
-              decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: 1))),
-              children: [cel('Date', style: gras), cel('Matière', style: gras), cel('Nature', style: gras), cel('Enseignant', style: gras)],
-            ),
-            for (final e in epreuves)
+  for (final (classe, epreuves) in classes) {
+    // Les jours chargés (trois épreuves ou plus) ressortent en gris.
+    final parJour = <String, int>{};
+    for (final e in epreuves) {
+      parJour[e.date] = (parJour[e.date] ?? 0) + 1;
+    }
+    final avecHeure = epreuves.any((e) => e.heure.isNotEmpty);
+    doc.addPage(pw.Page(
+      pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.all(36)),
+      build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        _enTete(ecole, images, titre: 13, petit: 8),
+        pw.Divider(),
+        pw.SizedBox(height: 6),
+        pw.Center(child: pw.Text('CALENDRIER DES ÉVALUATIONS — $classe', style: pw.TextStyle(fontSize: 15, fontWeight: pw.FontWeight.bold))),
+        pw.Center(child: pw.Text(titre, style: const pw.TextStyle(fontSize: 12))),
+        pw.Center(child: pw.Text(fenetre, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700))),
+        pw.SizedBox(height: 16),
+        if (epreuves.isEmpty)
+          pw.Text('Aucune épreuve prévue pour le moment.', style: st)
+        else
+          pw.Table(
+            border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey400, width: .5)),
+            columnWidths: avecHeure
+                ? const {0: pw.FixedColumnWidth(80), 1: pw.FixedColumnWidth(80), 2: pw.FlexColumnWidth(3), 3: pw.FlexColumnWidth(2), 4: pw.FlexColumnWidth(3)}
+                : const {0: pw.FixedColumnWidth(90), 1: pw.FlexColumnWidth(3), 2: pw.FlexColumnWidth(2), 3: pw.FlexColumnWidth(3)},
+            children: [
               pw.TableRow(
-                decoration: (parJour[e.date] ?? 0) >= 3 ? const pw.BoxDecoration(color: PdfColors.grey200) : null,
-                children: [cel(e.date), cel(e.matiere), cel(e.type), cel(e.enseignant)],
+                decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: 1))),
+                children: [
+                  cel('Date', style: gras),
+                  if (avecHeure) cel('Heure', style: gras),
+                  cel('Matière', style: gras),
+                  cel('Nature', style: gras),
+                  cel('Enseignant', style: gras),
+                ],
               ),
-          ],
-        ),
-      pw.Spacer(),
-      pw.Text('Dates prévisionnelles : un report reste possible dans la fenêtre de la session.',
-          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
-    ]),
-  ));
+              for (final e in epreuves)
+                pw.TableRow(
+                  decoration: (parJour[e.date] ?? 0) >= 3 ? const pw.BoxDecoration(color: PdfColors.grey200) : null,
+                  children: [cel(e.date), if (avecHeure) cel(e.heure), cel(e.matiere), cel(e.type), cel(e.enseignant)],
+                ),
+            ],
+          ),
+        pw.Spacer(),
+        pw.Text(pied ?? 'Dates prévisionnelles : un report reste possible dans la fenêtre de la session.',
+            style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700)),
+      ]),
+    ));
+  }
   return doc.save();
 }

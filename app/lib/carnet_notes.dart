@@ -336,7 +336,10 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                     overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
               ),
             ]),
-            Text(_court(ev['date_evaluation']), style: TextStyle(fontSize: 12, color: gris)),
+            Text(
+                '${_court(ev['date_evaluation'])}${'${ev['date_evaluation']}'.compareTo(_date(DateTime.now())) > 0 ? ' · à venir' : ''}'
+                '${heureLisible(ev['heure'], null).isEmpty ? '' : ' · ${heureLisible(ev['heure'], null)}'}',
+                style: TextStyle(fontSize: 12, color: gris)),
             Text('$bareme${poids != 1 ? ' · ×${nb(poids)}' : ''}${ev['compte'] == 1 ? '' : ' · hors moy.'}',
                 style: TextStyle(fontSize: 11, color: gris)),
           ]),
@@ -368,7 +371,8 @@ class _CarnetNotesState extends State<_CarnetNotes> {
       final n = parCase[cle];
       final c = _champDe(cle, _texteCase(n?['etat'], n?['valeur'], n?['acquis']));
       final f = _focus.putIfAbsent(cle, FocusNode.new);
-      final modifiable = saisir && ev['statut_session'] != 'cloturee';
+      // Les notes se saisissent à partir du jour de l'épreuve.
+      final modifiable = saisir && ev['statut_session'] != 'cloturee' && '${ev['date_evaluation']}'.compareTo(_date(DateTime.now())) <= 0;
       final v = (n?['valeur'] as num?)?.toDouble();
       final etat = n?['etat'] as String?;
       final actif = ev['id'] == choisie?['id'];
@@ -858,7 +862,8 @@ class _SaisiePaveScreenState extends State<_SaisiePaveScreen> {
     final aLeDroit = widget.espace.fondateur ||
         widget.espace.droits.contains('planifier_evaluations') ||
         (widget.espace.droits.contains('saisir_notes') && (ev['j_enseigne'] as int? ?? 0) > 0);
-    final ouverte = aLeDroit && ev['statut_periode'] == 'ouverte' && ev['statut_session'] != 'cloturee';
+    final aVenir = '${ev['date_evaluation']}'.compareTo(_date(DateTime.now())) > 0;
+    final ouverte = aLeDroit && ev['statut_periode'] == 'ouverte' && ev['statut_session'] != 'cloturee' && !aVenir;
     if (_index >= eleves.length) _index = eleves.isEmpty ? 0 : eleves.length - 1;
     final saisies = eleves.where((e) => e['etat'] != null && e['etat'] != 'non_note').length;
     final el = eleves.isEmpty ? null : eleves[_index];
@@ -998,7 +1003,10 @@ class _SaisiePaveScreenState extends State<_SaisiePaveScreen> {
                         if (!ouverte)
                           Padding(
                             padding: const EdgeInsets.only(top: 8),
-                            child: Text('Lecture seule : session ou période clôturée (correction : saisie détaillée).',
+                            child: Text(
+                                aVenir
+                                    ? 'Épreuve du ${_dateLisible(ev['date_evaluation'])} : les notes se saisissent à partir de ce jour.'
+                                    : 'Lecture seule : session ou période clôturée (correction : saisie détaillée).',
                                 textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: gris)),
                           ),
                       ]),
