@@ -473,7 +473,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
             Container(
               color: Couleurs.doux(context).withValues(alpha: .5),
               child: Row(children: [
-                const SizedBox(width: nomL),
+                SizedBox(width: nomL),
                 for (final b in bandeaux)
                   Container(
                     width: _largeurCase * b.n,
