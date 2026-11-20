@@ -437,11 +437,6 @@ class _NotesScreenState extends State<NotesScreen> {
             session: session,
             sessions: sessions,
             peutSaisir: _saisit && !close && !sessionClose,
-            changerClasse: (v) => setState(() {
-              _classeId = v;
-              _periodeId = null;
-              _sessionId = null;
-            }),
           )
         else if (_onglet == 0)
           _Evaluations(

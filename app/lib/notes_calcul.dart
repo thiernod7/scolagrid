@@ -50,6 +50,20 @@ double? moyenneMatiere(Iterable<NoteCalcul> notes, {String absences = 'justifie_
   return poids == 0 ? null : somme / poids;
 }
 
+/// Total d'une matière, comme sur un bulletin : la somme des notes qui comptent
+/// (chacune multipliée par son poids), et le maximum possible (barème × poids).
+/// Null si aucune note ne compte. Total ÷ maximum × barème = la moyenne.
+({double total, double sur})? totalMatiere(Iterable<NoteCalcul> notes, int bareme, {String absences = 'justifie_exclu'}) {
+  var total = 0.0, sur = 0.0;
+  for (final n in notes) {
+    final v = valeurComptee(n, absences: absences);
+    if (v == null) continue;
+    total += v * n.poids;
+    sur += bareme * n.poids;
+  }
+  return sur == 0 ? null : (total: total, sur: sur);
+}
+
 /// Moyenne générale à partir des (moyenne, coefficient) des matières.
 double? moyenneGenerale(Iterable<(double?, double)> matieres) {
   var somme = 0.0, coef = 0.0;

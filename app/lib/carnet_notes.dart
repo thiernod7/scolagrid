@@ -15,7 +15,6 @@ class _CarnetNotes extends StatefulWidget {
     required this.session,
     required this.sessions,
     required this.peutSaisir,
-    required this.changerClasse,
   });
 
   final Espace espace;
@@ -25,7 +24,6 @@ class _CarnetNotes extends StatefulWidget {
   final Map<String, Object?>? session;
   final Lignes sessions;
   final bool peutSaisir;
-  final ValueChanged<String> changerClasse;
 
   @override
   State<_CarnetNotes> createState() => _CarnetNotesState();
@@ -39,10 +37,26 @@ class _CarnetNotesState extends State<_CarnetNotes> {
   final _focus = <String, FocusNode>{};
   final _erreurs = <String, String>{};
 
-  static const _largeurNom = 240.0, _largeurCase = 112.0, _largeurMoy = 132.0, _hauteurLigne = 56.0;
+  /// Ce que la base contient pour chaque case (pour n'enregistrer que ce qui a changé).
+  final _enBase = <String, String>{};
+
+  static const _largeurNom = 240.0, _largeurCase = 112.0, _largeurTotal = 104.0, _largeurMoy = 124.0, _hauteurLigne = 56.0;
+
+  /// La case où l'on tape : enregistrée si l'on change de classe ou de période sans la quitter.
+  Future<void> Function()? _enCours;
+
+  @override
+  void didUpdateWidget(_CarnetNotes ancien) {
+    super.didUpdateWidget(ancien);
+    if (ancien.classe['id'] != widget.classe['id'] || ancien.periode['id'] != widget.periode['id']) {
+      _enCours?.call();
+      _enCours = null;
+    }
+  }
 
   @override
   void dispose() {
+    _enCours?.call();
     for (final c in _champs.values) {
       c.dispose();
     }
@@ -59,19 +73,17 @@ class _CarnetNotesState extends State<_CarnetNotes> {
 
   @override
   Widget build(BuildContext context) => Requete(
-        // Toutes les matières de toutes les classes, avec ce qui reste à saisir cette année.
-        '''SELECT c.id AS classe_id, c.nom AS classe, n.ordre, m.id AS matiere_id, m.nom AS matiere, m.coefficient,
-             (SELECT count(*) FROM evaluations ev WHERE ev.classe_id = c.id AND ev.matiere_id = m.id) AS epreuves,
-             (SELECT coalesce(sum(
-                (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant'))
-                - (SELECT count(*) FROM notes x WHERE x.evaluation_id = ev.id AND x.etat <> 'non_note')), 0)
-              FROM evaluations ev WHERE ev.classe_id = c.id AND ev.matiere_id = m.id) AS manquantes
-           FROM classes c JOIN niveaux n ON n.id = c.niveau_id JOIN matieres m ON m.niveau_id = c.niveau_id
-           WHERE c.annee_id = ? ORDER BY n.ordre, c.nom, m.nom''',
-        parametres: [widget.annee['id']],
-        builder: (context, services) {
+        // Les matières de la classe choisie, avec ce qui reste à saisir sur la période.
+        '''SELECT m.id AS matiere_id, m.nom AS matiere, m.coefficient,
+             (SELECT count(*) FROM evaluations ev WHERE ev.classe_id = ? AND ev.periode_id = ? AND ev.matiere_id = m.id) AS epreuves,
+             (SELECT coalesce(sum(? - (SELECT count(*) FROM notes x WHERE x.evaluation_id = ev.id AND x.etat <> 'non_note')), 0)
+              FROM evaluations ev WHERE ev.classe_id = ? AND ev.periode_id = ? AND ev.matiere_id = m.id) AS manquantes
+           FROM matieres m WHERE m.niveau_id = ? ORDER BY m.nom''',
+        parametres: [
+          _classe['id'], _periode['id'], _classe['effectif'] ?? 0, _classe['id'], _periode['id'], _classe['niveau_id'],
+        ],
+        builder: (context, miennes) {
           final gris = Theme.of(context).colorScheme.onSurfaceVariant;
-          final miennes = services.where((s) => s['classe_id'] == _classe['id']).toList();
           if (miennes.isEmpty) {
             return Text('Aucune matière pour ce niveau : ajoutez-les dans Paramètres › Matières.', style: TextStyle(color: gris));
           }
@@ -95,7 +107,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                 builder: (context, notes) => Requete(
                   "SELECT coalesce((SELECT absences FROM regles_notes WHERE organisation_id = ?), 'justifie_exclu') AS absences",
                   parametres: [widget.espace.orgId],
-                  builder: (context, r) => _contenu(context, services, matiere, epreuves, eleves, notes, '${r.first['absences']}'),
+                  builder: (context, r) => _contenu(context, miennes, matiere, epreuves, eleves, notes, '${r.first['absences']}'),
                 ),
               ),
             ),
@@ -105,20 +117,29 @@ class _CarnetNotesState extends State<_CarnetNotes> {
 
   /// Le champ d'une case, tenu à jour avec la base sauf pendant qu'on y tape.
   TextEditingController _champDe(String cle, String texte) {
+    _enBase[cle] = texte;
     final c = _champs.putIfAbsent(cle, () => TextEditingController(text: texte));
     final enCours = _focus[cle]?.hasFocus ?? false;
     if (!enCours && !_erreurs.containsKey(cle) && c.text != texte) c.text = texte;
     return c;
   }
 
-  Future<void> _taper(String evaluationId, String eleveId, String cle, String texte) async {
-    final lu = _lireCase(texte, _bareme, parAcquis: _parAcquis);
-    if (lu.erreur != null) {
-      setState(() => _erreurs[cle] = lu.erreur!);
-      return;
-    }
-    if (_erreurs.containsKey(cle)) setState(() => _erreurs.remove(cle));
-    await _ecrireNote(widget.espace.orgId, evaluationId, eleveId, _bareme, valeur: lu.valeur, acquis: lu.acquis, etat: lu.etat);
+  /// Pendant la frappe : on signale seulement une saisie impossible (rien n'est écrit).
+  void _taper(String cle, String texte) {
+    final erreur = _lireCase(texte, _bareme, parAcquis: _parAcquis).erreur;
+    if (erreur != _erreurs[cle]) setState(() => erreur == null ? _erreurs.remove(cle) : _erreurs[cle] = erreur);
+  }
+
+  /// En quittant la case (Entrée, Tab, flèche, clic ailleurs) : on enregistre une
+  /// seule fois, et seulement si la note a changé. La saisie reste fluide.
+  Future<void> _enregistrer(String evaluationId, String eleveId, String cle) async {
+    final texte = _champs[cle]?.text.trim() ?? '';
+    if (texte == (_enBase[cle] ?? '').trim()) return;
+    final bareme = _bareme, parAcquis = _parAcquis, orgId = widget.espace.orgId;
+    final lu = _lireCase(texte, bareme, parAcquis: parAcquis);
+    if (lu.erreur != null) return;
+    _enBase[cle] = texte;
+    await _ecrireNote(orgId, evaluationId, eleveId, bareme, valeur: lu.valeur, acquis: lu.acquis, etat: lu.etat);
   }
 
   void _aller(Lignes eleves, Lignes epreuves, int ligne, int colonne) {
@@ -165,6 +186,19 @@ class _CarnetNotesState extends State<_CarnetNotes> {
               ),
         ], absences: absences);
     final moyennes = {for (final el in eleves) el['id'] as String: moyenneEleve(el['id'] as String)};
+    final totaux = {
+      for (final el in eleves)
+        el['id'] as String: totalMatiere([
+          for (final ev in epreuves)
+            if (parCase['${ev['id']}|${el['id']}'] case final n?)
+              NoteCalcul(
+                valeur: (n['valeur'] as num?)?.toDouble(),
+                etat: '${n['etat']}',
+                poids: (ev['poids'] as num? ?? 1).toDouble(),
+                compte: ev['compte'] == 1,
+              ),
+        ], _bareme, absences: absences),
+    };
     final avecMoy = moyennes.values.whereType<double>().toList();
     final moyClasse = avecMoy.isEmpty ? null : avecMoy.reduce((a, b) => a + b) / avecMoy.length;
 
@@ -192,10 +226,6 @@ class _CarnetNotesState extends State<_CarnetNotes> {
 
     // --- À gauche : mes classes et matières ---------------------------------------------
     final q = nomSimplifie(_cherche);
-    final ordonnes = [
-      ...services.where((x) => x['classe_id'] == _classe['id']),
-      ...services.where((x) => x['classe_id'] != _classe['id']),
-    ];
     final rail = Container(
       width: 270,
       decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: bordure)),
@@ -211,7 +241,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
               contentPadding: const EdgeInsets.symmetric(vertical: 8),
               prefixIcon: Icon(Icons.search, size: 18, color: gris),
               prefixIconConstraints: const BoxConstraints(minWidth: 36),
-              hintText: 'Chercher une classe, une matière',
+              hintText: 'Chercher une matière',
               hintStyle: TextStyle(fontSize: 13, color: gris),
             ),
           ),
@@ -219,12 +249,12 @@ class _CarnetNotesState extends State<_CarnetNotes> {
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.only(left: 6, bottom: 6),
-          child: Text('MES CLASSES ET MATIÈRES', style: TextStyle(fontSize: 11, letterSpacing: .6, fontWeight: FontWeight.w600, color: gris)),
+          child: Text('MATIÈRES · ${'${_classe['nom']}'.toUpperCase()}', style: TextStyle(fontSize: 11, letterSpacing: .6, fontWeight: FontWeight.w600, color: gris)),
         ),
-        for (final s in ordonnes)
-          if (q.isEmpty || nomSimplifie('${s['classe']} ${s['matiere']}').contains(q))
+        for (final s in services)
+          if (q.isEmpty || nomSimplifie('${s['matiere']}').contains(q))
             Builder(builder: (context) {
-              final actif = s['classe_id'] == _classe['id'] && s['matiere_id'] == matiere['matiere_id'];
+              final actif = s['matiere_id'] == matiere['matiere_id'];
               final ep = s['epreuves'] as int? ?? 0;
               final manque = s['manquantes'] as int? ?? 0;
               return Material(
@@ -233,19 +263,19 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(8),
                   onTap: () {
+                    FocusManager.instance.primaryFocus?.unfocus(); // enregistre la case en cours
                     setState(() {
                       _matiereId = s['matiere_id'] as String;
                       _epreuveId = null;
                       _erreurs.clear();
                     });
-                    if (s['classe_id'] != _classe['id']) widget.changerClasse(s['classe_id'] as String);
                   },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                     child: Row(children: [
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('${s['classe']} · ${s['matiere']}',
+                          Text('${s['matiere']}',
                               overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                           Text(
                               ep == 0
@@ -354,7 +384,14 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           canRequestFocus: false,
           skipTraversal: true,
           onFocusChange: (dedans) {
-            if (dedans && _epreuveId != ev['id']) setState(() => _epreuveId = ev['id'] as String);
+            Future<void> enregistrer() => _enregistrer(ev['id'] as String, el['id'] as String, cle);
+            if (!dedans) {
+              _enCours = null;
+              enregistrer();
+              return;
+            }
+            _enCours = enregistrer;
+            if (_epreuveId != ev['id']) setState(() => _epreuveId = ev['id'] as String);
           },
           onKeyEvent: (_, e) {
             if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
@@ -376,8 +413,11 @@ class _CarnetNotesState extends State<_CarnetNotes> {
               enabled: modifiable,
               textAlign: TextAlign.center,
               textInputAction: TextInputAction.next,
-              onChanged: (t) => _taper(ev['id'] as String, el['id'] as String, cle, t),
-              onSubmitted: (_) => _aller(eleves, epreuves, ligne + 1, colonne),
+              onChanged: (t) => _taper(cle, t),
+              onSubmitted: (_) {
+                _enregistrer(ev['id'] as String, el['id'] as String, cle);
+                _aller(eleves, epreuves, ligne + 1, colonne);
+              },
               style: _chiffresDep.copyWith(
                   fontSize: 17,
                   fontWeight: etat == 'note' ? FontWeight.w600 : FontWeight.w500,
@@ -412,7 +452,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
       );
     }
 
-    final carnet = Container(
+    Widget carnetDe(double nomL) => Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: bordure)),
       child: SingleChildScrollView(
@@ -424,7 +464,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
             Container(
               color: Couleurs.doux(context).withValues(alpha: .5),
               child: Row(children: [
-                const SizedBox(width: _largeurNom),
+                const SizedBox(width: nomL),
                 for (final b in bandeaux)
                   Container(
                     width: _largeurCase * b.n,
@@ -443,7 +483,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                             color: b.libelle == 'Hors session' ? gris : (b.compo ? Couleurs.attente : Couleurs.info))),
                     ),
                   ),
-                Container(width: _largeurMoy, height: 30, decoration: BoxDecoration(border: Border(left: BorderSide(color: bordure)))),
+                Container(width: _largeurTotal + _largeurMoy, height: 30, decoration: BoxDecoration(border: Border(left: BorderSide(color: bordure)))),
               ]),
             ),
             // En-têtes des épreuves.
@@ -452,7 +492,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
               child: IntrinsicHeight(
                 child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   SizedBox(
-                    width: _largeurNom,
+                    width: nomL,
                     child: Align(
                       alignment: Alignment.bottomLeft,
                       child: Padding(
@@ -463,9 +503,19 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                   ),
                   for (final ev in epreuves) enTete(ev),
                   Container(
+                    width: _largeurTotal,
+                    padding: const EdgeInsets.fromLTRB(14, 0, 10, 10),
+                    decoration: BoxDecoration(border: Border(left: BorderSide(color: schema.onSurface, width: 2))),
+                    alignment: Alignment.bottomLeft,
+                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      const Text('Total', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                      Text(_parAcquis ? '' : 'des notes', style: TextStyle(fontSize: 11, color: gris)),
+                    ]),
+                  ),
+                  Container(
                     width: _largeurMoy,
                     padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                    decoration: BoxDecoration(border: Border(left: BorderSide(color: schema.onSurface, width: 2))),
+                    decoration: BoxDecoration(border: Border(left: BorderSide(color: bordure))),
                     alignment: Alignment.bottomLeft,
                     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                       const Text('Moyenne', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
@@ -481,7 +531,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure.withValues(alpha: .6)))),
                 child: Row(children: [
                   SizedBox(
-                    width: _largeurNom,
+                    width: nomL,
                     height: _hauteurLigne,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -497,11 +547,24 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                   ),
                   for (var j = 0; j < epreuves.length; j++) caseNote(i, j),
                   Container(
+                    width: _largeurTotal,
+                    height: _hauteurLigne,
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(border: Border(left: BorderSide(color: schema.onSurface, width: 2))),
+                    child: _parAcquis || totaux[eleves[i]['id']] == null
+                        ? Text('—', style: TextStyle(color: gris))
+                        : Text.rich(TextSpan(children: [
+                            TextSpan(text: nb(totaux[eleves[i]['id']]!.total), style: _chiffresDep.copyWith(fontSize: 15, fontWeight: FontWeight.w600)),
+                            TextSpan(text: ' / ${nb(totaux[eleves[i]['id']]!.sur)}', style: _chiffresDep.copyWith(fontSize: 12, color: gris)),
+                          ])),
+                  ),
+                  Container(
                     width: _largeurMoy,
                     height: _hauteurLigne,
                     alignment: Alignment.centerLeft,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(border: Border(left: BorderSide(color: schema.onSurface, width: 2))),
+                    decoration: BoxDecoration(color: Couleurs.doux(context).withValues(alpha: .35), border: Border(left: BorderSide(color: bordure))),
                     child: Text(_parAcquis ? '—' : noteLisible(moyennes[eleves[i]['id']]),
                         style: _chiffresDep.copyWith(
                             fontSize: 16,
@@ -515,7 +578,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
               color: Couleurs.doux(context).withValues(alpha: .5),
               child: Row(children: [
                 SizedBox(
-                  width: _largeurNom,
+                  width: nomL,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Text('Moyenne de la classe', style: TextStyle(fontSize: 13, color: gris)),
@@ -523,9 +586,15 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                 ),
                 for (final ev in epreuves) pied(ev),
                 Container(
+                  width: _largeurTotal,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(border: Border(left: BorderSide(color: schema.onSurface, width: 2))),
+                  child: const Text(''),
+                ),
+                Container(
                   width: _largeurMoy,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(border: Border(left: BorderSide(color: schema.onSurface, width: 2))),
+                  decoration: BoxDecoration(border: Border(left: BorderSide(color: bordure))),
                   child: Text(_parAcquis ? '—' : noteLisible(moyClasse), style: _chiffresDep.copyWith(fontSize: 15, fontWeight: FontWeight.w700)),
                 ),
               ]),
@@ -667,7 +736,11 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           ]),
         )
       else
-        carnet,
+        // La colonne des noms s'élargit : total et moyenne restent collés à droite, comme sur un bulletin.
+        LayoutBuilder(
+          builder: (context, c) => carnetDe(
+              math.max(_largeurNom, c.maxWidth - 2 - epreuves.length * _largeurCase - _largeurTotal - _largeurMoy).floorToDouble()),
+        ),
       const SizedBox(height: 12),
       Wrap(spacing: 18, runSpacing: 6, children: [
         Text.rich(TextSpan(style: TextStyle(fontSize: 12, color: gris), children: const [

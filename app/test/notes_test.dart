@@ -62,4 +62,25 @@ void main() {
     expect(acquisRetenu([(date: '2026-10-10', acquis: 'non_acquis'), (date: '2026-11-20', acquis: 'en_cours'), (date: '2026-11-25', acquis: null)]),
         'en_cours');
   });
+
+  test('total de la matière : somme des notes (× poids) sur le maximum, comme un bulletin', () {
+    const notes = [
+      NoteCalcul(valeur: 12, etat: 'note', poids: 1),
+      NoteCalcul(valeur: 16, etat: 'note', poids: 1),
+      NoteCalcul(valeur: 19, etat: 'note', poids: 1),
+    ];
+    final t = totalMatiere(notes, 20)!;
+    expect(t.total, 47);
+    expect(t.sur, 60);
+    expect(t.total / t.sur * 20, closeTo(moyenneMatiere(notes)!, 1e-9));
+    // Absent justifié exclu : le maximum baisse aussi ; composition ×2.
+    final u = totalMatiere(const [
+      NoteCalcul(valeur: 9, etat: 'note', poids: 1),
+      NoteCalcul(valeur: null, etat: 'absent_justifie', poids: 1),
+      NoteCalcul(valeur: 14, etat: 'note', poids: 2),
+    ], 20)!;
+    expect(u.total, 37);
+    expect(u.sur, 60);
+    expect(totalMatiere(const [NoteCalcul(valeur: null, etat: 'dispense', poids: 1)], 20), isNull);
+  });
 }
