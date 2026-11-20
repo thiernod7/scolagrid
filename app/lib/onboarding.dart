@@ -41,8 +41,21 @@ class _Page extends StatelessWidget {
   }
 }
 
+/// Les messages du serveur de connexion arrivent en anglais : on traduit les plus courants.
+String _messageAuth(String m) {
+  final attente = RegExp(r'after (\d+) seconds').firstMatch(m);
+  if (attente != null) return 'Un code vient déjà d\'être demandé. Réessayez dans ${attente.group(1)} secondes.';
+  final t = m.toLowerCase();
+  if (t.contains('rate limit') || t.contains('too many')) return 'Trop de demandes. Patientez quelques minutes puis réessayez.';
+  if (t.contains('expired') || (t.contains('invalid') && (t.contains('otp') || t.contains('token')))) {
+    return 'Code incorrect ou expiré. Demandez un nouveau code.';
+  }
+  if (t.contains('invalid phone') || t.contains('phone number')) return 'Numéro de téléphone incorrect.';
+  return m;
+}
+
 String _messageErreur(Object e) => switch (e) {
-      AuthException(:final message) => message,
+      AuthException(:final message) => _messageAuth(message),
       PostgrestException(:final message) => message,
       _ => 'Impossible de joindre le serveur. Vérifiez la connexion et réessayez.',
     };
