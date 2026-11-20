@@ -397,7 +397,7 @@ Future<void> _choisirPhotoEleve(BuildContext context, Map<String, Object?> e) as
         )
       : false;
   if (source == null || !context.mounted) return;
-  final p = await choisirPhoto(context, camera: source);
+  final p = await choisirPortrait(context, camera: source);
   if (p != null) await enregistrerPhoto(orgId: e['organisation_id'] as String, eleveId: e['id'] as String, photo: p);
 }
 

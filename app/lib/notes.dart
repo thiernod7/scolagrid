@@ -237,20 +237,29 @@ Future<void> _preparerNotes(String orgId, Map<String, Object?> annee) async {
   });
 }
 
+/// Les trois pages des notes, chacune une entrée du menu « Évaluations ».
+enum PageNotes { saisie, bulletins, finAnnee }
+
+/// La classe choisie en dernier : on la retrouve en passant d'une page des notes à l'autre.
+String? _derniereClasseNotes;
+
 class NotesScreen extends StatefulWidget {
-  const NotesScreen({super.key, required this.espace});
+  const NotesScreen({super.key, required this.espace, this.page = PageNotes.saisie});
 
   final Espace espace;
+  final PageNotes page;
 
   @override
   State<NotesScreen> createState() => _NotesScreenState();
 }
 
 class _NotesScreenState extends State<NotesScreen> {
-  String? _classeId;
+  String? _classeIdLocal = _derniereClasseNotes;
+  String? get _classeId => _classeIdLocal;
+  set _classeId(String? v) => _classeIdLocal = _derniereClasseNotes = v;
   String? _periodeId;
   String? _sessionId; // null : toute la période
-  int _onglet = 0; // 0 évaluations, 1 résultats, 2 fin d'année
+  int get _onglet => widget.page.index; // 0 saisie, 1 bulletins (résultats), 2 fin d'année
 
   Espace get _e => widget.espace;
   bool get _planifie => _e.fondateur || _e.droits.contains('planifier_evaluations');
@@ -306,7 +315,8 @@ class _NotesScreenState extends State<NotesScreen> {
     final sessionClose = session != null && session['statut'] == 'cloturee';
 
     final enTete = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      const Text('Notes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
+      Text(const ['Saisie des notes', 'Bulletins', "Fin d'année"][_onglet],
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
       const SizedBox(width: 4),
       _MenuClasse(
         valeur: classe['id'] as String,
@@ -317,7 +327,8 @@ class _NotesScreenState extends State<NotesScreen> {
           _sessionId = null;
         }),
       ),
-      if (periodes.isNotEmpty)
+      // La fin d'année porte sur toutes les périodes : pas de choix de période.
+      if (periodes.isNotEmpty && _onglet != 2)
         Segments<String>(
           valeur: periode['id'] as String,
           choix: {for (final p in periodes) p['id'] as String: '${p['libelle']}${p['statut'] == 'cloturee' ? ' · close' : ''}'},
@@ -382,7 +393,7 @@ class _NotesScreenState extends State<NotesScreen> {
       String jj(Object? d) => _dateLisible(d).substring(0, 5);
       corps = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // La session : une fenêtre de la période (« Évaluation d'octobre »), ou toute la période.
-        Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        if (_onglet != 2) Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
           _MenuClasse(
             largeur: telephone ? double.infinity : 320,
             valeur: session?['id'] as String? ?? '',
@@ -405,19 +416,17 @@ class _NotesScreenState extends State<NotesScreen> {
               label: const Text('Créer les sessions (mensuelles + composition)'),
             ),
         ]),
+        // Les pages (saisie, bulletins, fin d'année) sont dans le menu « Évaluations ».
+        if (_onglet != 2 && (close || sessionClose)) ...[
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: close
+                ? const Etat('Période clôturée', ton: Ton.neutre, icone: Icons.lock_outline)
+                : const Etat('Session clôturée', ton: Ton.neutre, icone: Icons.lock_outline),
+          ),
+        ],
         const SizedBox(height: 14),
-        Row(children: [
-          Segments<int>(
-              valeur: _onglet,
-              choix: const {0: 'Évaluations', 1: 'Résultats', 2: 'Fin d\'année'},
-              onChanged: (v) => setState(() => _onglet = v)),
-          const Spacer(),
-          if (close)
-            const Etat('Période clôturée', ton: Ton.neutre, icone: Icons.lock_outline)
-          else if (sessionClose)
-            const Etat('Session clôturée', ton: Ton.neutre, icone: Icons.lock_outline),
-        ]),
-        const SizedBox(height: 12),
         if (_onglet == 2)
           _FinAnnee(espace: _e, annee: annee, classe: classe, periodes: periodes, peutDecider: _planifie)
         // Sur ordinateur, le carnet de notes (élèves × épreuves) ; sur téléphone, la liste des épreuves
@@ -452,7 +461,7 @@ class _NotesScreenState extends State<NotesScreen> {
         constraints: const BoxConstraints(maxWidth: 1600),
         child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
           enTete,
-          if (periode.isNotEmpty) ...[
+          if (periode.isNotEmpty && _onglet != 2) ...[
             const SizedBox(height: 4),
             Text('${periode['libelle']} : du ${_dateLisible(periode['debut'])} au ${_dateLisible(periode['fin'])} · '
                 '${periode['nature'] == 'appreciations' ? 'acquis : acquis, en cours, non acquis (pas de moyenne)' : 'notes sur ${periode['bareme']}'}',

@@ -873,7 +873,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
   }
 
   Widget _vignette(double taille) {
-    if (_photo != null) return CircleAvatar(radius: taille / 2, backgroundImage: MemoryImage(base64Decode(_photo!.base64)));
+    if (_photo != null) return VignetteRonde(image: MemoryImage(base64Decode(_photo!.base64)), taille: taille);
     if (_existant != null) {
       return PhotoEleve(eleveId: widget.eleveId!, nom: _nomEleve(_existant!), version: _photoExistante, taille: taille);
     }
@@ -894,7 +894,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
           if (cameraDisponible)
             TextButton.icon(
               onPressed: () async {
-                final p = await choisirPhoto(context, camera: true);
+                final p = await choisirPortrait(context, camera: true);
                 if (p != null) setState(() => _photo = p);
               },
               icon: const Icon(Icons.photo_camera_outlined, size: 18),
@@ -902,7 +902,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
             ),
           TextButton.icon(
             onPressed: () async {
-              final p = await choisirPhoto(context, camera: false);
+              final p = await choisirPortrait(context, camera: false);
               if (p != null) setState(() => _photo = p);
             },
             icon: const Icon(Icons.image_outlined, size: 18),

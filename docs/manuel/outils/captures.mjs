@@ -156,7 +156,8 @@ if (etape === 'connexion') {
   });
 } else {
   // Barre latérale (PC 1440 × 900) : positions fixes.
-  const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Notes': 230, 'Caisse': 305, 'Dépenses': 343, 'Recouvrement': 381, 'Personnel': 456, 'Postes': 494, 'Paramètres': 532 };
+  const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Caisse': 267, 'Dépenses': 305, 'Recouvrement': 343,
+    'Saisie des notes': 418, 'Bulletins': 456, "Fin d'année": 494, 'Personnel': 569, 'Postes': 607, 'Paramètres': 645 };
   const attendre = (texte, ms = 12000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
   const retour = async () => {
     const b = page.getByRole('button', { name: /^(Retour|Back)$/ });
@@ -224,6 +225,12 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape');
     await clic('Nouvelle inscription'); await pause(3000); await semantique();
     await arbre('formulaire'); await photo('43-inscription-formulaire');
+    // La photo d'identité : une photo de démonstration (dessin), cadrée toute seule.
+    const portrait = new URL('./portrait-demo.jpg', import.meta.url).pathname;
+    const [choixPhoto] = await Promise.all([page.waitForEvent('filechooser', { timeout: 10000 }), clic('Galerie')]);
+    await choixPhoto.setFiles(portrait);
+    await pause(6000); await semantique(); await photo('43b-photo-cadrage');
+    await clic('Utiliser'); await pause(4000); await semantique(); await photo('43c-photo-vignette');
     await retour();
   });
   await etapeSure('encaisser', async () => {
@@ -271,11 +278,11 @@ if (etape === 'connexion') {
     if (await fermer.count()) { await fermer.first().click(); await pause(1500); }
   });
   await etapeSure('notes', async () => {
-    await aller('Notes', 'Notes'); await pause(3000); await photo('63-notes');
+    await aller('Saisie des notes', 'Saisie des notes'); await pause(3000); await photo('63-notes');
     const creer = page.getByRole('button', { name: /Créer les périodes/ });
     if (await creer.count()) { await creer.first().click(); await pause(4000); await semantique(); await photo('64-notes-periodes'); }
     // La CE2 A a des notes de démonstration.
-    await page.mouse.click(420, 92); await pause(1500); await semantique();
+    await page.mouse.click(500, 92); await pause(1500); await semantique();
     await photo('63a-notes-menu-classe');
     const ce2a = page.getByText(/^CE2 A\b/);
     if (await ce2a.count()) { await ce2a.last().click(); } else { await page.mouse.click(420, 203); }
@@ -286,19 +293,13 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape'); await pause(1000);
     await page.mouse.click(700, 370); await pause(3500); await semantique(); await photo('66-notes-saisie');
     await retour();
-    const resultats = page.getByRole('button', { name: 'Résultats' });
-    if (await resultats.count()) await resultats.first().click(); else await page.mouse.click(384, 228);
-    await pause(3000); await photo('65-notes-resultats');
-    // Fin d'année : moyennes des périodes, moyenne annuelle, proposition, décision.
-    const finAnnee = page.getByRole('button', { name: "Fin d'année" });
-    if (await finAnnee.count()) await finAnnee.first().click(); else await page.mouse.click(490, 216);
-    await pause(3000); await semantique(); await photo('68-notes-fin-annee');
-    const res = page.getByRole('button', { name: 'Résultats' });
-    if (await res.count()) await res.first().click(); else await page.mouse.click(384, 216);
-    await pause(2000);
+    // Les bulletins et la fin d'année : deux entrées du menu « Évaluations » (la classe suit).
+    await aller('Bulletins', 'Bulletins'); await pause(3000); await photo('65-notes-resultats');
+    await aller("Fin d'année", "Fin d'année"); await pause(3000); await semantique(); await photo('68-notes-fin-annee');
+    await aller('Saisie des notes', 'Saisie des notes'); await pause(2000);
     // Les réglages : périodes et leurs sessions, types, absences, mentions.
     const menuNotes = page.getByRole('button', { name: /Périodes, types, clôture/ });
-    if (await menuNotes.count()) await menuNotes.first().click(); else await page.mouse.click(874, 92);
+    if (await menuNotes.count()) await menuNotes.first().click(); else await page.mouse.click(965, 92);
     await pause(1500); await semantique(); await photo('67a-notes-menu');
     await page.mouse.click(750, 104);
     await pause(3000); await semantique(); await photo('67-notes-reglages');

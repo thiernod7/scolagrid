@@ -1,13 +1,14 @@
 import 'dart:async' show Timer, unawaited;
 import 'dart:convert' show base64Decode, base64Encode, base64Url, jsonDecode, jsonEncode, utf8;
 import 'dart:math' show Random;
+import 'dart:math' as math show max, min;
 import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:excel/excel.dart' as xl;
 import 'package:file_picker/file_picker.dart' show FilePicker, FileType;
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb, listEquals, setEquals;
+import 'package:flutter/foundation.dart' show TargetPlatform, compute, defaultTargetPlatform, kIsWeb, listEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData, KeyDownEvent, KeyRepeatEvent, LogicalKeyboardKey;
 import 'package:image_picker/image_picker.dart' show CameraDevice, ImagePicker, ImageSource;
@@ -26,6 +27,7 @@ import 'matricule.dart';
 import 'modele_excel.dart';
 import 'modele_guineen.dart';
 import 'notes_calcul.dart';
+import 'portrait.dart';
 import 'recu_pdf.dart';
 import 'theme.dart';
 
