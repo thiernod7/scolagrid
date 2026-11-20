@@ -39,7 +39,8 @@ begin;
 select pg_temp.connecte(:'g');
 set local role authenticated;
 do $$ begin
-  assert (select count(*) from public.photos_eleves) = 1, 'L''enseignant voit les photos';
+  -- Depuis 044 : seulement les photos des élèves de ses classes (il n'en a pas ici).
+  assert (select count(*) from public.photos_eleves) = 0, 'L''enseignant ne voit que les photos de ses classes';
 end $$;
 update public.photos_eleves set image = repeat('C', 3000);
 commit;

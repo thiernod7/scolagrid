@@ -12,6 +12,9 @@ select id as org from public.organisations where cree_par = :'a' order by create
 select id as annee from public.annees_scolaires where organisation_id = :'org' and en_cours \gset
 select c.id as classe, c.niveau_id as niveau from public.classes c where c.organisation_id = :'org' order by c.created_at limit 1 \gset
 select id as matiere from public.matieres where niveau_id = :'niveau' limit 1 \gset
+-- Depuis 044 : l'enseignant G n'écrit que là où il enseigne.
+insert into public.enseignements (organisation_id, personnel_id, classe_id, matiere_id, debut)
+  select :'org', id, :'classe', :'matiere', '2026-01-01' from public.personnel where user_id = :'g' and organisation_id = :'org';
 select e.id as eleve from public.eleves e where e.organisation_id = :'org' limit 1 \gset
 
 -- La période et les types (comme le fait l'app), puis les sessions par défaut.

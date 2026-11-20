@@ -116,12 +116,13 @@ do $$ begin
   assert (select count(*) from public.historique_eleves where evenement = 'statut' and nouveau_statut = 'annule') = 1, 'L''annulation est historisée';
 end $$;
 
--- G, enseignant : voit l'élève, pas les téléphones des parents ; n'inscrit pas
+-- G, enseignant : ne voit pas l'élève (pas de sa classe), pas les téléphones des parents ; n'inscrit pas
 begin;
 select pg_temp.connecte(:'g');
 set local role authenticated;
 do $$ begin
-  assert (select count(*) from public.eleves) = 1, 'G voit les élèves de son école';
+  -- Depuis 044 : un enseignant ne voit que les élèves de ses classes (il n'en a pas encore).
+  assert (select count(*) from public.eleves) = 0, 'G ne voit que les élèves de ses classes';
   assert (select count(*) from public.contacts) = 0, 'G ne voit pas les contacts des familles';
   assert (select count(*) from public.eleves_contacts) = 0, 'G ne voit pas les liens familiaux';
   begin

@@ -474,6 +474,12 @@ class FicheScreen extends StatelessWidget {
                           : null,
                     ),
                   ),
+                // Ce qu'il enseigne : ses classes et ses matières (sans affectation, pas de saisie).
+                if (actives.any((a) => a['fonction'] == 'enseignant')) ...[
+                  const SizedBox(height: 12),
+                  EnseignementsFiche(
+                      espace: espace, fiche: fiche, peutModifier: (gere || espace.gereMatieres) && fiche['statut'] == 'actif'),
+                ],
                 const SizedBox(height: 12),
                 _Droits(
                   ficheId: ficheId,
@@ -492,6 +498,28 @@ class FicheScreen extends StatelessWidget {
                       if (await _confirmer(context,
                           '${fiche['nom_complet']} quitte l\'établissement ? Son accès à l\'app sera coupé. La fiche est conservée.')) {
                         await _modifier('personnel', ficheId, {'statut': 'sorti'});
+                        // Ses enseignements s'arrêtent aujourd'hui ; on dit ce qui reste sans enseignant.
+                        final aujourdhui = _date(DateTime.now());
+                        final siens = await db.getAll(
+                            '''SELECT ens.id, c.nom AS classe, m.nom AS matiere FROM enseignements ens
+                                 JOIN classes c ON c.id = ens.classe_id JOIN matieres m ON m.id = ens.matiere_id
+                               WHERE ens.personnel_id = ? AND (ens.fin IS NULL OR ens.fin > ?)''',
+                            [ficheId, aujourdhui]);
+                        for (final e in siens) {
+                          await _modifier('enseignements', e['id'] as String, {'fin': aujourdhui});
+                        }
+                        if (siens.isNotEmpty && context.mounted) {
+                          await showDialog<void>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('À remplacer'),
+                              content: Text('Ces matières n\'ont plus d\'enseignant :\n'
+                                  '${siens.map((e) => '${e['matiere']} en ${e['classe']}').join('\n')}\n\n'
+                                  'Affectez-les dans Paramètres › Enseignants par classe.'),
+                              actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Compris'))],
+                            ),
+                          );
+                        }
                       }
                     },
                     icon: const Icon(Icons.logout),

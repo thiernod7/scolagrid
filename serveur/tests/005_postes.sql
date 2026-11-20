@@ -79,8 +79,9 @@ begin
   update public.postes set derniere_synchro = '2030-01-01', nom = 'Renommé', code = 'Z', statut = 'bloque' where id = p;
 end $$;
 commit;
+-- Depuis 044 : le téléphone d'un enseignant (notes seulement) est actif tout de suite.
 do $$ begin
-  assert (select derniere_synchro = '2030-01-01' and nom = 'Téléphone de G' and code = 'C' and statut = 'a_valider'
+  assert (select derniere_synchro = '2030-01-01' and nom = 'Téléphone de G' and code = 'C' and statut = 'actif'
           from public.postes where id = current_setting('test.poste_g')::uuid), 'G ne doit modifier que sa synchro';
 end $$;
 
@@ -97,7 +98,7 @@ commit;
 do $$ begin
   assert (select statut from public.postes where nom = 'PC du secrétariat') = 'bloque', 'D doit pouvoir bloquer un poste de son site';
   -- Depuis la migration 027, qui travaille sur le site peut signaler la synchro d'un poste partagé.
-  assert (select statut from public.postes where id = current_setting('test.poste_g')::uuid) = 'a_valider', 'D ne doit pas bloquer un poste du site 2';
+  assert (select statut from public.postes where id = current_setting('test.poste_g')::uuid) = 'actif', 'D ne doit pas bloquer un poste du site 2';
 end $$;
 
 -- A voit tous les postes de son école

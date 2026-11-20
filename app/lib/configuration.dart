@@ -36,6 +36,7 @@ part 'depenses.dart';
 part 'eleves.dart';
 part 'familles.dart';
 part 'encaissement.dart';
+part 'enseignements.dart';
 part 'fiche_eleve.dart';
 part 'fin_annee.dart';
 part 'frais.dart';
@@ -359,6 +360,8 @@ final _reglages = <_Reglage>[
   _Reglage('pieces', 'Pièces du dossier', 'Ce que les familles fournissent', Icons.folder_open_outlined, 'Scolarité',
       (e) => PiecesDossierScreen(espace: e)),
   // Les évaluations : réglées une fois par an par la direction des études.
+  _Reglage('enseignants', 'Enseignants par classe', 'Qui enseigne quoi, matières sans enseignant', Icons.co_present_outlined,
+      'Évaluations', (e) => EnseignantsParClasseScreen(espace: e)),
   _Reglage('periodes_eval', 'Périodes et sessions', 'Trimestres ou semestres, barème, sessions du mois', Icons.date_range_outlined,
       'Évaluations', (e) => ReglagesEvaluationsScreen(espace: e, partie: PartieReglagesNotes.periodes)),
   _Reglage('types_eval', "Types d'évaluation", 'Évaluation, composition, examen blanc, poids', Icons.category_outlined, 'Évaluations',
@@ -395,7 +398,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   bool _voit(String cle) => switch (cle) {
         'demarrage' || 'ecole' || 'regles' || 'pieces' => _e.gestionnaire,
         'annee' || 'niveaux' || 'matieres' || 'classes' => _e.gestionnaire || _e.gereMatieres,
-        'periodes_eval' || 'types_eval' || 'calcul_notes' => _e.gestionnaire || _e.gereMatieres,
+        'enseignants' || 'periodes_eval' || 'types_eval' || 'calcul_notes' => _e.gestionnaire || _e.gereMatieres,
         'frais' || 'reductions' || 'remboursements' => _e.gestionnaire || _e.voitFinances,
         _ => false,
       };
@@ -404,6 +407,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   bool _modifie(String cle) => switch (cle) {
         'demarrage' || 'ecole' || 'classes' || 'frais' => _e.gestionnaire,
         'matieres' || 'periodes_eval' || 'types_eval' || 'calcul_notes' => _e.gereMatieres,
+        'enseignants' => _e.gestionnaire || _e.gereMatieres,
         'annee' || 'niveaux' || 'reductions' || 'remboursements' || 'regles' || 'pieces' => _e.fondateur,
         _ => false,
       };
@@ -444,6 +448,10 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       ),
       'types_eval': (n('types_eval') > 0, n('types_eval') == 0 ? 'Créés avec les périodes' : '${n('types_eval')} types'),
       'calcul_notes': (true, 'Absences, remise, moyenne annuelle, passage, mentions'),
+      'enseignants': (
+        n('sans_enseignant') == 0,
+        n('sans_enseignant') == 0 ? 'Chaque matière a son enseignant' : '${n('sans_enseignant')} matière(s) sans enseignant',
+      ),
     };
   }
 
@@ -467,8 +475,13 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
             WHERE a.organisation_id = ?) AS periodes,
            (SELECT count(*) FROM sessions_evaluation s JOIN periodes_evaluation p ON p.id = s.periode_id
             JOIN annees_scolaires a ON a.id = p.annee_id AND a.en_cours = 1 WHERE a.organisation_id = ?) AS sessions,
-           (SELECT count(*) FROM types_evaluation WHERE organisation_id = ? AND actif = 1) AS types_eval''',
-      parametres: [o, o, o, o, o, o, o, o, o, o, o, o, o, o],
+           (SELECT count(*) FROM types_evaluation WHERE organisation_id = ? AND actif = 1) AS types_eval,
+           (SELECT count(*) FROM classes c JOIN annees_scolaires a ON a.id = c.annee_id AND a.en_cours = 1
+              JOIN matieres m ON m.niveau_id = c.niveau_id
+            WHERE c.organisation_id = ? AND c.fermee = 0 AND NOT EXISTS (SELECT 1 FROM enseignements ens
+              WHERE ens.classe_id = c.id AND ens.matiere_id = m.id AND ens.debut <= date('now')
+                AND (ens.fin IS NULL OR ens.fin >= date('now')))) AS sans_enseignant''',
+      parametres: [o, o, o, o, o, o, o, o, o, o, o, o, o, o, o],
       builder: (context, l) {
         final r = l.first;
         final etat = _etat(r);

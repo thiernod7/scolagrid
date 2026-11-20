@@ -185,6 +185,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
     'annees_scolaires': ['en_cours'],
     'rattachements': ['actif'],
     'affectations': ['actif'],
+    'enseignements': ['remplacant'],
     'droits_personnel': ['accorde'],
     'eleves_contacts': ['tuteur_principal', 'responsable_financier'],
     'souscriptions': ['actif'],

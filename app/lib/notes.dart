@@ -273,7 +273,8 @@ class _NotesScreenState extends State<NotesScreen> {
           builder: (context, annees) {
             if (annees.isEmpty) return const Center(child: Text("Créez d'abord l'année scolaire (Paramètres)."));
             final annee = annees.first;
-            return Requete(
+            // Un enseignant : seulement ses classes et ses matières.
+            return avecMesCours(_e, (cours) => Requete(
               '''SELECT c.id, c.nom, c.niveau_id, n.cycle, n.ordre,
                    (SELECT count(*) FROM inscriptions i WHERE i.classe_id = c.id
                       AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')) AS effectif
@@ -288,18 +289,34 @@ class _NotesScreenState extends State<NotesScreen> {
                        JOIN types_evaluation t ON t.id = s.type_id JOIN periodes_evaluation p ON p.id = s.periode_id
                      WHERE p.annee_id = ? ORDER BY s.debut, s.ordre''',
                   parametres: [annee['id']],
-                  builder: (context, sessions) => _contenu(context, annee, classes, periodes, sessions),
+                  builder: (context, sessions) => _contenu(context, annee,
+                      cours == null
+                          ? classes
+                          // Bulletins : seulement ses classes de professeur principal (les autres seraient incomplets).
+                          : classes.where((c) => (_onglet == 1 ? cours.classesPP : cours.classes).contains(c['id'])).toList(), periodes, sessions, cours),
                 ),
               ),
-            );
+            ));
           },
         ),
       );
 
-  Widget _contenu(BuildContext context, Map<String, Object?> annee, Lignes classes, Lignes toutesPeriodes, Lignes toutesSessions) {
+  Widget _contenu(BuildContext context, Map<String, Object?> annee, Lignes classes, Lignes toutesPeriodes, Lignes toutesSessions,
+      MesCours? cours) {
     final gris = Theme.of(context).colorScheme.onSurfaceVariant;
     final telephone = MediaQuery.sizeOf(context).width < 640;
-    if (classes.isEmpty) return const Center(child: Text('Aucune classe cette année.'));
+    if (classes.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+              cours == null
+                  ? 'Aucune classe cette année.'
+                  : "Aucune classe ne vous est confiée pour le moment.\nLa direction vous affecte vos classes et vos matières ; elles apparaîtront ici.",
+              textAlign: TextAlign.center),
+        ),
+      );
+    }
     final classe = classes.firstWhere((c) => c['id'] == _classeId, orElse: () => classes.first);
     final cycle = '${classe['cycle'] ?? ''}';
     final periodes = toutesPeriodes.where((p) => p['cycle'] == cycle).toList();
@@ -315,7 +332,7 @@ class _NotesScreenState extends State<NotesScreen> {
     final sessionClose = session != null && session['statut'] == 'cloturee';
 
     final enTete = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      Text(const ['Saisie des notes', 'Bulletins', "Fin d'année"][_onglet],
+      Text(_onglet == 0 && cours != null ? 'Mes classes' : const ['Saisie des notes', 'Bulletins', "Fin d'année"][_onglet],
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
       const SizedBox(width: 4),
       _MenuClasse(
@@ -437,10 +454,17 @@ class _NotesScreenState extends State<NotesScreen> {
             session: session,
             sessions: sessions,
             peutSaisir: _saisit && !close && !sessionClose,
+            cours: cours,
           )
         else if (_onglet == 0)
           _Evaluations(
-              espace: _e, classe: classe, periode: periode, session: session, sessions: sessions, peutSaisir: _saisit && !close && !sessionClose)
+              espace: _e,
+              classe: classe,
+              periode: periode,
+              session: session,
+              sessions: sessions,
+              peutSaisir: _saisit && !close && !sessionClose,
+              cours: cours)
         else
           _Resultats(
               espace: _e, annee: annee, classe: classe, periode: periode, session: session, peutSaisir: _saisit && !close && !sessionClose),
@@ -531,6 +555,7 @@ class _Evaluations extends StatelessWidget {
     required this.session,
     required this.sessions,
     required this.peutSaisir,
+    this.cours,
   });
 
   final Espace espace;
@@ -541,16 +566,22 @@ class _Evaluations extends StatelessWidget {
   final Lignes sessions;
   final bool peutSaisir;
 
+  /// Un enseignant : ses classes et ses matières (null : tout).
+  final MesCours? cours;
+
   Future<void> _nouvelle(BuildContext context, {String? matiereChoisie, bool ouvrirSaisie = true}) async {
     final messager = ScaffoldMessenger.of(context);
     final matieres = {
       for (final m in await db.getAll('SELECT id, nom FROM matieres WHERE niveau_id = ? ORDER BY nom', [classe['niveau_id']]))
-        m['id'] as String: '${m['nom']}',
+        if (cours == null || cours!.saisit(classe['id'], m['id'])) m['id'] as String: '${m['nom']}',
     };
     final types = await db.getAll('SELECT * FROM types_evaluation WHERE organisation_id = ? AND actif = 1 ORDER BY ordre', [espace.orgId]);
     if (!context.mounted) return;
     if (matieres.isEmpty) {
-      messager.showSnackBar(const SnackBar(content: Text('Aucune matière pour ce niveau : ajoutez-les dans Paramètres › Matières.')));
+      messager.showSnackBar(SnackBar(
+          content: Text(cours != null
+              ? "Vous n'enseignez aucune matière dans cette classe."
+              : 'Aucune matière pour ce niveau : ajoutez-les dans Paramètres › Matières.')));
       return;
     }
     if (types.isEmpty) {
@@ -658,7 +689,10 @@ class _Evaluations extends StatelessWidget {
              WHERE ev.classe_id = ? AND ev.periode_id = ? AND (? IS NULL OR ev.session_id = ?)
              ORDER BY ev.date_evaluation, ev.created_at''',
           parametres: [classe['id'], periode['id'], session?['id'], session?['id']],
-          builder: (context, evaluations) => _contenu(context, matieres, evaluations),
+          builder: (context, evaluations) => _contenu(
+              context,
+              cours == null ? matieres : matieres.where((m) => cours!.voit(classe['id'], m['id'])).toList(),
+              cours == null ? evaluations : evaluations.where((e) => cours!.voit(classe['id'], e['matiere_id'])).toList()),
         ),
       );
 
@@ -670,6 +704,8 @@ class _Evaluations extends StatelessWidget {
     final effectif = classe['effectif'] as int? ?? 0;
     final bareme = periode['bareme'] as int? ?? 20;
     final aCompleter = evaluations.where((e) => (e['saisies'] as int? ?? 0) < effectif).length;
+    // Un enseignant ne crée d'épreuve que dans ses matières (pas dans toute sa classe de professeur principal).
+    final saisir = peutSaisir && (cours == null || matieres.any((m) => cours!.saisit(classe['id'], m['id'])));
     if (matieres.isEmpty) {
       return Text('Aucune matière pour ce niveau : ajoutez-les dans Paramètres › Matières.', style: TextStyle(color: gris));
     }
@@ -755,7 +791,7 @@ class _Evaluations extends StatelessWidget {
               '${aCompleter > 0 ? ' · $aCompleter à compléter' : ''}',
               style: TextStyle(fontSize: 14, color: aCompleter > 0 ? Couleurs.attente : gris)),
         ),
-        if (peutSaisir)
+        if (saisir)
           FilledButton.icon(onPressed: () => _nouvelle(context), icon: const Icon(Icons.add, size: 16), label: const Text('Nouvelle évaluation')),
       ]),
       const SizedBox(height: 12),
@@ -785,7 +821,7 @@ class _Evaluations extends StatelessWidget {
                             style: const TextStyle(fontSize: 12, color: Couleurs.attente, fontWeight: FontWeight.w600)),
                     ])),
                   ),
-                  if (peutSaisir)
+                  if (saisir)
                     TextButton.icon(
                       onPressed: () => _nouvelle(context, matiereChoisie: m['id'] as String),
                       icon: const Icon(Icons.add, size: 16),
@@ -902,19 +938,23 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
 
   @override
   Widget build(BuildContext context) => Requete(
-        '''SELECT ev.*, m.nom AS matiere, t.libelle AS type, c.nom AS classe, p.libelle AS periode, p.bareme, p.statut AS statut_periode,
+        '''SELECT ev.*, (SELECT count(*) FROM enseignements ens JOIN personnel pe ON pe.id = ens.personnel_id
+                WHERE pe.user_id = ? AND ens.classe_id = ev.classe_id AND ens.matiere_id = ev.matiere_id
+                  AND ens.debut <= date('now') AND (ens.fin IS NULL OR date(ens.fin, '+7 day') >= date('now'))) AS j_enseigne,
+             m.nom AS matiere, t.libelle AS type, c.nom AS classe, p.libelle AS periode, p.bareme, p.statut AS statut_periode,
              s.libelle AS session, s.statut AS statut_session, p.nature
            FROM evaluations ev JOIN matieres m ON m.id = ev.matiere_id JOIN types_evaluation t ON t.id = ev.type_id
            JOIN classes c ON c.id = ev.classe_id JOIN periodes_evaluation p ON p.id = ev.periode_id
            LEFT JOIN sessions_evaluation s ON s.id = ev.session_id
            WHERE ev.id = ?''',
-        parametres: [widget.evaluationId],
+        parametres: [monId, widget.evaluationId],
         builder: (context, l) {
           if (l.isEmpty) return const Scaffold(body: Center(child: Text('Évaluation introuvable.')));
           final ev = l.first;
+          // L'enseignant saisit dans ses classes et ses matières ; la direction des études partout.
           final aLeDroit = widget.espace.fondateur ||
-              widget.espace.droits.contains('saisir_notes') ||
-              widget.espace.droits.contains('planifier_evaluations');
+              widget.espace.droits.contains('planifier_evaluations') ||
+              (widget.espace.droits.contains('saisir_notes') && (ev['j_enseigne'] as int? ?? 0) > 0);
           // Session clôturée (période ouverte) : correction possible, avec un motif.
           final corrigeable = aLeDroit && ev['statut_periode'] == 'ouverte' && ev['statut_session'] == 'cloturee';
           final ouverte = aLeDroit && ev['statut_periode'] == 'ouverte' && (ev['statut_session'] != 'cloturee' || _motif != null);

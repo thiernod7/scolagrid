@@ -12,6 +12,9 @@ select id as org from public.organisations where cree_par = :'a' order by create
 select id as annee from public.annees_scolaires where organisation_id = :'org' and en_cours \gset
 select c.id as classe, c.niveau_id as niveau from public.classes c where c.organisation_id = :'org' order by c.created_at limit 1 \gset
 select id as matiere from public.matieres where niveau_id = :'niveau' limit 1 \gset
+-- Depuis 044 : l'enseignant G n'écrit que là où il enseigne.
+insert into public.enseignements (organisation_id, personnel_id, classe_id, matiere_id, debut)
+  select :'org', id, :'classe', :'matiere', '2026-01-01' from public.personnel where user_id = :'g' and organisation_id = :'org';
 select i.id as ins, i.eleve_id as eleve from public.inscriptions i where i.organisation_id = :'org' limit 1 \gset
 insert into public.types_evaluation (organisation_id, libelle, poids) values (:'org', 'Évaluation', 1)
   on conflict (organisation_id, libelle) do nothing;
@@ -81,11 +84,12 @@ reset role;
 -- Un enseignant ne décide pas.
 select pg_temp.connecte(:'g');
 set local role authenticated;
+update public.decisions_annee set decision = 'exclu' where inscription_id = :'ins';
+reset role;
+-- (vérifié hors de son compte : depuis 044, l'enseignant ne lit pas les décisions)
 do $$ begin
-  update public.decisions_annee set decision = 'exclu' where inscription_id = current_setting('test.ins')::uuid;
   assert (select decision from public.decisions_annee where inscription_id = current_setting('test.ins')::uuid) = 'admis_conseil',
     'Décision changée par un enseignant';
 end $$;
-reset role;
 rollback;
 \echo '043 contrôle et fin d''année : OK'

@@ -691,6 +691,22 @@ const schema = Schema([
   ], indexes: [
     Index('par_periode', [IndexedColumn('periode_id')]),
   ]),
+  // Qui enseigne quoi : une personne, une matière, une classe, du début à la fin (migration 044).
+  Table('enseignements', [
+    Column.text('organisation_id'),
+    Column.text('personnel_id'),
+    Column.text('classe_id'),
+    Column.text('matiere_id'),
+    Column.text('service'),
+    Column.text('debut'),
+    Column.text('fin'),
+    Column.integer('remplacant'),
+    Column.text('created_at'),
+    Column.text('updated_at'),
+  ], indexes: [
+    Index('par_personne', [IndexedColumn('personnel_id')]),
+    Index('par_classe', [IndexedColumn('classe_id'), IndexedColumn('matiere_id')]),
+  ]),
   Table('evaluations', [
     Column.text('organisation_id'),
     Column.text('periode_id'),

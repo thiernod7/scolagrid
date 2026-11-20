@@ -129,6 +129,10 @@ class _AccueilScreenState extends State<AccueilScreen> {
   Set<String> _masquees = const {};
   bool _peutInscrire = false;
 
+  /// Seulement enseignant : l'app se réduit à « Mes classes » (et « Bulletins » s'il est professeur principal).
+  bool _modeEnseignant = false;
+  bool _profPrincipal = false;
+
   _Rubrique _rubrique = _Rubrique.accueil;
   final _cles = {for (final r in _Rubrique.values) r: GlobalKey<NavigatorState>()};
   String? _recherche;
@@ -171,6 +175,13 @@ class _AccueilScreenState extends State<AccueilScreen> {
         // Après « Code PIN oublié » (ou un PIN jamais choisi) : on en demande un tout de suite.
         if (r.isNotEmpty && r.first['pin_empreinte'] == null && r.first['statut'] != 'bloque') _demanderPin();
       }))
+      ..add(db.watch("SELECT count(*) AS n, sum(role <> 'enseignant') AS autres FROM rattachements WHERE user_id = ? AND actif = 1",
+          parameters: [moi]).listen((r) {
+        final n = r.first['n'] as int? ?? 0, autres = r.first['autres'] as int? ?? 0;
+        setState(() => _modeEnseignant = n > 0 && autres == 0);
+      }))
+      ..add(db.watch('SELECT count(*) AS n FROM classes c JOIN personnel p ON p.id = c.professeur_principal_id WHERE p.user_id = ?',
+          parameters: [moi]).listen((r) => setState(() => _profPrincipal = (r.first['n'] as int? ?? 0) > 0)))
       ..add(db.watch("SELECT count(*) AS n FROM postes WHERE statut = 'a_valider'").listen((r) {
         _postesAValider.value = r.first['n'] as int? ?? 0;
       }))
@@ -252,7 +263,12 @@ class _AccueilScreenState extends State<AccueilScreen> {
         droits: _droits,
       );
 
-  List<_Entree> _entrees(Espace e) => [
+  List<_Entree> _entrees(Espace e) => _modeEnseignant
+      ? [
+          const _Entree(_Rubrique.notes, 'Mes classes', Icons.edit_note_outlined, Icons.edit_note, null),
+          if (_profPrincipal) const _Entree(_Rubrique.bulletins, 'Bulletins', Icons.description_outlined, Icons.description, null),
+        ]
+      : [
         for (final x in _toutes)
           // Page masquée à cette personne par le fondateur, quels que soient ses droits.
           if (!_masquees.contains(_pagesNotes.contains(x.rubrique) ? 'notes' : x.rubrique.name) && switch (x.rubrique) {
@@ -293,6 +309,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
   }
 
   void _rechercher(String q) {
+    if (_modeEnseignant) return; // pas de liste des élèves de l'école
     setState(() {
       _recherche = q.trim();
       _cles[_Rubrique.eleves] = GlobalKey<NavigatorState>();
@@ -443,7 +460,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
     }
     final e = _espace(org);
     final entrees = _entrees(e);
-    if (!entrees.any((x) => x.rubrique == _rubrique)) _rubrique = _Rubrique.accueil;
+    if (!entrees.any((x) => x.rubrique == _rubrique)) _rubrique = entrees.first.rubrique;
 
     // Une pile d'écrans par rubrique, gardée en mémoire quand on change de rubrique.
     final contenu = _Cadre(
@@ -540,8 +557,9 @@ class _AccueilScreenState extends State<AccueilScreen> {
         );
       }
       // Téléphone : 3 rubriques principales en bas, le reste dans « Plus ».
-      final principales = entrees.where((x) => x.rubrique.index <= _Rubrique.caisse.index).toList();
-      final autres = entrees.where((x) => x.rubrique.index > _Rubrique.caisse.index).toList();
+      // (L'enseignant : ses une ou deux rubriques en bas, « Plus » pour le reste.)
+      final principales = _modeEnseignant ? entrees : entrees.where((x) => x.rubrique.index <= _Rubrique.caisse.index).toList();
+      final autres = _modeEnseignant ? <_Entree>[] : entrees.where((x) => x.rubrique.index > _Rubrique.caisse.index).toList();
       final iPrincipale = principales.indexWhere((x) => x.rubrique == _rubrique);
       return Scaffold(
         body: corps,

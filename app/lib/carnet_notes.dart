@@ -15,6 +15,7 @@ class _CarnetNotes extends StatefulWidget {
     required this.session,
     required this.sessions,
     required this.peutSaisir,
+    this.cours,
   });
 
   final Espace espace;
@@ -24,6 +25,9 @@ class _CarnetNotes extends StatefulWidget {
   final Map<String, Object?>? session;
   final Lignes sessions;
   final bool peutSaisir;
+
+  /// Un enseignant : ses matières seulement (null : toutes).
+  final MesCours? cours;
 
   @override
   State<_CarnetNotes> createState() => _CarnetNotesState();
@@ -82,8 +86,10 @@ class _CarnetNotesState extends State<_CarnetNotes> {
         parametres: [
           _classe['id'], _periode['id'], _classe['effectif'] ?? 0, _classe['id'], _periode['id'], _classe['niveau_id'],
         ],
-        builder: (context, miennes) {
+        builder: (context, toutes) {
           final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+          final cours = widget.cours;
+          final miennes = cours == null ? toutes : toutes.where((m) => cours.voit(_classe['id'], m['matiere_id'])).toList();
           if (miennes.isEmpty) {
             return Text('Aucune matière pour ce niveau : ajoutez-les dans Paramètres › Matières.', style: TextStyle(color: gris));
           }
@@ -159,6 +165,8 @@ class _CarnetNotesState extends State<_CarnetNotes> {
     final schema = Theme.of(context).colorScheme;
     final gris = schema.onSurfaceVariant;
     final bordure = Theme.of(context).dividerColor;
+    // Saisir ici : le droit, et pour un enseignant, cette matière dans cette classe.
+    final saisir = widget.peutSaisir && (widget.cours?.saisit(_classe['id'], matiere['matiere_id']) ?? true);
     final parCase = {for (final n in notes) '${n['evaluation_id']}|${n['eleve_id']}': n};
     final choisie = epreuves.where((e) => e['id'] == _epreuveId).firstOrNull ??
         epreuves.where((e) => eleves.any((el) => parCase['${e['id']}|${el['id']}'] == null)).firstOrNull ??
@@ -170,6 +178,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
       session: widget.session,
       sessions: widget.sessions,
       peutSaisir: widget.peutSaisir,
+      cours: widget.cours,
     );
     String nb(num v) => noteLisible(v.toDouble()).replaceAll(',00', '');
     bool compo(Map<String, Object?> e) => e['unique_par_periode'] == 1 || '${e['type']}'.toLowerCase().contains('compo');
@@ -359,7 +368,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
       final n = parCase[cle];
       final c = _champDe(cle, _texteCase(n?['etat'], n?['valeur'], n?['acquis']));
       final f = _focus.putIfAbsent(cle, FocusNode.new);
-      final modifiable = widget.peutSaisir && ev['statut_session'] != 'cloturee';
+      final modifiable = saisir && ev['statut_session'] != 'cloturee';
       final v = (n?['valeur'] as num?)?.toDouble();
       final etat = n?['etat'] as String?;
       final actif = ev['id'] == choisie?['id'];
@@ -670,7 +679,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Etat('Notes remises le ${_dateLisible(ev['remise_le'])}', ton: Ton.regle, icone: Icons.task_alt),
             ),
-          if (widget.peutSaisir || widget.espace.droits.contains('saisir_notes') || widget.espace.fondateur)
+          if (saisir)
             FilledButton(
               onPressed: () => db.execute('UPDATE evaluations SET remise_le = ?, remise_par = ?, updated_at = ? WHERE id = ?',
                   [ev['remise_le'] == null ? _maintenant() : null, ev['remise_le'] == null ? monId : null, _maintenant(), ev['id']]),
@@ -684,7 +693,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
             icon: const Icon(Icons.history, size: 18),
             label: Text(ferme ? 'Corriger (motif), historique' : 'Historique, saisie détaillée'),
           ),
-          if (widget.peutSaisir && !ferme)
+          if (saisir && !ferme)
             TextButton.icon(
               style: TextButton.styleFrom(alignment: Alignment.centerLeft, foregroundColor: Couleurs.retard),
               onPressed: () async {
@@ -708,7 +717,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           Text('${matiere['matiere']}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -.3)),
         ]),
       ),
-      if (widget.peutSaisir)
+      if (saisir)
         FilledButton.icon(
           onPressed: () async {
             await nouvelle._nouvelle(context, matiereChoisie: matiere['matiere_id'] as String, ouvrirSaisie: false);
@@ -790,13 +799,16 @@ class _SaisiePaveScreenState extends State<_SaisiePaveScreen> {
 
   @override
   Widget build(BuildContext context) => Requete(
-        '''SELECT ev.*, m.nom AS matiere, t.libelle AS type, c.nom AS classe, p.bareme, p.nature, p.statut AS statut_periode,
+        '''SELECT ev.*, (SELECT count(*) FROM enseignements ens JOIN personnel pe ON pe.id = ens.personnel_id
+                WHERE pe.user_id = ? AND ens.classe_id = ev.classe_id AND ens.matiere_id = ev.matiere_id
+                  AND ens.debut <= date('now') AND (ens.fin IS NULL OR date(ens.fin, '+7 day') >= date('now'))) AS j_enseigne,
+            m.nom AS matiere, t.libelle AS type, c.nom AS classe, p.bareme, p.nature, p.statut AS statut_periode,
              s.libelle AS session, s.statut AS statut_session
            FROM evaluations ev JOIN matieres m ON m.id = ev.matiere_id JOIN types_evaluation t ON t.id = ev.type_id
            JOIN classes c ON c.id = ev.classe_id JOIN periodes_evaluation p ON p.id = ev.periode_id
            LEFT JOIN sessions_evaluation s ON s.id = ev.session_id
            WHERE ev.id = ?''',
-        parametres: [widget.evaluationId],
+        parametres: [monId, widget.evaluationId],
         builder: (context, l) {
           if (l.isEmpty) return const Scaffold(body: Center(child: Text('Épreuve introuvable.')));
           final ev = l.first;
@@ -844,8 +856,8 @@ class _SaisiePaveScreenState extends State<_SaisiePaveScreen> {
     final bareme = ev['bareme'] as int? ?? 20;
     final parAcquis = ev['nature'] == 'appreciations';
     final aLeDroit = widget.espace.fondateur ||
-        widget.espace.droits.contains('saisir_notes') ||
-        widget.espace.droits.contains('planifier_evaluations');
+        widget.espace.droits.contains('planifier_evaluations') ||
+        (widget.espace.droits.contains('saisir_notes') && (ev['j_enseigne'] as int? ?? 0) > 0);
     final ouverte = aLeDroit && ev['statut_periode'] == 'ouverte' && ev['statut_session'] != 'cloturee';
     if (_index >= eleves.length) _index = eleves.isEmpty ? 0 : eleves.length - 1;
     final saisies = eleves.where((e) => e['etat'] != null && e['etat'] != 'non_note').length;

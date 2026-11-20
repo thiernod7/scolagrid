@@ -304,7 +304,7 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape'); await pause(800);
     // Les réglages des évaluations sont dans Paramètres (groupe « Évaluations »).
     await aller('Paramètres', 'Paramètres'); await pause(2000); await semantique();
-    for (const [texte, nom] of [['Périodes et sessions', '67-notes-reglages'], ["Types d'évaluation", '67c-notes-types'], ['Calcul et mentions', '67b-notes-regles-mentions']]) {
+    for (const [texte, nom] of [['Périodes et sessions', '67-notes-reglages'], ["Types d'évaluation", '67c-notes-types'], ['Calcul et mentions', '67b-notes-regles-mentions'], ['Enseignants par classe', '69-enseignants-par-classe']]) {
       const lien = page.getByText(texte, { exact: false });
       if (!(await lien.count())) continue;
       await lien.first().click(); await pause(3000); await semantique(); await photo(nom);
