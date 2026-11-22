@@ -312,13 +312,18 @@ if (etape === 'connexion') {
       await lien.first().click(); await pause(3000); await semantique(); await photo(nom);
     }
   });
-  // Évaluations › Calendrier : les sessions, puis la programmation de la composition en préparation.
+  // Évaluations › Calendrier : le mois, le mois suivant (la composition), puis « Ajouter une évaluation ».
   await etapeSure('calendrier', async () => {
-    await aller('Calendrier', 'Calendrier des évaluations'); await pause(3000); await semantique(); await photo('70-calendrier');
-    const session = page.getByRole('button', { name: /Composition/ });
-    if (await session.count()) { await session.first().click(); } else { await page.mouse.click(800, 260); }
-    await pause(3500); await semantique(); await photo('70b-programmer');
-    await retour();
+    await aller('Calendrier', 'Calendrier des évaluations'); await pause(3500); await semantique(); await photo('70-calendrier');
+    const suivant = page.getByRole('button', { name: 'Suivant' });
+    if (await suivant.count()) { await suivant.first().click(); await pause(2500); await semantique(); await photo('70a-calendrier-mois-suivant'); }
+    const ajouter = page.getByRole('button', { name: /Ajouter une évaluation/ });
+    if (await ajouter.count()) {
+      await ajouter.first().click(); await pause(2500); await semantique(); await photo('70b-ajouter-evaluation');
+      const annuler = page.getByRole('button', { name: 'Annuler' });
+      if (await annuler.count()) await annuler.first().click(); else await page.keyboard.press('Escape');
+      await pause(1000);
+    }
   });
   await etapeSure('recouvrement', async () => {
     await aller('Recouvrement', 'Recouvrement'); await pause(4000); await photo('61-recouvrement');

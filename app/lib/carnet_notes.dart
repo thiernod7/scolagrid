@@ -173,15 +173,6 @@ class _CarnetNotesState extends State<_CarnetNotes> {
     final choisie = epreuves.where((e) => e['id'] == _epreuveId).firstOrNull ??
         epreuves.where((e) => eleves.any((el) => parCase['${e['id']}|${el['id']}'] == null)).firstOrNull ??
         epreuves.lastOrNull;
-    final nouvelle = _Evaluations(
-      espace: widget.espace,
-      classe: _classe,
-      periode: _periode,
-      session: widget.session,
-      sessions: widget.sessions,
-      peutSaisir: widget.peutSaisir,
-      cours: widget.cours,
-    );
     String nb(num v) => noteLisible(v.toDouble()).replaceAll(',00', '');
     bool compo(Map<String, Object?> e) => e['unique_par_periode'] == 1 || '${e['type']}'.toLowerCase().contains('compo');
 
@@ -723,15 +714,12 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           Text('${matiere['matiere']}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -.3)),
         ]),
       ),
-      if (saisir)
-        FilledButton.icon(
-          onPressed: () async {
-            await nouvelle._nouvelle(context, matiereChoisie: matiere['matiere_id'] as String, ouvrirSaisie: false);
-            if (mounted) setState(() => _epreuveId = null);
-          },
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('Nouvelle évaluation'),
-        ),
+      // Les épreuves viennent du calendrier (Évaluations › Calendrier) : ici, on remplit les notes.
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.event_note_outlined, size: 16, color: gris),
+        const SizedBox(width: 6),
+        Text('Épreuves programmées dans Évaluations › Calendrier', style: TextStyle(fontSize: 13, color: gris)),
+      ]),
     ]);
 
     final centre = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -744,10 +732,10 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           child: Column(children: [
             Icon(Icons.edit_note, size: 32, color: gris),
             const SizedBox(height: 8),
-            Text('Aucune épreuve de ${matiere['matiere']} ${widget.session == null ? 'sur cette période' : 'dans cette session'}.',
+            Text('Aucune évaluation programmée en ${matiere['matiere']} ${widget.session == null ? 'sur cette période' : 'dans cette session'}.',
                 style: TextStyle(color: gris)),
             const SizedBox(height: 4),
-            Text('« Nouvelle évaluation » ajoute une colonne au carnet.', style: TextStyle(fontSize: 12, color: gris)),
+            Text('Les épreuves se programment dans Évaluations › Calendrier ; elles apparaissent ici.', style: TextStyle(fontSize: 12, color: gris)),
           ]),
         )
       else

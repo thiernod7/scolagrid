@@ -181,21 +181,19 @@ Future<void> _preparerSessions(dynamic tx, String orgId, Iterable<Map<String, Ob
   if (eval == null) return;
   final compo = await tx.getOptional("SELECT id FROM types_evaluation WHERE organisation_id = ? AND actif = 1 AND libelle = 'Composition'", [orgId]);
   final m0 = _maintenant();
-  // Les compositions se préparent avant la session ; les évaluations mensuelles selon la règle de l'école.
-  final mensuel = '${(await tx.getOptional('SELECT calendrier_mensuel FROM regles_notes WHERE organisation_id = ?', [orgId]))?['calendrier_mensuel'] ?? 'libre'}';
   for (final p in periodes) {
     if (p['statut'] != 'ouverte') continue;
     if (await tx.getOptional('SELECT 1 FROM sessions_evaluation WHERE periode_id = ?', [p['id']]) != null) continue;
     final sessions = _sessionsParDefaut('${p['libelle']}', DateTime.parse('${p['debut']}'), DateTime.parse('${p['fin']}'), avecCompo: compo != null);
     for (var i = 0; i < sessions.length; i++) {
       final (libelle, d, f, estCompo) = sessions[i];
-      final prepare = estCompo || mensuel == 'valide';
+      // Toutes les évaluations passent par le calendrier : à programmer 5 jours avant.
       await tx.execute(
           '''INSERT INTO sessions_evaluation (id, organisation_id, periode_id, type_id, libelle, debut, fin, ordre, statut,
                calendrier, programmation_avant, created_at, updated_at)
              VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, 'ouverte', ?, ?, ?, ?)''',
           [orgId, p['id'], estCompo ? compo!['id'] : eval['id'], libelle, _date(d), _date(f), i + 1,
-            prepare ? 'preparation' : 'libre', prepare ? _date(d.subtract(const Duration(days: 5))) : null, m0, m0]);
+            'preparation', _date(d.subtract(const Duration(days: 5))), m0, m0]);
     }
   }
 }
@@ -582,114 +580,6 @@ class _Evaluations extends StatelessWidget {
   /// Un enseignant : ses classes et ses matières (null : tout).
   final MesCours? cours;
 
-  Future<void> _nouvelle(BuildContext context, {String? matiereChoisie, bool ouvrirSaisie = true}) async {
-    final messager = ScaffoldMessenger.of(context);
-    final matieres = {
-      for (final m in await db.getAll('SELECT id, nom FROM matieres WHERE niveau_id = ? ORDER BY nom', [classe['niveau_id']]))
-        if (cours == null || cours!.saisit(classe['id'], m['id'])) m['id'] as String: '${m['nom']}',
-    };
-    final types = await db.getAll('SELECT * FROM types_evaluation WHERE organisation_id = ? AND actif = 1 ORDER BY ordre', [espace.orgId]);
-    if (!context.mounted) return;
-    if (matieres.isEmpty) {
-      messager.showSnackBar(SnackBar(
-          content: Text(cours != null
-              ? "Vous n'enseignez aucune matière dans cette classe."
-              : 'Aucune matière pour ce niveau : ajoutez-les dans Paramètres › Matières.')));
-      return;
-    }
-    if (types.isEmpty) {
-      messager.showSnackBar(const SnackBar(content: Text("Aucun type d'évaluation : la direction doit les créer.")));
-      return;
-    }
-    var matiere = matiereChoisie != null && matieres.containsKey(matiereChoisie) ? matiereChoisie : matieres.keys.first;
-    var type = types.first['id'] as String;
-    // La session : celle affichée, sinon celle qui couvre aujourd'hui, sinon la première ouverte.
-    // « Hors session » (rare) reste possible, en dernier.
-    final direction = espace.fondateur || espace.droits.contains('planifier_evaluations');
-    // Calendrier publié : seule la direction ajoute une épreuve.
-    final ouvertes = sessions.where((x) => x['statut'] == 'ouverte' && (direction || x['calendrier'] != 'publie')).toList();
-    final aujourdhui = _date(DateTime.now());
-    String sessionId = (session != null && ouvertes.any((x) => x['id'] == session!['id']))
-        ? session!['id'] as String
-        : (ouvertes.where((x) => '${x['debut']}'.compareTo(aujourdhui) <= 0 && '${x['fin']}'.compareTo(aujourdhui) >= 0).firstOrNull ??
-                ouvertes.firstOrNull)?['id'] as String? ??
-            '';
-    Map<String, Object?>? laSession() => sessions.where((x) => x['id'] == sessionId).firstOrNull;
-    DateTime dateDans(Map<String, Object?>? x) {
-      final d = DateTime.now();
-      if (x == null) return d;
-      final debut = DateTime.parse('${x['debut']}'), fin = DateTime.parse('${x['fin']}');
-      return d.isBefore(debut) ? debut : (d.isAfter(fin) ? fin : d);
-    }
-    var date = dateDans(laSession());
-    final libelle = TextEditingController();
-    String jj(Object? d) => _dateLisible(d).substring(0, 5);
-    final ok = await _formulaire(context, 'Nouvelle évaluation · ${classe['nom']}', (maj) => [
-          _liste('Matière', matiere, matieres, (v) => maj(() => matiere = v)),
-          _liste('Session', sessionId, {
-            for (final x in ouvertes) x['id'] as String: '${x['libelle']} · ${jj(x['debut'])} → ${jj(x['fin'])}',
-            '': 'Hors session (rare : rattachée à la période)',
-          }, (v) => maj(() {
-            sessionId = v;
-            date = dateDans(laSession());
-          })),
-          // Hors session seulement : le type se choisit (sinon c'est celui de la session).
-          if (sessionId.isEmpty)
-            _liste('Type', type, {
-              for (final t in types)
-                t['id'] as String: '${t['libelle']} · poids ${noteLisible((t['poids'] as num).toDouble()).replaceAll(',00', '')}'
-                    '${t['compte'] == 1 ? '' : ' · hors moyenne'}',
-            }, (v) => maj(() => type = v))
-          else
-            Text('Nature : ${laSession()?['type'] ?? ''} · date dans la fenêtre de la session',
-                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          InkWell(
-            onTap: () async {
-              final x = laSession();
-              final d = await _choisirDate(context, date,
-                  premier: DateTime.parse('${(x ?? periode)['debut']}'), dernier: DateTime.parse('${(x ?? periode)['fin']}'));
-              if (d != null) maj(() => date = d);
-            },
-            child: InputDecorator(
-              decoration: _champ('Date').copyWith(suffixIcon: const Icon(Icons.event_outlined, size: 18)),
-              child: Text(_dateLisible(_date(date))),
-            ),
-          ),
-          TextField(controller: libelle, decoration: _champ('Libellé (facultatif)', aide: 'Par exemple : chapitre 3, fractions')),
-        ], valider: () => 'Créer et saisir les notes');
-    if (!ok) return;
-    final laS = laSession();
-    if (laS != null) type = laS['type_id'] as String;
-    final t = types.firstWhere((x) => x['id'] == type, orElse: () => types.first);
-    // Trop d'épreuves le même jour dans la classe : on prévient, sans bloquer.
-    final memeJour = (await db.get('SELECT count(*) AS n FROM evaluations WHERE classe_id = ? AND date_evaluation = ?',
-        [classe['id'], _date(date)]))['n'] as int? ?? 0;
-    if (memeJour >= 2 && context.mounted) {
-      if (!await _confirmer(context,
-          '$memeJour évaluations sont déjà prévues le ${_dateLisible(_date(date))} en ${classe['nom']}. Maintenir cette date ?')) {
-        return;
-      }
-    }
-    if (t['unique_par_periode'] == 1) {
-      final deja = await db.getOptional(
-          'SELECT 1 FROM evaluations WHERE periode_id = ? AND classe_id = ? AND matiere_id = ? AND type_id = ?',
-          [periode['id'], classe['id'], matiere, type]);
-      if (deja != null) {
-        messager.showSnackBar(SnackBar(content: Text('« ${t['libelle']} » : une seule par période et par matière.')));
-        return;
-      }
-    }
-    final id = (await db.get('SELECT uuid() AS id'))['id'] as String;
-    final m0 = _maintenant();
-    await db.execute(
-        '''INSERT INTO evaluations (id, organisation_id, periode_id, session_id, classe_id, matiere_id, type_id, date_evaluation, libelle,
-             cree_par, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-        [id, espace.orgId, periode['id'], laS?['id'], classe['id'], matiere, type, _date(date),
-          libelle.text.trim().isEmpty ? null : libelle.text.trim(), monId, m0, m0]);
-    if (context.mounted && ouvrirSaisie) await _ouvrirSaisie(context, espace, id);
-  }
-
   @override
   Widget build(BuildContext context) => Requete(
         'SELECT id, nom, coefficient FROM matieres WHERE niveau_id = ? ORDER BY nom',
@@ -719,8 +609,6 @@ class _Evaluations extends StatelessWidget {
     final effectif = classe['effectif'] as int? ?? 0;
     final bareme = periode['bareme'] as int? ?? 20;
     final aCompleter = evaluations.where((e) => (e['saisies'] as int? ?? 0) < effectif).length;
-    // Un enseignant ne crée d'épreuve que dans ses matières (pas dans toute sa classe de professeur principal).
-    final saisir = peutSaisir && (cours == null || matieres.any((m) => cours!.saisit(classe['id'], m['id'])));
     if (matieres.isEmpty) {
       return Text('Aucune matière pour ce niveau : ajoutez-les dans Paramètres › Matières.', style: TextStyle(color: gris));
     }
@@ -730,10 +618,7 @@ class _Evaluations extends StatelessWidget {
       final complet = effectif > 0 && saisies >= effectif;
       final moy = (ev['moyenne'] as num?)?.toDouble();
       return InkWell(
-        onTap: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => MediaQuery.sizeOf(context).width < 640
-                ? _SaisiePaveScreen(espace: espace, evaluationId: ev['id'] as String)
-                : _SaisieNotesScreen(espace: espace, evaluationId: ev['id'] as String))),
+        onTap: () => _ouvrirSaisie(context, espace, ev['id'] as String),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(children: [
@@ -806,8 +691,6 @@ class _Evaluations extends StatelessWidget {
               '${aCompleter > 0 ? ' · $aCompleter à compléter' : ''}',
               style: TextStyle(fontSize: 14, color: aCompleter > 0 ? Couleurs.attente : gris)),
         ),
-        if (saisir)
-          FilledButton.icon(onPressed: () => _nouvelle(context), icon: const Icon(Icons.add, size: 16), label: const Text('Nouvelle évaluation')),
       ]),
       const SizedBox(height: 12),
       // Une carte par matière : ses évaluations dans l'ordre, la saisie et la moyenne de chacune.
@@ -836,18 +719,15 @@ class _Evaluations extends StatelessWidget {
                             style: const TextStyle(fontSize: 12, color: Couleurs.attente, fontWeight: FontWeight.w600)),
                     ])),
                   ),
-                  if (saisir)
-                    TextButton.icon(
-                      onPressed: () => _nouvelle(context, matiereChoisie: m['id'] as String),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text('Ajouter'),
-                    ),
                 ]),
               ),
               if (siennes.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Text(session == null ? 'Aucune évaluation sur cette période.' : 'Aucune évaluation dans cette session.',
+                  child: Text(
+                      session == null
+                          ? 'Aucune évaluation programmée sur cette période (Évaluations › Calendrier).'
+                          : 'Aucune évaluation programmée dans cette session (Évaluations › Calendrier).',
                       style: TextStyle(fontSize: 13, color: gris)),
                 ),
               for (var i = 0; i < siennes.length; i++) ...[
@@ -1865,13 +1745,8 @@ class _ReglagesNotesScreen extends StatelessWidget {
               keyboardType: TextInputType.number,
               decoration: _champ('Épreuves attendues par matière (facultatif)', aide: 'En deçà, une alerte pour la direction, sans blocage')),
           if (calendrier == 'publie')
-            const Text('Calendrier publié : rouvrez-le depuis l\'écran « Programmer » pour le modifier.')
+            const Text('Calendrier publié (Évaluations › Calendrier).')
           else ...[
-            _liste('Calendrier', calendrier, const {
-              'libre': 'Libre : chaque épreuve est datée à sa création',
-              'preparation': 'Préparé avant la session, puis publié',
-            }, (v) => maj(() => calendrier = v)),
-            if (calendrier == 'preparation')
               InkWell(
                 onTap: () async {
                   final d = await _choisirDate(context, avant, premier: DateTime(avant.year - 1), dernier: pFin);
@@ -1897,8 +1772,9 @@ class _ReglagesNotesScreen extends StatelessWidget {
       'debut': _date(debut),
       'fin': _date(fin),
       'epreuves_attendues': n != null && n >= 1 && n <= 10 ? n : null,
-      if (calendrier != 'publie') 'calendrier': calendrier,
-      if (calendrier != 'publie') 'programmation_avant': calendrier == 'preparation' ? _date(avant) : null,
+      // Toutes les évaluations se programment dans le calendrier.
+      if (calendrier != 'publie') 'calendrier': 'preparation',
+      if (calendrier != 'publie') 'programmation_avant': _date(avant),
     };
     if (x == null) {
       final ordre = (await db.get('SELECT coalesce(max(ordre), 0) + 1 AS o FROM sessions_evaluation WHERE periode_id = ?', [p['id']]))['o'];
@@ -1918,7 +1794,6 @@ class _ReglagesNotesScreen extends StatelessWidget {
     String nb(Object? v, num defaut) => noteLisible(((v as num?) ?? defaut).toDouble()).replaceAll(',00', '');
     final seuil10 = TextEditingController(text: nb(r?['seuil_passage_10'], 5));
     final seuil20 = TextEditingController(text: nb(r?['seuil_passage_20'], 10));
-    var mensuel = '${r?['calendrier_mensuel'] ?? 'libre'}';
     final ok = await _formulaire(context, 'Règles de calcul', (maj) => [
           const Text('Absences', style: TextStyle(fontWeight: FontWeight.w600)),
           for (final e in traitementsAbsence.entries)
@@ -1943,12 +1818,6 @@ class _ReglagesNotesScreen extends StatelessWidget {
             Expanded(child: TextField(controller: seuil20, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _champ('Passage (sur 20)'))),
           ]),
           const Text('Le calcul propose « Admis » ou « Redouble » ; le conseil décide.', style: TextStyle(fontSize: 12)),
-          const SizedBox(height: 8),
-          _liste('Évaluations mensuelles', mensuel, const {
-            'libre': 'Dates libres (le professeur date son épreuve)',
-            'valide': 'Calendrier préparé et publié, comme les compositions',
-          }, (v) => maj(() => mensuel = v)),
-          const Text('Les compositions ont toujours un calendrier préparé avant la session, puis publié.', style: TextStyle(fontSize: 12)),
         ]);
     if (!ok) return;
     final d = int.tryParse(delai.text.trim());
@@ -1966,7 +1835,6 @@ class _ReglagesNotesScreen extends StatelessWidget {
       'poids_derniere': w,
       'seuil_passage_10': s10,
       'seuil_passage_20': s20,
-      'calendrier_mensuel': mensuel,
     };
     if (r == null) {
       await _inserer('regles_notes', {...valeurs, 'organisation_id': espace.orgId});
@@ -2230,7 +2098,6 @@ class _ReglagesNotesScreen extends StatelessWidget {
                               ? 'moyenne annuelle pondérée (dernière ×${r?['poids_derniere'] ?? 2})'
                               : 'moyenne annuelle simple',
                           'passage ${nb(r?['seuil_passage_10'], 5)}/10 et ${nb(r?['seuil_passage_20'], 10)}/20',
-                          r?['calendrier_mensuel'] == 'valide' ? 'évaluations mensuelles au calendrier' : 'évaluations mensuelles libres',
                         ].join(' · ')),
                         trailing: m ? const Icon(Icons.edit_outlined, size: 18) : null,
                         onTap: m ? () => _regles(context, r) : null,
