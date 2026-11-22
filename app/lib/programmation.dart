@@ -237,12 +237,18 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
         visibles.firstOrNull;
     final avecPanneau = largeur >= 1150 && session != null;
 
-    return _Page(
-      titre: 'Calendrier des évaluations',
-      largeurMax: double.infinity, // comme la maquette : toute la largeur de la page
-      corps: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    // Le même cadre que les autres pages (Élèves, Familles, Caisse…) : 1600 px au plus,
+    // 16 px de marge (12 sur téléphone), le titre dans la page.
+    return Scaffold(
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1600),
+          child: Padding(
+            padding: EdgeInsets.all(telephone ? 12 : 16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          EnTetePage(titre: telephone ? 'Calendrier' : 'Calendrier des évaluations', sousTitre: '${d.annee['libelle']}'),
+          const SizedBox(height: 12),
           outils,
           const SizedBox(height: 10),
           legende,
@@ -272,6 +278,8 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
             ),
           ],
         ]),
+          ),
+        ),
       ),
     );
   }
