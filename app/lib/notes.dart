@@ -423,24 +423,13 @@ class _NotesScreenState extends State<NotesScreen> {
             },
             onChanged: (v) => setState(() => _sessionId = v.isEmpty ? null : v),
           ),
-          // Session au calendrier préparé : l'écran « Programmer » (dates, publication) ;
-          // sinon l'impression du calendrier de la classe.
-          if (session != null && session['calendrier'] != null && session['calendrier'] != 'libre')
-            FilledButton.tonalIcon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => ProgrammationScreen(espace: _e, sessionId: session['id'] as String, cours: cours))),
-              icon: const Icon(Icons.edit_calendar_outlined, size: 16),
-              label: Text(session['calendrier'] == 'publie' ? 'Calendrier publié' : 'Programmer'),
-            )
-          else
-            OutlinedButton.icon(
-              onPressed: () => _calendrier(classe, periode, session),
-              icon: const Icon(Icons.calendar_month_outlined, size: 16),
-              label: const Text('Calendrier'),
-            ),
-          if (session != null && session['calendrier'] == 'preparation')
-            Etat('Calendrier en préparation${session['programmation_avant'] == null ? '' : ' · avant le ${_dateLisible(session['programmation_avant']).substring(0, 5)}'}',
-                ton: Ton.attente),
+          // La programmation des épreuves est dans Évaluations › Calendrier ; ici, l'impression pour la classe.
+          OutlinedButton.icon(
+            onPressed: () => _calendrier(classe, periode, session),
+            icon: const Icon(Icons.print_outlined, size: 16),
+            label: const Text('Calendrier de la classe'),
+          ),
+
           if (sessions.isEmpty && _planifie && !close)
             TextButton.icon(
               onPressed: () => _ouvrirReglages(PartieReglagesNotes.periodes),
@@ -2158,14 +2147,6 @@ class _ReglagesNotesScreen extends StatelessWidget {
                                         style: TextStyle(fontSize: 12, color: gris)),
                                   ])),
                                 ),
-                                if (x['calendrier'] != null && x['calendrier'] != 'libre')
-                                  IconButton(
-                                    tooltip: 'Programmer le calendrier',
-                                    visualDensity: VisualDensity.compact,
-                                    icon: Icon(Icons.edit_calendar_outlined, size: 18, color: gris),
-                                    onPressed: () => Navigator.of(context)
-                                        .push(MaterialPageRoute(builder: (_) => ProgrammationScreen(espace: espace, sessionId: x['id'] as String))),
-                                  ),
                                 if (m && p['statut'] != 'cloturee' && x['epreuves'] == 0)
                                   IconButton(
                                     tooltip: 'Supprimer cette session',

@@ -157,7 +157,7 @@ if (etape === 'connexion') {
 } else {
   // Barre latérale (PC 1440 × 900) : positions fixes.
   const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Caisse': 267, 'Dépenses': 305, 'Recouvrement': 343,
-    'Saisie des notes': 418, 'Bulletins': 456, "Fin d'année": 494, 'Personnel': 569, 'Postes': 607, 'Paramètres': 645 };
+    'Saisie des notes': 418, 'Calendrier': 456, 'Bulletins': 494, "Fin d'année": 532, 'Personnel': 607, 'Postes': 645, 'Paramètres': 683 };
   const attendre = (texte, ms = 12000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
   const retour = async () => {
     const b = page.getByRole('button', { name: /^(Retour|Back)$/ });
@@ -310,15 +310,15 @@ if (etape === 'connexion') {
       if (!(await lien.count())) lien = page.getByText(texte, { exact: false });
       if (!(await lien.count())) continue;
       await lien.first().click(); await pause(3000); await semantique(); await photo(nom);
-      // Depuis « Périodes et sessions » : programmer la composition en préparation.
-      if (nom === '67-notes-reglages') {
-        const prog = page.getByRole('button', { name: 'Programmer le calendrier' });
-        if (await prog.count()) {
-          await prog.first().click(); await pause(3500); await semantique(); await photo('70-programmer-calendrier');
-          await retour();
-        }
-      }
     }
+  });
+  // Évaluations › Calendrier : les sessions, puis la programmation de la composition en préparation.
+  await etapeSure('calendrier', async () => {
+    await aller('Calendrier', 'Calendrier des évaluations'); await pause(3000); await semantique(); await photo('70-calendrier');
+    const session = page.getByRole('button', { name: /Composition/ });
+    if (await session.count()) { await session.first().click(); } else { await page.mouse.click(800, 260); }
+    await pause(3500); await semantique(); await photo('70b-programmer');
+    await retour();
   });
   await etapeSure('recouvrement', async () => {
     await aller('Recouvrement', 'Recouvrement'); await pause(4000); await photo('61-recouvrement');

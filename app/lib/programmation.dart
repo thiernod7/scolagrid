@@ -391,3 +391,117 @@ class _ProgrammationScreenState extends State<ProgrammationScreen> {
     await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Calendrier ${s['libelle']}');
   }
 }
+
+/// Évaluations › Calendrier : toutes les sessions de l'année, à préparer, en
+/// cours ou passées. Chacune s'ouvre sur sa programmation (classes × matières).
+class CalendrierEvaluationsScreen extends StatelessWidget {
+  const CalendrierEvaluationsScreen({super.key, required this.espace});
+
+  final Espace espace;
+
+  bool get _planifie => espace.fondateur || espace.droits.contains('planifier_evaluations');
+
+  @override
+  Widget build(BuildContext context) => Requete(
+        'SELECT * FROM annees_scolaires WHERE organisation_id = ? AND en_cours = 1',
+        parametres: [espace.orgId],
+        builder: (context, annees) {
+          if (annees.isEmpty) return _Page(titre: 'Calendrier des évaluations', corps: _vide("Créez d'abord l'année scolaire (Paramètres)."));
+          final annee = annees.first;
+          return avecMesCours(
+            espace,
+            (cours) => Requete(
+              '''SELECT s.*, t.libelle AS type, p.libelle AS periode, p.cycle, p.statut AS statut_periode,
+                   (SELECT count(*) FROM classes c JOIN niveaux n ON n.id = c.niveau_id JOIN matieres m ON m.niveau_id = c.niveau_id
+                     WHERE c.annee_id = p.annee_id AND n.cycle = p.cycle AND c.fermee = 0) AS total,
+                   (SELECT count(DISTINCT ev.classe_id || ev.matiere_id) FROM evaluations ev WHERE ev.session_id = s.id) AS faites
+                 FROM sessions_evaluation s JOIN types_evaluation t ON t.id = s.type_id JOIN periodes_evaluation p ON p.id = s.periode_id
+                WHERE p.annee_id = ? ORDER BY s.debut, p.cycle, s.ordre''',
+              parametres: [annee['id']],
+              builder: (context, sessions) => _contenu(context, annee, sessions, cours),
+            ),
+          );
+        },
+      );
+
+  Widget _contenu(BuildContext context, Map<String, Object?> annee, Lignes sessions, MesCours? cours) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final aujourdhui = _date(DateTime.now());
+    final aPreparer = [for (final s in sessions) if (s['calendrier'] == 'preparation' && s['statut'] == 'ouverte') s];
+    final enCours = [
+      for (final s in sessions)
+        if (s['calendrier'] != 'preparation' && '${s['debut']}'.compareTo(aujourdhui) <= 0 && '${s['fin']}'.compareTo(aujourdhui) >= 0) s
+    ];
+    final aVenir = [for (final s in sessions) if (s['calendrier'] != 'preparation' && '${s['debut']}'.compareTo(aujourdhui) > 0) s];
+    final passees = [for (final s in sessions) if (s['calendrier'] != 'preparation' && '${s['fin']}'.compareTo(aujourdhui) < 0) s].reversed.toList();
+
+    Widget ligne(Map<String, Object?> s) {
+      final total = s['total'] as int? ?? 0, faites = s['faites'] as int? ?? 0;
+      final retard = s['calendrier'] == 'preparation' && s['programmation_avant'] != null && '${s['programmation_avant']}'.compareTo(aujourdhui) < 0;
+      final etat = switch (s['calendrier']) {
+        'publie' => const Etat('Publié', ton: Ton.regle, icone: Icons.verified_outlined),
+        'preparation' => Etat(
+            s['programmation_avant'] == null ? 'En préparation' : 'À programmer avant le ${_dateLisible(s['programmation_avant']).substring(0, 5)}',
+            ton: retard ? Ton.retard : Ton.attente),
+        _ => const Etat('Libre'),
+      };
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          onTap: () => Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => ProgrammationScreen(espace: espace, sessionId: s['id'] as String, cours: cours))),
+          title: Text('${s['libelle']}', style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text([
+            '${cycles[s['cycle']] ?? s['cycle']} · ${s['periode']}',
+            'du ${_dateLisible(s['debut']).substring(0, 5)} au ${_dateLisible(s['fin']).substring(0, 5)}',
+            if (cours == null && total > 0) '$faites / $total matières programmées',
+            if (s['statut'] == 'cloturee') 'clôturée',
+          ].join(' · ')),
+          trailing: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [etat, const Icon(Icons.chevron_right)]),
+        ),
+      );
+    }
+
+    Widget groupe(String titre, Lignes l, {String? vide}) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 16, bottom: 6),
+            child: Text('$titre (${l.length})', style: TextStyle(fontSize: 12, letterSpacing: .6, fontWeight: FontWeight.w600, color: gris)),
+          ),
+          if (l.isEmpty && vide != null) Text(vide, style: TextStyle(fontSize: 13, color: gris)),
+          for (final s in l) ligne(s),
+        ]);
+
+    return _Page(
+      titre: 'Calendrier des évaluations',
+      corps: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 40), children: [
+        Text(
+            "${annee['libelle']} · les compositions (et, au choix de l'école, les évaluations mensuelles) se programment avant la session : "
+            'la direction remplit les dates remises par les professeurs, puis valide et publie.',
+            style: TextStyle(fontSize: 13, color: gris)),
+        if (_planifie) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ReglagesEvaluationsScreen(espace: espace, partie: PartieReglagesNotes.periodes))),
+              icon: const Icon(Icons.tune, size: 16),
+              label: const Text('Périodes et sessions (dates, calendrier libre ou préparé)'),
+            ),
+          ),
+        ],
+        if (sessions.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('Aucune session cette année : créez les périodes et leurs sessions.', textAlign: TextAlign.center, style: TextStyle(color: gris)),
+          )
+        else ...[
+          groupe('À PRÉPARER', aPreparer, vide: 'Aucun calendrier en préparation.'),
+          if (enCours.isNotEmpty) groupe('EN COURS', enCours),
+          groupe('À VENIR', aVenir, vide: 'Rien de prévu.'),
+          if (passees.isNotEmpty) groupe('PASSÉES', passees),
+        ],
+      ]),
+    );
+  }
+}

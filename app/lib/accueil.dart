@@ -16,10 +16,10 @@ import 'theme.dart';
 /// bas sur téléphone. Le menu ne montre que ce que la personne peut faire.
 /// Chaque rubrique garde sa propre pile d'écrans : le menu reste visible.
 
-enum _Rubrique { accueil, eleves, caisse, depenses, recouvrement, familles, notes, bulletins, finAnnee, personnel, postes, parametres }
+enum _Rubrique { accueil, eleves, caisse, depenses, recouvrement, familles, notes, calendrier, bulletins, finAnnee, personnel, postes, parametres }
 
 /// Les trois pages des notes : masquées ou permises ensemble (« notes »).
-const _pagesNotes = {_Rubrique.notes, _Rubrique.bulletins, _Rubrique.finAnnee};
+const _pagesNotes = {_Rubrique.notes, _Rubrique.calendrier, _Rubrique.bulletins, _Rubrique.finAnnee};
 
 class _Entree {
   const _Entree(this.rubrique, this.libelle, this.icone, this.iconeActive, this.groupe);
@@ -70,6 +70,7 @@ const _toutes = [
   _Entree(_Rubrique.recouvrement, 'Recouvrement', Icons.donut_large_outlined, Icons.donut_large, 'FINANCES'),
   // Le rythme des enseignants et de la direction : saisir, publier, décider.
   _Entree(_Rubrique.notes, 'Saisie des notes', Icons.edit_note_outlined, Icons.edit_note, 'ÉVALUATIONS'),
+  _Entree(_Rubrique.calendrier, 'Calendrier', Icons.event_note_outlined, Icons.event_note, 'ÉVALUATIONS'),
   _Entree(_Rubrique.bulletins, 'Bulletins', Icons.description_outlined, Icons.description, 'ÉVALUATIONS'),
   _Entree(_Rubrique.finAnnee, "Fin d'année", Icons.flag_outlined, Icons.flag, 'ÉVALUATIONS'),
   _Entree(_Rubrique.personnel, 'Personnel', Icons.groups_outlined, Icons.groups, 'ÉCOLE'),
@@ -266,6 +267,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
   List<_Entree> _entrees(Espace e) => _modeEnseignant
       ? [
           const _Entree(_Rubrique.notes, 'Mes classes', Icons.edit_note_outlined, Icons.edit_note, null),
+          const _Entree(_Rubrique.calendrier, 'Calendrier', Icons.event_note_outlined, Icons.event_note, null),
           if (_profPrincipal) const _Entree(_Rubrique.bulletins, 'Bulletins', Icons.description_outlined, Icons.description, null),
         ]
       : [
@@ -277,7 +279,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
             // Les familles : qui voit les parents (secrétariat, caisse, direction, lecteur autorisé).
             _Rubrique.familles => _droits.contains('voir_familles'),
             // Notes et bulletins : qui saisit, planifie, consulte, ou imprime (secrétariat).
-            _Rubrique.notes || _Rubrique.bulletins || _Rubrique.finAnnee => e.fondateur ||
+            _Rubrique.notes || _Rubrique.calendrier || _Rubrique.bulletins || _Rubrique.finAnnee => e.fondateur ||
                 _droits.contains('saisir_notes') ||
                 _droits.contains('planifier_evaluations') ||
                 _droits.contains('consulter_tableau_bord') ||
@@ -437,6 +439,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
         _Rubrique.recouvrement => RecouvrementScreen(espace: e),
         _Rubrique.familles => FamillesScreen(espace: e),
         _Rubrique.notes => NotesScreen(espace: e, page: PageNotes.saisie),
+        _Rubrique.calendrier => CalendrierEvaluationsScreen(espace: e),
         _Rubrique.bulletins => NotesScreen(espace: e, page: PageNotes.bulletins),
         _Rubrique.finAnnee => NotesScreen(espace: e, page: PageNotes.finAnnee),
         _Rubrique.personnel => PersonnelScreen(espace: e),
