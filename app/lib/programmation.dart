@@ -239,6 +239,7 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
 
     return _Page(
       titre: 'Calendrier des évaluations',
+      largeurMax: double.infinity, // comme la maquette : toute la largeur de la page
       corps: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

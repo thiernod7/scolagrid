@@ -184,9 +184,12 @@ class _RequeteState extends State<Requete> {
 // Éléments communs ------------------------------------------------------------
 
 class _Page extends StatelessWidget {
-  const _Page({required this.titre, required this.corps, this.ajouter, this.libelleAjouter});
+  const _Page({required this.titre, required this.corps, this.ajouter, this.libelleAjouter, this.largeurMax = 960});
 
   final String titre;
+
+  /// Largeur maximale du contenu (960 pour un formulaire ; le calendrier prend toute la page).
+  final double largeurMax;
   final Widget corps;
   final VoidCallback? ajouter;
   final String? libelleAjouter;
@@ -199,7 +202,7 @@ class _Page extends StatelessWidget {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 960),
+            constraints: BoxConstraints(maxWidth: largeurMax),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               // En-tête fin, comme la maquette : retour, titre, action principale.
               Padding(
