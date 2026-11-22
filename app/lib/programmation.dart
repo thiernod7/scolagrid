@@ -23,8 +23,8 @@ String heureLisible(Object? heure, Object? duree) {
 }
 
 const _durees = {0: 'Sans durée', 60: '1 h', 90: '1 h 30', 120: '2 h', 180: '3 h', 240: '4 h'};
-const _moisCourts = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-const _joursSemaine = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dim.'];
+const _moisAbreges = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const _joursCalendrier = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dim.'];
 const _couleurEval = Color(0xFF2F72C4), _couleurCompo = Color(0xFFC2410C);
 
 /// Une composition (une par période et par matière) : orange ; une évaluation : bleu.
@@ -159,7 +159,7 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
     final finMois = DateTime(_jour.year, _jour.month + 1, 0);
     final titre = vue == _Vue.mois || (vue == _Vue.liste && !telephone)
         ? '${_moisNoms[_jour.month - 1][0].toUpperCase()}${_moisNoms[_jour.month - 1].substring(1)} ${_jour.year}'
-        : '${lundi.day} ${_moisCourts[lundi.month - 1]} – ${lundi.add(const Duration(days: 6)).day} ${_moisCourts[lundi.add(const Duration(days: 6)).month - 1]}';
+        : '${lundi.day} ${_moisAbreges[lundi.month - 1]} – ${lundi.add(const Duration(days: 6)).day} ${_moisAbreges[lundi.add(const Duration(days: 6)).month - 1]}';
     void decaler(int sens) => setState(() {
           _jour = vue == _Vue.mois || (vue == _Vue.liste && !telephone)
               ? DateTime(_jour.year, _jour.month + sens, 1)
@@ -277,7 +277,7 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
 
   String _jourCourt(Object? iso) {
     final x = DateTime.tryParse('$iso');
-    return x == null ? '' : '${x.day} ${_moisCourts[x.month - 1]}';
+    return x == null ? '' : '${x.day} ${_moisAbreges[x.month - 1]}';
   }
 
   /// Les épreuves d'un jour, regroupées : « 7ème (3) · Maths » quand plusieurs classes
@@ -400,7 +400,7 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
                 Container(
                   padding: aujourdhui ? const EdgeInsets.symmetric(horizontal: 7, vertical: 1) : EdgeInsets.zero,
                   decoration: aujourdhui ? BoxDecoration(color: Theme.of(context).colorScheme.onSurface, borderRadius: BorderRadius.circular(10)) : null,
-                  child: Text(dansLeMois || maxPuces == null ? '${jour.day}' : '${jour.day} ${_moisCourts[jour.month - 1]}',
+                  child: Text(dansLeMois || maxPuces == null ? '${jour.day}' : '${jour.day} ${_moisAbreges[jour.month - 1]}',
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -440,7 +440,7 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
               flex: i == 6 ? 5 : 10,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                child: Text(_joursSemaine[i],
+                child: Text(_joursCalendrier[i],
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
             ),
