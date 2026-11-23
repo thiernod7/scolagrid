@@ -276,7 +276,7 @@ class _ListePersonnelState extends State<_ListePersonnel> {
       Tableau(
         vide: widget.personnes.isEmpty ? 'Aucune fiche pour le moment.' : 'Personne ne correspond.',
         colonnes: [
-          ColonneTableau('', largeur: telephone ? 48 : 56),
+          ColonneTableau('', largeur: telephone ? 56 : 72),
           const ColonneTableau('Nom', flex: 3),
           if (!telephone && !panneau) const ColonneTableau('Fonction', flex: 3),
           if (largeur >= 1024 && !panneau) const ColonneTableau('Site', largeur: 160),
@@ -286,7 +286,7 @@ class _ListePersonnelState extends State<_ListePersonnel> {
         lignes: [
           for (final p in liste)
             [
-              Initiales('${p['nom_complet']}', taille: telephone ? 32 : 36),
+              Initiales('${p['nom_complet']}', taille: telephone ? 40 : 56),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('${p['nom_complet']}',
                     overflow: TextOverflow.ellipsis,
