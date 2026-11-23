@@ -16,7 +16,7 @@ import 'theme.dart';
 /// bas sur téléphone. Le menu ne montre que ce que la personne peut faire.
 /// Chaque rubrique garde sa propre pile d'écrans : le menu reste visible.
 
-enum _Rubrique { accueil, eleves, caisse, depenses, recouvrement, familles, notes, calendrier, bulletins, finAnnee, personnel, postes, parametres }
+enum _Rubrique { accueil, eleves, caisse, depenses, recouvrement, familles, notes, calendrier, bulletins, finAnnee, personnel, paie, postes, parametres }
 
 /// Les trois pages des notes : masquées ou permises ensemble (« notes »).
 const _pagesNotes = {_Rubrique.notes, _Rubrique.calendrier, _Rubrique.bulletins, _Rubrique.finAnnee};
@@ -74,6 +74,7 @@ const _toutes = [
   _Entree(_Rubrique.bulletins, 'Bulletins', Icons.description_outlined, Icons.description, 'ÉVALUATIONS'),
   _Entree(_Rubrique.finAnnee, "Fin d'année", Icons.flag_outlined, Icons.flag, 'ÉVALUATIONS'),
   _Entree(_Rubrique.personnel, 'Personnel', Icons.groups_outlined, Icons.groups, 'ÉCOLE'),
+  _Entree(_Rubrique.paie, 'Paie', Icons.account_balance_wallet_outlined, Icons.account_balance_wallet, 'ÉCOLE'),
   _Entree(_Rubrique.postes, 'Postes', Icons.devices_other_outlined, Icons.devices_other, 'ÉCOLE'),
   _Entree(_Rubrique.parametres, 'Paramètres', Icons.settings_outlined, Icons.settings, 'ÉCOLE'),
 ];
@@ -288,6 +289,8 @@ class _AccueilScreenState extends State<AccueilScreen> {
             // Qui voit l'argent de l'école : la caisse, la direction, un lecteur autorisé.
             _Rubrique.recouvrement => _peutEncaisser || _droits.contains('voir_caisse') || _droits.contains('consulter_tableau_bord'),
             _Rubrique.personnel => e.gestionnaire || _droits.contains('voir_personnel'),
+            // La paie est confidentielle : qui la prépare, la valide ou la verse.
+            _Rubrique.paie => gerePaie(e),
             _Rubrique.postes => e.gestionnaire,
             _Rubrique.parametres => e.voitParametres,
             _ => true,
@@ -443,6 +446,7 @@ class _AccueilScreenState extends State<AccueilScreen> {
         _Rubrique.bulletins => NotesScreen(espace: e, page: PageNotes.bulletins),
         _Rubrique.finAnnee => NotesScreen(espace: e, page: PageNotes.finAnnee),
         _Rubrique.personnel => PersonnelScreen(espace: e),
+        _Rubrique.paie => PaieScreen(espace: e),
         _Rubrique.postes => PostesScreen(espace: e),
         _Rubrique.parametres => ConfigurationScreen(espace: e),
       };

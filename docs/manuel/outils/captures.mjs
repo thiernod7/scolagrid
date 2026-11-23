@@ -157,7 +157,7 @@ if (etape === 'connexion') {
 } else {
   // Barre latérale (PC 1440 × 900) : positions fixes.
   const barre = { 'Accueil': 79, 'Élèves': 154, 'Familles': 192, 'Caisse': 267, 'Dépenses': 305, 'Recouvrement': 343,
-    'Saisie des notes': 418, 'Calendrier': 456, 'Bulletins': 494, "Fin d'année": 532, 'Personnel': 607, 'Postes': 645, 'Paramètres': 683 };
+    'Saisie des notes': 418, 'Calendrier': 456, 'Bulletins': 494, "Fin d'année": 532, 'Personnel': 607, 'Paie': 645, 'Postes': 683, 'Paramètres': 721 };
   const attendre = (texte, ms = 12000) => page.getByText(texte, { exact: false }).first().waitFor({ timeout: ms }).then(() => true, () => false);
   const retour = async () => {
     const b = page.getByRole('button', { name: /^(Retour|Back)$/ });
@@ -324,6 +324,15 @@ if (etape === 'connexion') {
       if (await annuler.count()) await annuler.first().click(); else await page.keyboard.press('Escape');
       await pause(1000);
     }
+  });
+  // La paie : le mois (préparer), puis les avances.
+  await etapeSure('paie', async () => {
+    await aller('Paie', 'Paie du mois'); await pause(3000); await semantique(); await photo('71-paie');
+    const preparer = page.getByRole('button', { name: /Préparer la paie/ });
+    if (await preparer.count()) { await preparer.first().click(); await pause(4000); await semantique(); }
+    await photo('71b-paie-du-mois');
+    const avances = page.getByRole('button', { name: 'Avances' });
+    if (await avances.count()) { await avances.first().click(); await pause(2500); await semantique(); await photo('71c-avances'); }
   });
   await etapeSure('recouvrement', async () => {
     await aller('Recouvrement', 'Recouvrement'); await pause(4000); await photo('61-recouvrement');

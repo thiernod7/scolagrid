@@ -198,6 +198,20 @@ streams:
       - SELECT * FROM notes WHERE organisation_id IN orgs_notes
       - SELECT * FROM appreciations WHERE organisation_id IN orgs_notes
 
+  # La paie (confidentielle) : seulement qui prépare, valide ou verse la paie.
+  paie:
+    auto_subscribe: true
+    priority: 3
+    with:
+      orgs_paie: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_paie = true
+    queries:
+      - SELECT * FROM remunerations WHERE organisation_id IN orgs_paie
+      - SELECT * FROM taux_horaires WHERE organisation_id IN orgs_paie
+      - SELECT * FROM grille_taux WHERE organisation_id IN orgs_paie
+      - SELECT * FROM avances WHERE organisation_id IN orgs_paie
+      - SELECT * FROM paies WHERE organisation_id IN orgs_paie
+      - SELECT * FROM lignes_paie WHERE organisation_id IN orgs_paie
+
   # Table de test « Bonjour » (première version de l'app).
   hellos:
     auto_subscribe: true

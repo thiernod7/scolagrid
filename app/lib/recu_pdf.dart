@@ -1029,3 +1029,121 @@ Future<Uint8List> calendriersEvaluationsPdf({
   }
   return doc.save();
 }
+
+/// Une ligne de la fiche de paie : un libellé et un montant (négatif pour une retenue).
+typedef LignePaiePdf = ({String libelle, String detail, int montant});
+
+/// La fiche de paie d'une personne pour un mois.
+Future<Uint8List> fichePaiePdf({
+  required Map<String, Object?> ecole,
+  required String nom,
+  required String fonction,
+  required String mois,
+  required List<LignePaiePdf> lignes,
+  required int net,
+  String? versement,
+  ImagesEcole images = const ImagesEcole(),
+}) {
+  final doc = pw.Document(title: 'Fiche de paie $nom $mois');
+  const st = pw.TextStyle(fontSize: 11);
+  final gras = pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold);
+  pw.Widget cel(String t, {pw.TextStyle? style, bool droite = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      child: pw.Text(t, style: style ?? st, textAlign: droite ? pw.TextAlign.right : pw.TextAlign.left));
+  doc.addPage(pw.Page(
+    pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.all(36)),
+    build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      _enTete(ecole, images, titre: 13, petit: 8),
+      pw.Divider(),
+      pw.SizedBox(height: 6),
+      pw.Center(child: pw.Text('FICHE DE PAIE', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold))),
+      pw.Center(child: pw.Text(mois, style: const pw.TextStyle(fontSize: 12))),
+      pw.SizedBox(height: 14),
+      pw.Text(nom, style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+      if (fonction.isNotEmpty) pw.Text(fonction, style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
+      pw.SizedBox(height: 12),
+      pw.Table(
+        border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey400, width: .5)),
+        columnWidths: const {0: pw.FlexColumnWidth(3), 1: pw.FlexColumnWidth(3), 2: pw.FixedColumnWidth(110)},
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: 1))),
+            children: [cel('Élément', style: gras), cel('Détail', style: gras), cel('Montant', style: gras, droite: true)],
+          ),
+          for (final l in lignes)
+            pw.TableRow(children: [cel(l.libelle), cel(l.detail), cel(l.montant < 0 ? '- ${_gnf(-l.montant)}' : _gnf(l.montant), droite: true)]),
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(width: 1))),
+            children: [cel('NET À PAYER', style: gras), cel(''), cel(_gnf(net), style: gras, droite: true)],
+          ),
+        ],
+      ),
+      pw.SizedBox(height: 10),
+      if (versement != null) pw.Text(versement, style: st),
+      pw.Spacer(),
+      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        pw.Text("Signature de l'employé", style: st),
+        pw.Text('Pour la direction', style: st),
+      ]),
+      pw.SizedBox(height: 50),
+    ]),
+  ));
+  return doc.save();
+}
+
+/// L'état de paie du mois : une ligne par personne, les totaux.
+Future<Uint8List> etatPaiePdf({
+  required Map<String, Object?> ecole,
+  required String mois,
+  required String statut,
+  required List<({String nom, String mode, int brut, int retenues, int net, String verse})> lignes,
+  ImagesEcole images = const ImagesEcole(),
+}) {
+  final doc = pw.Document(title: 'État de paie $mois');
+  const st = pw.TextStyle(fontSize: 9.5);
+  final gras = pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold);
+  pw.Widget cel(String t, {pw.TextStyle? style, bool droite = false}) => pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+      child: pw.Text(t, style: style ?? st, textAlign: droite ? pw.TextAlign.right : pw.TextAlign.left));
+  int somme(int Function(({String nom, String mode, int brut, int retenues, int net, String verse}) l) f) =>
+      lignes.fold(0, (s, l) => s + f(l));
+  doc.addPage(pw.MultiPage(
+    pageTheme: const pw.PageTheme(pageFormat: PdfPageFormat.a4, margin: pw.EdgeInsets.all(30)),
+    build: (_) => [
+      _enTete(ecole, images, titre: 13, petit: 8),
+      pw.Divider(),
+      pw.Center(child: pw.Text('ÉTAT DE PAIE — $mois', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold))),
+      pw.Center(child: pw.Text(statut, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700))),
+      pw.SizedBox(height: 10),
+      pw.Table(
+        border: const pw.TableBorder(horizontalInside: pw.BorderSide(color: PdfColors.grey400, width: .5)),
+        columnWidths: const {
+          0: pw.FlexColumnWidth(3), 1: pw.FlexColumnWidth(1.4), 2: pw.FlexColumnWidth(1.8),
+          3: pw.FlexColumnWidth(1.6), 4: pw.FlexColumnWidth(1.8), 5: pw.FlexColumnWidth(2),
+        },
+        children: [
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: 1))),
+            children: [
+              cel('Nom', style: gras), cel('Mode', style: gras), cel('Brut', style: gras, droite: true),
+              cel('Retenues', style: gras, droite: true), cel('Net', style: gras, droite: true), cel('Versement', style: gras),
+            ],
+          ),
+          for (final l in lignes)
+            pw.TableRow(children: [
+              cel(l.nom), cel(l.mode), cel(_gnf(l.brut), droite: true), cel(_gnf(l.retenues), droite: true),
+              cel(_gnf(l.net), droite: true), cel(l.verse),
+            ]),
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(width: 1))),
+            children: [
+              cel('TOTAL (${lignes.length})', style: gras), cel(''), cel(_gnf(somme((l) => l.brut)), style: gras, droite: true),
+              cel(_gnf(somme((l) => l.retenues)), style: gras, droite: true), cel(_gnf(somme((l) => l.net)), style: gras, droite: true), cel(''),
+            ],
+          ),
+        ],
+      ),
+    ],
+  ));
+  return doc.save();
+}

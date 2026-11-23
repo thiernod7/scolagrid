@@ -242,6 +242,8 @@ class _ListePersonnelState extends State<_ListePersonnel> {
                   if (largeur >= 1024) Text('${p['site'] ?? 'Tout le groupe'}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14)),
                   p['statut'] == 'sorti'
                       ? const Etat('Parti')
+                      : p['statut'] == 'conge' || p['statut'] == 'suspendu'
+                      ? Etat(statutsPersonnel[p['statut']]!, ton: Ton.attente)
                       : (p['user_id'] != null ? const Etat("Utilise l'app", ton: Ton.regle) : const Etat('Sans accès')),
                   Icon(Icons.chevron_right, size: 16, color: gris),
                 ],
@@ -431,9 +433,19 @@ class FicheScreen extends StatelessWidget {
                     leading: const Icon(Icons.badge_outlined),
                     title: Text('${fiche['telephone'] ?? 'Pas de téléphone'}'),
                     subtitle: Text('${fiche['site'] ?? 'Tout le groupe'}'
-                        '${fiche['statut'] == 'sorti' ? ' · a quitté l\'établissement' : ''}'),
+                        '${fiche['statut'] == 'actif' ? '' : ' · ${statutsPersonnel[fiche['statut']] ?? fiche['statut']}'}'
+                        '${fiche['statut_depuis'] == null ? '' : ' depuis le ${_dateLisible(fiche['statut_depuis'])}'}'
+                        '${fiche['statut_jusqu_au'] == null ? '' : " jusqu'au ${_dateLisible(fiche['statut_jusqu_au'])}"}'
+                        '${fiche['motif_depart'] == null ? '' : ' (${motifsDepart[fiche['motif_depart']] ?? ''})'}'),
                   ),
                 ),
+                const SizedBox(height: 8),
+                DossierPersonnel(fiche: fiche, peutModifier: _peutGerer(fiche, actives)),
+                if (gerePaie(espace)) ...[
+                  const SizedBox(height: 12),
+                  RemunerationFiche(espace: espace, fiche: fiche),
+                ],
+                const SizedBox(height: 8),
                 // Compte : relié, ou à inviter.
                 Card(
                   child: fiche['user_id'] != null
@@ -491,39 +503,16 @@ class FicheScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   _PagesVisibles(ficheId: ficheId, modifiable: espace.fondateur, changer: _changerDroit),
                 ],
-                if (gere && actives.every((a) => a['fonction'] != 'fondateur')) ...[
+                // Le statut : en poste, en congé, suspendu, parti (avec la date et le motif).
+                if (_peutGerer(fiche, actives) && actives.every((a) => a['fonction'] != 'fondateur')) ...[
                   const SizedBox(height: 24),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      if (await _confirmer(context,
-                          '${fiche['nom_complet']} quitte l\'établissement ? Son accès à l\'app sera coupé. La fiche est conservée.')) {
-                        await _modifier('personnel', ficheId, {'statut': 'sorti'});
-                        // Ses enseignements s'arrêtent aujourd'hui ; on dit ce qui reste sans enseignant.
-                        final aujourdhui = _date(DateTime.now());
-                        final siens = await db.getAll(
-                            '''SELECT ens.id, c.nom AS classe, m.nom AS matiere FROM enseignements ens
-                                 JOIN classes c ON c.id = ens.classe_id JOIN matieres m ON m.id = ens.matiere_id
-                               WHERE ens.personnel_id = ? AND (ens.fin IS NULL OR ens.fin > ?)''',
-                            [ficheId, aujourdhui]);
-                        for (final e in siens) {
-                          await _modifier('enseignements', e['id'] as String, {'fin': aujourdhui});
-                        }
-                        if (siens.isNotEmpty && context.mounted) {
-                          await showDialog<void>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('À remplacer'),
-                              content: Text('Ces matières n\'ont plus d\'enseignant :\n'
-                                  '${siens.map((e) => '${e['matiere']} en ${e['classe']}').join('\n')}\n\n'
-                                  'Affectez-les dans Paramètres › Enseignants par classe.'),
-                              actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Compris'))],
-                            ),
-                          );
-                        }
-                      }
-                    },
-                    icon: const Icon(Icons.logout),
-                    label: const Text("A quitté l'établissement"),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: () => changerStatut(context, espace, fiche),
+                      icon: const Icon(Icons.swap_horiz),
+                      label: const Text('Changer le statut (congé, suspension, départ)'),
+                    ),
                   ),
                 ],
               ]),

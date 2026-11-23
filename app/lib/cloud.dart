@@ -209,6 +209,7 @@ class SupabaseConnector extends PowerSyncBackendConnector {
   // Colonnes JSON : texte en local, objet JSON pour le serveur.
   static const _json = {
     'lignes_encaissement': ['imputation'],
+    'lignes_paie': ['detail'],
   };
 
   static Map<String, dynamic> _pourServeur(String table, Map<String, dynamic> donnees) {

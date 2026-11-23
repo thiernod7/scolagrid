@@ -86,6 +86,7 @@ Future<void> affecterEnseignant(BuildContext context, Espace espace,
   final choisies = <String>{if (matiereId != null) matiereId};
   var principal = false;
   var remplacement = false;
+  final heures = TextEditingController();
   var debut = DateTime.now();
   final finAnnee = DateTime.tryParse('${annee['fin']}') ?? DateTime.now().add(const Duration(days: 180));
   var fin = DateTime.now().add(const Duration(days: 30));
@@ -149,6 +150,11 @@ Future<void> affecterEnseignant(BuildContext context, Espace espace,
         subtitle: const Text('Voit toutes les notes de la classe, ne saisit que les siennes'),
       ),
       const SizedBox(height: 4),
+      TextField(
+        controller: heures,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: _champ('Heures par semaine (par matière)', aide: "Pour la paie à l'heure : 6 h de maths par semaine…"),
+      ),
       date('À partir du', debut, (v) => maj(() => debut = v)),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
@@ -175,9 +181,11 @@ Future<void> affecterEnseignant(BuildContext context, Espace espace,
           [personne, classe, m, _date(debut)]);
       if (deja != null) continue;
       await tx.execute(
-          '''INSERT INTO enseignements (id, organisation_id, personnel_id, classe_id, matiere_id, debut, fin, remplacant, created_at, updated_at)
-             VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-          [espace.orgId, personne, classe, m, _date(debut), remplacement ? _date(fin) : null, remplacement ? 1 : 0, m0, m0]);
+          '''INSERT INTO enseignements (id, organisation_id, personnel_id, classe_id, matiere_id, debut, fin, remplacant, heures_semaine,
+               created_at, updated_at)
+             VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+          [espace.orgId, personne, classe, m, _date(debut), remplacement ? _date(fin) : null, remplacement ? 1 : 0,
+            double.tryParse(heures.text.replaceAll(',', '.')), m0, m0]);
     }
     if (principal) {
       await tx.execute('UPDATE classes SET professeur_principal_id = ?, updated_at = ? WHERE id = ?', [personne, m0, classe]);
@@ -271,12 +279,32 @@ class EnseignementsFiche extends StatelessWidget {
                                   text: [
                                     '',
                                     if (l['remplacant'] == 1) 'remplacement',
+                                    if (l['heures_semaine'] != null) '${noteLisible((l['heures_semaine'] as num).toDouble()).replaceAll(',00', '')} h/sem.',
                                     if (l['fin'] != null) '${termine ? 'terminé le' : "jusqu'au"} ${_dateLisible(l['fin'])}'
                                     else 'depuis le ${_dateLisible(l['debut'])}',
                                   ].join(' · '),
                                   style: TextStyle(fontSize: 12, color: gris)),
                             ])),
                           ),
+                          if (peutModifier && !termine)
+                            IconButton(
+                              tooltip: 'Heures par semaine',
+                              visualDensity: VisualDensity.compact,
+                              icon: Icon(Icons.schedule, size: 18, color: gris),
+                              onPressed: () async {
+                                final champ = TextEditingController(
+                                    text: l['heures_semaine'] == null ? '' : noteLisible((l['heures_semaine'] as num).toDouble()).replaceAll(',00', ''));
+                                final ok = await _formulaire(context, '${l['matiere']} · ${l['classe']}', (maj) => [
+                                      TextField(
+                                          controller: champ,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          decoration: _champ('Heures par semaine')),
+                                    ]);
+                                if (!ok) return;
+                                final h = double.tryParse(champ.text.replaceAll(',', '.'));
+                                await _modifier('enseignements', l['id'] as String, {'heures_semaine': h != null && h > 0 ? h : null});
+                              },
+                            ),
                           if (peutModifier && !termine)
                             IconButton(
                               tooltip: 'Terminer',
