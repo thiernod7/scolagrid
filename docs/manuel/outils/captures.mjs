@@ -353,8 +353,12 @@ if (etape === 'connexion') {
     const mariama = page.getByText(/KOUROUMA/);
     if (await mariama.count()) await mariama.first().click(); else await page.mouse.click(500, 300);
     await pause(3000); await semantique(); await photo('60b-fiche-personnel');
-    await page.mouse.wheel(0, 900); await pause(1200); await photo('60c-pages-visibles');
-    await retour();
+    for (const [onglet, nom] of [['Fonctions et droits', '60c-fonctions-droits'], ['Paie', '60d-fiche-paie']]) {
+      const o = page.getByRole('tab', { name: onglet });
+      if (await o.count()) { await o.first().click(); await pause(1500); await photo(nom); }
+    }
+    const fermer = page.getByRole('button', { name: 'Fermer' });
+    if (await fermer.count()) await fermer.first().click();
   });
 }
 await ctx.close();

@@ -27,71 +27,15 @@ int? _entier(TextEditingController c) => int.tryParse(c.text.replaceAll(RegExp(r
 
 // --- La fiche : dossier et statut ----------------------------------------------------------
 
-/// Le dossier de la personne : état civil, contact, embauche, contrat.
-class DossierPersonnel extends StatelessWidget {
-  const DossierPersonnel({super.key, required this.fiche, required this.peutModifier});
-
-  final Map<String, Object?> fiche;
-  final bool peutModifier;
-
-  @override
-  Widget build(BuildContext context) {
-    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
-    String? v(String c) {
-      final x = fiche[c];
-      return x == null || '$x'.isEmpty ? null : '$x';
-    }
-
-    final lignes = <(String, String?)>[
-      ('Sexe', v('sexe') == null ? null : (v('sexe') == 'F' ? 'Femme' : 'Homme')),
-      ('Naissance', [if (v('date_naissance') != null) _dateLisible(v('date_naissance')), v('lieu_naissance')].whereType<String>().join(' à ').ifEmpty()),
-      ('Nationalité', v('nationalite')),
-      ("Pièce d'identité", v('piece_identite')),
-      ('2e téléphone', v('telephone2')),
-      ('Adresse', v('adresse')),
-      ('À prévenir', v('contact_urgence')),
-      ('Embauche', v('date_embauche') == null ? null : _dateLisible(v('date_embauche'))),
-      ('Contrat', contratsPersonnel[v('contrat')]),
-      ('Diplôme', v('diplome')),
-    ];
-    final remplies = lignes.where((l) => l.$2 != null).toList();
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
-        Expanded(child: Text('DOSSIER', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris))),
-        if (peutModifier)
-          TextButton.icon(
-            onPressed: () => modifierDossier(context, fiche),
-            icon: const Icon(Icons.edit_outlined, size: 16),
-            label: Text(remplies.length < 4 ? 'Compléter' : 'Modifier'),
-          ),
-      ]),
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: remplies.isEmpty
-              ? Text('État civil, contact, embauche et contrat : à compléter.', style: TextStyle(color: gris))
-              : Wrap(spacing: 24, runSpacing: 10, children: [
-                  for (final l in remplies)
-                    SizedBox(
-                      width: 220,
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(l.$1, style: TextStyle(fontSize: 12, color: gris)),
-                        Text(l.$2!, style: const TextStyle(fontSize: 14)),
-                      ]),
-                    ),
-                ]),
-        ),
-      ),
-    ]);
-  }
-}
-
 extension on String {
   String? ifEmpty() => isEmpty ? null : this;
 }
 
+/// Modifier la fiche : nom, téléphone (tant qu'elle n'a pas de compte), état civil, emploi.
 Future<void> modifierDossier(BuildContext context, Map<String, Object?> fiche) async {
   TextEditingController ctl(String c) => TextEditingController(text: '${fiche[c] ?? ''}');
+  final prenoms = ctl('prenoms'), nom = ctl('nom'), tel = ctl('telephone');
+  final compte = fiche['user_id'] != null;
   final lieu = ctl('lieu_naissance'), nationalite = ctl('nationalite'), piece = ctl('piece_identite');
   final tel2 = ctl('telephone2'), adresse = ctl('adresse'), urgence = ctl('contact_urgence'), diplome = ctl('diplome');
   var sexe = '${fiche['sexe'] ?? ''}';
@@ -105,7 +49,14 @@ Future<void> modifierDossier(BuildContext context, Map<String, Object?> fiche) a
         },
         child: InputDecorator(decoration: _champ(titre), child: Text(v == null ? '—' : _dateLisible(_date(v)))),
       );
-  final ok = await _formulaire(context, 'Dossier · ${fiche['nom_complet']}', (maj) => [
+  final ok = await _formulaire(context, 'Modifier · ${fiche['nom_complet']}', (maj) => [
+        TextField(controller: prenoms, textCapitalization: TextCapitalization.words, decoration: _champ('Prénom(s)')),
+        TextField(controller: nom, textCapitalization: TextCapitalization.characters, decoration: _champ('Nom')),
+        TextField(
+            controller: tel,
+            enabled: !compte,
+            keyboardType: TextInputType.phone,
+            decoration: _champ('Téléphone', aide: compte ? 'Relié à son compte : il ne se change pas ici.' : null)),
         Row(children: [
           Expanded(child: _liste('Sexe', sexe, const {'': '—', 'M': 'Homme', 'F': 'Femme'}, (v) => maj(() => sexe = v))),
           const SizedBox(width: 12),
@@ -130,12 +81,25 @@ Future<void> modifierDossier(BuildContext context, Map<String, Object?> fiche) a
         TextField(controller: diplome, decoration: _champ('Diplôme ou qualification')),
       ]);
   if (!ok) return;
+  if (prenoms.text.trim().isEmpty || nom.text.trim().isEmpty) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Le prénom et le nom sont demandés.')));
+    return;
+  }
+  final t1 = _texteOuNull(tel);
+  if (!compte && t1 != null && !RegExp(r'^\+?[0-9 ]{8,20}$').hasMatch(t1)) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Téléphone incorrect.')));
+    return;
+  }
   final t2 = _texteOuNull(tel2);
   if (t2 != null && !RegExp(r'^\+?[0-9 ]{8,20}$').hasMatch(t2)) {
     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('2e téléphone incorrect.')));
     return;
   }
   await _modifier('personnel', fiche['id'] as String, {
+    'prenoms': prenoms.text.trim(),
+    'nom': nom.text.trim().toUpperCase(),
+    'nom_complet': nomPersonne(prenoms.text, nom.text),
+    if (!compte) 'telephone': t1 == null ? null : numeroInternational(t1),
     'sexe': sexe.isEmpty ? null : sexe,
     'date_naissance': naissance == null ? null : _date(naissance!),
     'lieu_naissance': _texteOuNull(lieu),
