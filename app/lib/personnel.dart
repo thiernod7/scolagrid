@@ -19,66 +19,149 @@ class PersonnelScreen extends StatelessWidget {
         if (espace.fondateur) null: 'Tout le groupe',
       };
 
-  Future<void> _ajouter(BuildContext context) async {
+  /// Nouvelle personne, en trois parties : identité, poste, paie (facultative).
+  /// Rend l'id de la fiche créée et si l'on veut l'inviter tout de suite.
+  Future<(String, bool)?> _ajouter(BuildContext context) async {
     final sites = await _mesSites();
-    if (!context.mounted || sites.isEmpty) return;
+    if (!context.mounted || sites.isEmpty) return null;
     final prenoms = TextEditingController();
     final nom = TextEditingController();
     final telephone = TextEditingController();
     final libelle = TextEditingController();
+    final salaire = TextEditingController();
     var site = sites.keys.first;
-    final choisis = <String>{'enseignant'};
+    var sexe = '';
+    var contrat = 'permanent';
+    var embauche = DateTime.now();
+    var mode = '';
+    var inviter = false;
+    final paie = gerePaie(espace);
+    final choisis = <String>{};
     final choixTitres = [
       for (final t in titres.entries)
         if (espace.fondateur || !fonctionsDeDirection.contains(t.value.fonction)) t.key,
     ];
-    final ok = await _formulaire(context, 'Nouvelle personne', (maj) => [
-          TextField(
-              controller: prenoms,
-              autofocus: true,
-              textCapitalization: TextCapitalization.words,
-              decoration: _champ('Prénom(s)')),
-          TextField(
-              controller: nom,
-              textCapitalization: TextCapitalization.characters,
-              decoration: _champ('Nom')),
-          TextField(
-              controller: telephone,
-              keyboardType: TextInputType.phone,
-              decoration: _champ('Téléphone (facultatif)',
-                  aide: "Si renseigné, seul ce numéro pourra utiliser l'invitation")),
-          const Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Fonctions (plusieurs possibles : les droits s\'additionnent)', style: TextStyle(fontSize: 13)),
-          ),
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            for (final t in choixTitres)
-              FilterChip(
-                label: Text(nomTitre(t)),
-                selected: choisis.contains(t),
-                onSelected: (v) => maj(() => v ? choisis.add(t) : choisis.remove(t)),
-              ),
-          ]),
-          if (choisis.contains('autre'))
-            TextField(controller: libelle, decoration: _champ('Précisez', aide: 'Gardien, chauffeur, cuisinière…')),
-          if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
-        ]);
-    if (!ok || prenoms.text.trim().isEmpty || nom.text.trim().isEmpty || choisis.isEmpty) {
-      if (ok && context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Le prénom, le nom et au moins une fonction sont demandés.')));
-      }
-      return;
+    Widget partie(String titre) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(titre.toUpperCase(), style: TextStyle(fontSize: 12, letterSpacing: .6, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        );
+    String? erreur() {
+      if (prenoms.text.trim().isEmpty || nom.text.trim().isEmpty) return 'Le prénom et le nom sont demandés.';
+      final t = telephone.text.trim();
+      if (t.isNotEmpty && !RegExp(r'^\+?[0-9 ]{8,20}$').hasMatch(t)) return 'Téléphone incorrect.';
+      if (choisis.isEmpty) return 'Choisissez au moins une fonction.';
+      if ((mode == 'mensuel' || mode == 'mixte') && (_entier(salaire) ?? 0) <= 0) return 'Indiquez le salaire du mois.';
+      return null;
     }
+
+    while (true) {
+      final ok = await _formulaire(context, 'Nouvelle personne', (maj) => [
+            partie('Identité'),
+            Row(children: [
+              Expanded(
+                child: TextField(
+                    controller: prenoms, autofocus: true, textCapitalization: TextCapitalization.words, decoration: _champ('Prénom(s)')),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: TextField(controller: nom, textCapitalization: TextCapitalization.characters, decoration: _champ('Nom'))),
+            ]),
+            Row(children: [
+              Expanded(child: _liste('Sexe', sexe, const {'': '—', 'M': 'Homme', 'F': 'Femme'}, (v) => maj(() => sexe = v))),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: TextField(
+                    controller: telephone,
+                    keyboardType: TextInputType.phone,
+                    onChanged: (_) => maj(() {}),
+                    decoration: _champ('Téléphone (facultatif)')),
+              ),
+            ]),
+            partie('Poste'),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text("Fonctions (plusieurs possibles : les droits s'additionnent)", style: TextStyle(fontSize: 13)),
+            ),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final t in choixTitres)
+                FilterChip(
+                  label: Text(nomTitre(t)),
+                  selected: choisis.contains(t),
+                  onSelected: (v) => maj(() => v ? choisis.add(t) : choisis.remove(t)),
+                ),
+            ]),
+            if (choisis.contains('autre'))
+              TextField(controller: libelle, decoration: _champ('Précisez', aide: 'Gardien, chauffeur, cuisinière…')),
+            if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
+            Row(children: [
+              Expanded(child: _liste('Contrat', contrat, contratsPersonnel, (v) => maj(() => contrat = v))),
+              const SizedBox(width: 12),
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    final d = await _choisirDate(context, embauche, premier: DateTime(1970), dernier: DateTime.now().add(const Duration(days: 90)));
+                    if (d != null) maj(() => embauche = d);
+                  },
+                  child: InputDecorator(decoration: _champ("Date d'embauche"), child: Text(_dateLisible(_date(embauche)))),
+                ),
+              ),
+            ]),
+            if (paie) ...[
+              partie('Paie (facultatif)'),
+              _liste('Rémunération', mode, {'': 'À régler plus tard', ...modesRemuneration}, (v) => maj(() => mode = v)),
+              if (mode == 'mensuel' || mode == 'mixte')
+                TextField(
+                    controller: salaire,
+                    keyboardType: TextInputType.number,
+                    decoration: _champ('Salaire du mois', suffixe: 'GNF')),
+              if (mode == 'horaire' || mode == 'mixte')
+                Text("Les heures sont payées au taux de la grille de l'école ; un taux propre se règle ensuite dans sa fiche.",
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            ],
+            if (telephone.text.trim().isNotEmpty)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: inviter,
+                onChanged: (v) => maj(() => inviter = v ?? false),
+                title: const Text("L'inviter à utiliser l'app"),
+                subtitle: const Text('Code par SMS ou à transmettre (internet nécessaire).'),
+              ),
+          ]);
+      if (!ok || !context.mounted) return null;
+      final e = erreur();
+      if (e == null) break;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e)));
+    }
+
     final tel = telephone.text.trim().isEmpty ? null : numeroInternational(telephone.text);
+    final nomComplet = nomPersonne(prenoms.text, nom.text);
+    // Déjà là ? Même nom ou même téléphone, parmi le personnel en poste.
+    final cle = nomSimplifie(nomComplet);
+    final memes = [
+      for (final p in await db.getAll(
+          "SELECT nom_complet, telephone FROM personnel WHERE organisation_id = ? AND statut != 'sorti'", [espace.orgId]))
+        if (nomSimplifie('${p['nom_complet']}') == cle || (tel != null && p['telephone'] == tel)) p,
+    ];
+    if (memes.isNotEmpty) {
+      if (!context.mounted) return null;
+      final m = memes.first;
+      final quandMeme = await _confirmer(
+          context,
+          '${m['nom_complet']}${m['telephone'] == null ? '' : ' (${m['telephone']})'} a déjà une fiche. '
+          'Créer quand même une nouvelle fiche ?');
+      if (!quandMeme) return null;
+    }
+
     final maintenant = _maintenant();
+    late final String id;
     await db.writeTransaction((tx) async {
-      final id = (await tx.get('SELECT uuid() AS id'))['id'];
+      id = (await tx.get('SELECT uuid() AS id'))['id'] as String;
       await tx.execute(
-          'INSERT INTO personnel (id, organisation_id, site_id, nom_complet, prenoms, nom, telephone, statut, created_at, updated_at) '
-          "VALUES (?, ?, ?, ?, ?, ?, ?, 'actif', ?, ?)",
-          [id, espace.orgId, site, nomPersonne(prenoms.text, nom.text), prenoms.text.trim(), nom.text.trim().toUpperCase(), tel,
-            maintenant, maintenant]);
+          'INSERT INTO personnel (id, organisation_id, site_id, nom_complet, prenoms, nom, telephone, sexe, contrat, date_embauche, '
+          "statut, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'actif', ?, ?)",
+          [id, espace.orgId, site, nomComplet, prenoms.text.trim(), nom.text.trim().toUpperCase(), tel, sexe.isEmpty ? null : sexe,
+            contrat, _date(embauche), maintenant, maintenant]);
       for (final t in choisis) {
         final titre = titres[t]!;
         await tx.execute(
@@ -90,7 +173,14 @@ class PersonnelScreen extends StatelessWidget {
               maintenant, maintenant,
             ]);
       }
+      if (paie && mode.isNotEmpty) {
+        await tx.execute(
+            'INSERT INTO remunerations (id, organisation_id, personnel_id, mode, salaire_mensuel_gnf, created_at, updated_at) '
+            'VALUES (uuid(), ?, ?, ?, ?, ?, ?)',
+            [espace.orgId, id, mode, mode == 'horaire' ? null : _entier(salaire), maintenant, maintenant]);
+      }
     });
+    return (id, inviter && tel != null);
   }
 
   @override
@@ -113,7 +203,7 @@ class _ListePersonnel extends StatefulWidget {
 
   final Espace espace;
   final Lignes personnes;
-  final VoidCallback ajouter;
+  final Future<(String, bool)?> Function() ajouter;
 
   @override
   State<_ListePersonnel> createState() => _ListePersonnelState();
@@ -127,6 +217,21 @@ class _ListePersonnelState extends State<_ListePersonnel> {
   String? _statut;
   String? _site;
   String? _ouvert;
+
+  /// Après l'ajout : la fiche s'ouvre, et l'invitation suit si on l'a demandée.
+  Future<void> _nouvelle() async {
+    final r = await widget.ajouter();
+    if (r == null || !mounted) return;
+    final (id, inviter) = r;
+    _ouvrir(id);
+    if (!inviter) return;
+    // La fiche doit d'abord arriver au serveur.
+    for (var i = 0; i < 30 && (await db.getUploadQueueStats()).count > 0; i++) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    final fiche = await db.getOptional('SELECT * FROM personnel WHERE id = ?', [id]);
+    if (fiche != null && mounted) await _inviterPersonne(context, fiche);
+  }
 
   void _ouvrir(String id) {
     final largeur = MediaQuery.sizeOf(context).width;
@@ -238,7 +343,7 @@ class _ListePersonnelState extends State<_ListePersonnel> {
         sousTitre: "$enPoste personne(s) en poste · $utilisent utilise(nt) l'app",
         actions: [
           if (widget.espace.gestionnaire)
-            FilledButton.icon(onPressed: widget.ajouter, icon: const Icon(Icons.person_add_alt, size: 16), label: const Text('Ajouter une personne')),
+            FilledButton.icon(onPressed: _nouvelle, icon: const Icon(Icons.person_add_alt, size: 16), label: const Text('Ajouter une personne')),
         ],
       ),
       const SizedBox(height: 12),
@@ -405,82 +510,6 @@ class FichePersonnel extends StatelessWidget {
     }
   }
 
-  Future<void> _inviter(BuildContext context, Map<String, Object?> fiche) async {
-    final messager = ScaffoldMessenger.of(context);
-    if ((await db.getUploadQueueStats()).count > 0) {
-      messager.showSnackBar(const SnackBar(
-          content: Text('Des changements sont encore en cours d\'envoi. Réessayez dans un instant.')));
-      return;
-    }
-    // Avec un numéro : le serveur peut envoyer le code par SMS directement.
-    var parSms = false;
-    if (fiche['telephone'] != null) {
-      final choix = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Inviter ${fiche['nom_complet']}'),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Text("ScolaGrid peut envoyer le code d'invitation par SMS au ${fiche['telephone']}, avec le lien de "
-                "l'application. Ou bien affichez le code pour le transmettre vous-même."),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
-            OutlinedButton(onPressed: () => Navigator.pop(context, 'code'), child: const Text('Afficher le code')),
-            FilledButton.icon(
-                onPressed: () => Navigator.pop(context, 'sms'), icon: const Icon(Icons.sms_outlined, size: 18), label: const Text('Envoyer par SMS')),
-          ],
-        ),
-      );
-      if (choix == null) return;
-      parSms = choix == 'sms';
-    }
-    String code;
-    try {
-      code = parSms ? await envoyerInvitationSms(ficheId) : await inviterPersonnel(ficheId);
-    } on PostgrestException catch (e) {
-      messager.showSnackBar(SnackBar(content: Text(e.message)));
-      return;
-    } catch (_) {
-      messager.showSnackBar(const SnackBar(content: Text('Il faut internet pour créer une invitation.')));
-      return;
-    }
-    if (!context.mounted) return;
-    if (parSms) {
-      messager.showSnackBar(SnackBar(
-          duration: const Duration(seconds: 8),
-          content: Text('Invitation envoyée par SMS au ${fiche['telephone']} (code ${codeLisible(code)}, valable 7 jours).')));
-      return;
-    }
-    final message = 'Bonjour ${fiche['nom_complet']}, vous êtes invité(e) sur Scolagrid. '
-        "Installez l'app, connectez-vous avec votre numéro, puis saisissez ce code : ${codeLisible(code)} "
-        '(valable 7 jours).';
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Code d'invitation"),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SelectableText(codeLisible(code),
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(letterSpacing: 2)),
-          const SizedBox(height: 12),
-          Text(fiche['telephone'] != null
-              ? 'Valable 7 jours, une seule fois, pour le numéro ${fiche['telephone']}.'
-              : 'Valable 7 jours, une seule fois.'),
-          const SizedBox(height: 8),
-          const Text('Transmettez-le à la personne (SMS, WhatsApp ou de vive voix).'),
-        ]),
-        actions: [
-          TextButton.icon(
-            onPressed: () => Clipboard.setData(ClipboardData(text: message)),
-            icon: const Icon(Icons.copy),
-            label: const Text('Copier le message'),
-          ),
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
-        ],
-      ),
-    );
-  }
-
   Future<void> _changerDroit(String droit, bool parDefaut, bool voulu, String? exceptionId) async {
     if (voulu == parDefaut) {
       // Retour au comportement de la fonction : l'exception n'a plus lieu d'être.
@@ -627,7 +656,7 @@ class FichePersonnel extends StatelessWidget {
               title: const Text("N'utilise pas l'app"),
               subtitle: const Text('Invitez-la si elle doit utiliser Scolagrid (internet nécessaire).'),
               trailing: gere && actives.isNotEmpty && fiche['statut'] == 'actif'
-                  ? FilledButton(onPressed: () => _inviter(context, fiche), child: const Text('Inviter'))
+                  ? FilledButton(onPressed: () => _inviterPersonne(context, fiche), child: const Text('Inviter'))
                   : null,
             ),
     ]);
@@ -711,7 +740,7 @@ class FichePersonnel extends StatelessWidget {
       if (!fondateur) ('Changer le statut', Icons.swap_horiz, () => changerStatut(context, espace, fiche)),
       if (fiche['statut'] == 'actif') ('Ajouter une fonction', Icons.work_outline, () => _ajouterFonction(context, fiche)),
       if (fiche['user_id'] == null && actives.isNotEmpty && fiche['statut'] == 'actif')
-        ('Inviter', Icons.person_add_alt_outlined, () => _inviter(context, fiche)),
+        ('Inviter', Icons.person_add_alt_outlined, () => _inviterPersonne(context, fiche)),
     ];
     final decoration =
         BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border(top: BorderSide(color: Theme.of(context).dividerColor)));
@@ -753,6 +782,84 @@ class FichePersonnel extends StatelessWidget {
       ]),
     );
   }
+}
+
+/// Inviter la personne : code par SMS (avec un numéro) ou à transmettre.
+Future<void> _inviterPersonne(BuildContext context, Map<String, Object?> fiche) async {
+final ficheId = fiche['id'] as String;
+  final messager = ScaffoldMessenger.of(context);
+  if ((await db.getUploadQueueStats()).count > 0) {
+    messager.showSnackBar(const SnackBar(
+        content: Text('Des changements sont encore en cours d\'envoi. Réessayez dans un instant.')));
+    return;
+  }
+  // Avec un numéro : le serveur peut envoyer le code par SMS directement.
+  var parSms = false;
+  if (fiche['telephone'] != null) {
+    final choix = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Inviter ${fiche['nom_complet']}'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: Text("ScolaGrid peut envoyer le code d'invitation par SMS au ${fiche['telephone']}, avec le lien de "
+              "l'application. Ou bien affichez le code pour le transmettre vous-même."),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+          OutlinedButton(onPressed: () => Navigator.pop(context, 'code'), child: const Text('Afficher le code')),
+          FilledButton.icon(
+              onPressed: () => Navigator.pop(context, 'sms'), icon: const Icon(Icons.sms_outlined, size: 18), label: const Text('Envoyer par SMS')),
+        ],
+      ),
+    );
+    if (choix == null) return;
+    parSms = choix == 'sms';
+  }
+  String code;
+  try {
+    code = parSms ? await envoyerInvitationSms(ficheId) : await inviterPersonnel(ficheId);
+  } on PostgrestException catch (e) {
+    messager.showSnackBar(SnackBar(content: Text(e.message)));
+    return;
+  } catch (_) {
+    messager.showSnackBar(const SnackBar(content: Text('Il faut internet pour créer une invitation.')));
+    return;
+  }
+  if (!context.mounted) return;
+  if (parSms) {
+    messager.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 8),
+        content: Text('Invitation envoyée par SMS au ${fiche['telephone']} (code ${codeLisible(code)}, valable 7 jours).')));
+    return;
+  }
+  final message = 'Bonjour ${fiche['nom_complet']}, vous êtes invité(e) sur Scolagrid. '
+      "Installez l'app, connectez-vous avec votre numéro, puis saisissez ce code : ${codeLisible(code)} "
+      '(valable 7 jours).';
+  await showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("Code d'invitation"),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SelectableText(codeLisible(code),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(letterSpacing: 2)),
+        const SizedBox(height: 12),
+        Text(fiche['telephone'] != null
+            ? 'Valable 7 jours, une seule fois, pour le numéro ${fiche['telephone']}.'
+            : 'Valable 7 jours, une seule fois.'),
+        const SizedBox(height: 8),
+        const Text('Transmettez-le à la personne (SMS, WhatsApp ou de vive voix).'),
+      ]),
+      actions: [
+        TextButton.icon(
+          onPressed: () => Clipboard.setData(ClipboardData(text: message)),
+          icon: const Icon(Icons.copy),
+          label: const Text('Copier le message'),
+        ),
+        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
+      ],
+    ),
+  );
 }
 
 /// Onglets en « pilule », comme la fiche élève.
