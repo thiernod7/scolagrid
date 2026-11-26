@@ -43,16 +43,66 @@ Pour demain, **seule la direction** utilise les évaluations.
 
 | Aujourd'hui dans l'app | Désormais | Exemple |
 |---|---|---|
-| Période | **Trimestre** (ou **Semestre** si l'école compte ainsi) | 1er trimestre |
+| Période | **Trimestre** au primaire, **Semestre** au collège et au lycée, **Année** en maternelle | 1er semestre |
 | Session (mensuelle) | **Évaluation du mois de …** | Évaluation du mois de novembre |
-| Session (composition) | **Composition du … trimestre** | Composition du 1er trimestre |
+| Session (composition) | **Composition du … semestre** (… trimestre au primaire) | Composition du 1er semestre |
 | Évaluation / épreuve | **Épreuve** : une classe, une matière | Maths en 7ème A |
 | Type d'évaluation | **Sorte d'évaluation** (réglage seulement) | Évaluation du mois, Composition |
 | Calendrier (page) | **Dates des évaluations** | |
 | Publier le calendrier | **Annoncer les dates** | |
-| Clôturer une session | **Terminer la saisie** | |
+| Clôturer une session | **Clôturer le mois** (ou la composition) | |
+| Clôturer une période | **Clôturer le semestre** (ou le trimestre) | |
+| Remettre les notes | **J'ai terminé** (suivi, pas un verrou) | |
+| Bulletin de session / de période | **Bulletin du mois** / **Bulletin du semestre** | |
 
 Le mot « session » disparaît de l'écran.
+
+---
+
+## 4 bis. Comment tout s'emboîte
+
+D'après la spécification « Notes & bulletins » (zip du 31/10/2026, `notes_bulletins.md`)
+et ce que fait l'app aujourd'hui. Schéma : *Imbrication des notes* (artefact).
+
+```
+Année (octobre → juin)
+└─ Cycle : il fixe le découpage et le barème
+   ├─ Maternelle : 1 période (l'année), des acquis, ni moyenne ni rang
+   ├─ Primaire : 3 trimestres, notes sur 10
+   └─ Collège / Lycée : 2 semestres, notes sur 20
+      └─ Semestre (ou trimestre)
+         ├─ Évaluation d'octobre, de novembre… (une par mois)
+         └─ Composition (une, en fin de période)
+            └─ Classe
+               └─ Matière, avec son coefficient
+                  └─ Épreuve(s) → une note par élève
+                     ├─ au mois : 1 ou 2 épreuves par matière (2 le plus souvent), parfois aucune
+                     └─ à la composition : 1 seule
+```
+
+Ce qu'il ne faut pas oublier :
+
+- **Le mois est une étiquette, pas le calendrier.** L'évaluation d'octobre passée le
+  5 novembre reste celle d'octobre : sa fenêtre peut déborder (05/10 → 07/11).
+  Aujourd'hui l'app colle les fenêtres aux mois du calendrier : à revoir.
+- **Deux bulletins.** Celui du mois (allégé : notes, moyenne, rang) et celui du
+  semestre (officiel : + repères de la classe, mention, appréciation du professeur principal).
+- **Deux clôtures emboîtées.** Clôturer le mois fige ses notes et permet son bulletin ;
+  clôturer le semestre fige tout et permet le bulletin officiel (en ligne seulement).
+  Après clôture, une correction est tracée avec son motif. « J'ai terminé » (la remise)
+  n'est qu'un suivi.
+- **Une case n'est pas toujours une note** : non noté, non concerné, dispensé, absent
+  justifié → ne comptent pas ; absent sans justificatif → 0 (réglable).
+- **La moyenne du semestre repart de toutes les notes**, jamais des moyennes du mois.
+  **Poids** (composition ×2, entre les notes d'une matière) ≠ **coefficient** (entre les matières).
+- **Français scindé au collège** (dictée et questions / rédaction : deux matières) ;
+  une seule matière au lycée.
+- **Examen blanc** : classes d'examen (CEE, BEPC, Bac), ne compte pas par défaut.
+- **Barème figé** dès que l'année est en cours.
+- **Qui tape ≠ à qui est la note** : saisie par le principal, la note reste celle de la
+  matière et de son enseignant.
+- **Le calendrier est une prévision** (dates provisoires ; épreuve hors calendrier
+  possible, rare). L'app l'a rendu obligatoire : c'est ce qui bloque la saisie directe.
 
 ---
 
@@ -65,8 +115,8 @@ Rentrée ──► Réglages (déjà pré-remplis, on vérifie)
 Chaque mois ──► (facultatif) Annoncer les dates
               ──► Saisir les notes de l'évaluation du mois
               │
-Fin de trimestre ──► Composition ──► Saisir les notes
-              ──► Bulletins du trimestre
+Fin de semestre (trimestre) ──► Composition ──► Saisir les notes
+              ──► Bulletin du semestre (trimestre)
               │
 Fin d'année ──► Moyenne annuelle ──► Passage / redoublement
 ```
@@ -97,9 +147,10 @@ Fin d'année ──► Moyenne annuelle ──► Passage / redoublement
 
 À l'ouverture de l'année, l'app crée seule :
 
-- les **3 trimestres** (dates modifiables) ;
+- les **périodes de chaque cycle** : 3 trimestres au primaire, 2 semestres au collège
+  et au lycée, l'année entière en maternelle (dates modifiables) ;
 - une **Évaluation du mois de …** pour chaque mois de cours ;
-- une **Composition** à la fin de chaque trimestre ;
+- une **Composition** à la fin de chaque trimestre ou semestre ;
 - les **règles de calcul guinéennes** (déjà en place : composition qui compte double,
   absent non justifié = 0, absent justifié exclu, coefficients des matières).
 
@@ -110,6 +161,7 @@ Les **matières ne sont pas à ressaisir** : elles existent déjà pour chaque n
 
 Pour chaque évaluation du mois et chaque composition, l'app crée **une épreuve par classe
 et par matière**, datée par défaut de la fin du mois (ou de la composition).
+On peut en ajouter une seconde dans le mois (le cas le plus courant), ou n'en avoir aucune.
 
 - Si une classe n'a pas encore de matières : la page d'entrée le signale avec le bouton
   **Ajouter les matières**.
@@ -121,6 +173,7 @@ et par matière**, datée par défaut de la fin du mois (ou de la composition).
 
 - Plus besoin de passer par « Dates des évaluations » avant.
 - Plus de blocage « aucune note avant la date » quand aucune date n'a été annoncée.
+- Une fois les notes du mois saisies : **Clôturer le mois** → bulletin du mois.
 - Le carnet de notes reste tel qu'il est (élèves en lignes, matières en colonnes,
   enregistrement automatique en quittant).
 
@@ -141,7 +194,7 @@ La première chose qu'on voit en ouvrant les évaluations :
 | **1. Réglages de l'année** | Faits ✔ / à vérifier | Vérifier |
 | **2. Dates du mois** *(facultatif)* | Annoncées / non annoncées | Annoncer les dates |
 | **3. Notes** | « Novembre : 34 / 42 notes en 7ème A » (par classe) | Saisir |
-| **4. Bulletins** | Prêts / il manque des notes | Préparer les bulletins |
+| **4. Bulletins** | Du mois : clôturé ou non · Du semestre : prêt ou non | Clôturer le mois / Préparer les bulletins |
 
 Le mois en cours est choisi d'office ; on peut changer de mois.
 
@@ -168,7 +221,7 @@ mène** directement. Exemples :
 ```
 
 Les réglages restent dans **Paramètres › Évaluations**
-(trimestres, sortes d'évaluation, calcul et mentions).
+(périodes, sortes d'évaluation, calcul et mentions).
 
 ---
 
@@ -189,11 +242,12 @@ Les réglages restent dans **Paramètres › Évaluations**
 
 ## 10. À décider
 
+Tranché : primaire en trimestres, collège et lycée en semestres (comme la spécification).
+
 1. **À l'évaluation du mois, toutes les matières sont-elles évaluées dans chaque classe ?**
    - Oui → une épreuve par matière d'office.
    - Non → il faut pouvoir en retirer (ou choisir les matières du mois).
-2. **Trimestre ou semestre** dans tes écoles ? (Collège, lycée, primaire : pareil ?)
-3. **Le primaire** : mêmes évaluations du mois et compositions qu'au collège ?
-4. **Les mois concernés** : d'octobre à juin ? Y a-t-il des mois sans évaluation
-   (mois de composition, vacances) ?
-5. **Le nom du menu** « Dates des évaluations » te convient-il ?
+2. **Les fenêtres des mois** : collées au calendrier (1er → 31) ou débordantes comme dans
+   la spécification (05/10 → 07/11) ?
+3. **Le bulletin du mois** : les écoles le distribuent-elles vraiment chaque mois ?
+4. **Le nom du menu** « Dates des évaluations » te convient-il ?
