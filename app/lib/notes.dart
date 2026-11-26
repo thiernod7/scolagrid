@@ -151,7 +151,7 @@ const _moisNoms = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juill
 
 /// Les sessions proposées pour une période : une « Évaluation de (mois) » par mois
 /// (jusqu'au 7 du mois suivant ; aucune au primaire), puis la composition sur les deux
-/// dernières semaines. Même découpage que le serveur (scolagrid.sessions_par_defaut, migration 048).
+/// dernières semaines ; rien en maternelle. Même découpage que le serveur (scolagrid.sessions_par_defaut, migration 049).
 List<(String, DateTime, DateTime, bool)> _sessionsParDefaut(String periode, DateTime debut, DateTime fin,
     {required bool avecCompo, bool mensuelles = true}) {
   final r = <(String, DateTime, DateTime, bool)>[];
@@ -185,7 +185,8 @@ Future<void> _preparerSessions(dynamic tx, String orgId, Iterable<Map<String, Ob
   final compo = await tx.getOptional("SELECT id FROM types_evaluation WHERE organisation_id = ? AND actif = 1 AND libelle = 'Composition'", [orgId]);
   final m0 = _maintenant();
   for (final p in periodes) {
-    if (p['statut'] != 'ouverte') continue;
+    // En maternelle, rien par défaut : l'école ajoute elle-même ce qu'elle observe.
+    if (p['statut'] != 'ouverte' || p['cycle'] == 'maternelle') continue;
     if (await tx.getOptional('SELECT 1 FROM sessions_evaluation WHERE periode_id = ?', [p['id']]) != null) continue;
     final sessions = _sessionsParDefaut('${p['libelle']}', DateTime.parse('${p['debut']}'), DateTime.parse('${p['fin']}'),
         avecCompo: compo != null, mensuelles: p['cycle'] != 'primaire');
@@ -2072,7 +2073,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
                 decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(8)),
                 child: Row(children: [
                   Expanded(child: Text('Aucune évaluation dans cette période.', style: TextStyle(color: gris))),
-                  if (modifiable && ouverte)
+                  if (modifiable && ouverte && p['cycle'] != 'maternelle')
                     OutlinedButton.icon(
                       onPressed: () => db.writeTransaction((tx) => _preparerSessions(tx, espace.orgId, [p])),
                       icon: const Icon(Icons.auto_awesome, size: 16),

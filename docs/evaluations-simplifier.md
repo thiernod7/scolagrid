@@ -245,6 +245,8 @@ Les réglages restent dans **Paramètres › Évaluations**
 - Primaire en trimestres, collège et lycée en semestres, maternelle sur l'année (comme la spécification).
 - **Au primaire, pas d'évaluation du mois par défaut** : seulement les compositions. Une école
   qui en veut les ajoute elle-même (Paramètres › Périodes et évaluations). Migration 048.
+- **En maternelle, rien par défaut** (ni évaluation du mois ni composition) : l'école ajoute
+  elle-même ce qu'elle veut. Migration 049.
 - **Toutes les matières** sont évaluées chaque mois (collège et lycée) : une épreuve par classe et par matière d'office.
 - **Les fenêtres débordent** : l'évaluation d'un mois peut se passer au début du mois suivant
   (par défaut jusqu'au 7). Le mois reste une étiquette.
