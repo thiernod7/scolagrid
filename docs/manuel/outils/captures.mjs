@@ -304,12 +304,13 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape'); await pause(800);
     // Les réglages des évaluations sont dans Paramètres (groupe « Évaluations »).
     await aller('Paramètres', 'Paramètres'); await pause(2000); await semantique();
-    for (const [texte, nom] of [['Périodes et évaluations', '67-notes-reglages'], ["Types d'évaluation", '67c-notes-types'], ['Calcul et mentions', '67b-notes-regles-mentions'], ['Enseignants par classe', '69-enseignants-par-classe']]) {
+    // Position de chaque rubrique dans le sous-menu de Paramètres (1440 × 900), si le nom n'est pas trouvé.
+    for (const [texte, nom, y] of [['Périodes et évaluations', '67-notes-reglages', 673], ["Types d'évaluation", '67c-notes-types', 715], ['Calcul et mentions', '67b-notes-regles-mentions', 757], ['Enseignants par classe', '69-enseignants-par-classe', 631]]) {
       // Les rubriques de Paramètres sont des boutons (titre + résumé) : on les cherche par leur nom.
       let lien = page.getByRole('button', { name: new RegExp(texte.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) });
       if (!(await lien.count())) lien = page.getByText(texte, { exact: false });
-      if (!(await lien.count())) continue;
-      await lien.first().click(); await pause(3000); await semantique(); await photo(nom);
+      if (await lien.count()) await lien.first().click(); else { console.log(`rubrique ${texte} : par position`); await page.mouse.click(360, y); }
+      await pause(3000); await semantique(); await photo(nom);
     }
   });
   // Évaluations › Calendrier : le mois, le mois suivant (la composition), puis « Ajouter une évaluation ».
