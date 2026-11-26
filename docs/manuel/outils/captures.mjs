@@ -304,7 +304,7 @@ if (etape === 'connexion') {
     await page.keyboard.press('Escape'); await pause(800);
     // Les réglages des évaluations sont dans Paramètres (groupe « Évaluations »).
     await aller('Paramètres', 'Paramètres'); await pause(2000); await semantique();
-    for (const [texte, nom] of [['Périodes et sessions', '67-notes-reglages'], ["Types d'évaluation", '67c-notes-types'], ['Calcul et mentions', '67b-notes-regles-mentions'], ['Enseignants par classe', '69-enseignants-par-classe']]) {
+    for (const [texte, nom] of [['Périodes et évaluations', '67-notes-reglages'], ["Types d'évaluation", '67c-notes-types'], ['Calcul et mentions', '67b-notes-regles-mentions'], ['Enseignants par classe', '69-enseignants-par-classe']]) {
       // Les rubriques de Paramètres sont des boutons (titre + résumé) : on les cherche par leur nom.
       let lien = page.getByRole('button', { name: new RegExp(texte.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) });
       if (!(await lien.count())) lien = page.getByText(texte, { exact: false });

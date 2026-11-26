@@ -158,7 +158,8 @@ List<(String, DateTime, DateTime, bool)> _sessionsParDefaut(String periode, Date
   final debutCompo = avecCompo && fin.difference(debut).inDays >= 40 ? jour(fin, -13) : jour(fin, 1);
   var curseur = debut;
   while (curseur.isBefore(debutCompo)) {
-    var finMois = DateTime(curseur.year, curseur.month + 1, 0);
+    // L'évaluation d'un mois peut se passer jusqu'au 7 du mois suivant : le mois est une étiquette.
+    var finMois = DateTime(curseur.year, curseur.month + 1, 7);
     final veille = jour(debutCompo, -1);
     if (finMois.isAfter(veille)) finMois = veille;
     // Un reste de moins d'une semaine rejoint le mois précédent.
@@ -1618,11 +1619,11 @@ class ReglagesEvaluationsScreen extends StatelessWidget {
       );
 }
 
-/// Périodes et sessions, types d'évaluation, règles de calcul et mentions.
+/// Périodes et évaluations, types d'évaluation, règles de calcul et mentions.
 class _ReglagesNotesScreen extends StatelessWidget {
   const _ReglagesNotesScreen({required this.espace, required this.annee, required this.partie, required this.modifiable});
 
-  static const titres = ['Périodes et sessions', "Types d'évaluation", 'Calcul et mentions'];
+  static const titres = ['Périodes et évaluations', "Types d'évaluation", 'Calcul et mentions'];
 
   final Espace espace;
   final Map<String, Object?> annee;
@@ -1642,7 +1643,10 @@ class _ReglagesNotesScreen extends StatelessWidget {
           },
           child: InputDecorator(decoration: _champ(titre), child: Text(_dateLisible(_date(v)))),
         );
-    final ok = await _formulaire(context, 'Période · ${cycles[p['cycle']] ?? p['cycle']}', (maj) => [
+    final messager = ScaffoldMessenger.of(context);
+    final aDebut = DateTime.parse('${annee['debut']}'), aFin = DateTime.parse('${annee['fin']}');
+    while (true) {
+    final ok = await _formulaire(context, '${p['libelle']} · ${cycles[p['cycle']] ?? p['cycle']}', (maj) => [
           TextField(controller: libelle, decoration: _champ('Nom')),
           Row(children: [
             Expanded(child: date('Début', debut, (d) => maj(() => debut = d))),
@@ -1655,15 +1659,19 @@ class _ReglagesNotesScreen extends StatelessWidget {
           const Text('Le barème et la façon d\'évaluer ne changent plus dès qu\'une note est saisie dans la période.',
               style: TextStyle(fontSize: 12)),
         ]);
-    if (!ok || libelle.text.trim().length < 2 || fin.isBefore(debut)) return;
-    // Les périodes couvrent l'année sans trou ni chevauchement (spécification §2.5) :
-    // déplacer une limite décale la période voisine, et leurs sessions suivent.
-    final messager = ScaffoldMessenger.of(context);
-    final aDebut = DateTime.parse('${annee['debut']}'), aFin = DateTime.parse('${annee['fin']}');
-    if (debut.isBefore(aDebut) || fin.isAfter(aFin)) {
-      messager.showSnackBar(SnackBar(content: Text('La période doit rester dans l\'année (${_dateLisible(annee['debut'])} – ${_dateLisible(annee['fin'])}).')));
-      return;
+    if (!ok) return;
+    final erreur = libelle.text.trim().length < 2
+        ? 'Donnez un nom à la période.'
+        : fin.isBefore(debut)
+            ? 'La fin doit venir après le début.'
+            : debut.isBefore(aDebut) || fin.isAfter(aFin)
+                ? 'La période doit rester dans l\'année (${_dateLisible(annee['debut'])} – ${_dateLisible(annee['fin'])}).'
+                : null;
+    if (erreur == null) break;
+    messager.showSnackBar(SnackBar(content: Text(erreur)));
     }
+    // Les périodes couvrent l'année sans trou ni chevauchement (spécification §2.5) :
+    // déplacer une limite décale la période voisine, et leurs évaluations suivent.
     final voisines = await db.getAll('SELECT * FROM periodes_evaluation WHERE annee_id = ? AND cycle = ? AND id <> ? ORDER BY ordre',
         [annee['id'], p['cycle'], p['id']]);
     final avant = voisines.where((x) => (x['ordre'] as int) < (p['ordre'] as int)).lastOrNull;
@@ -1728,44 +1736,47 @@ class _ReglagesNotesScreen extends StatelessWidget {
           },
           child: InputDecorator(decoration: _champ(titre), child: Text(_dateLisible(_date(v)))),
         );
-    final ok = await _formulaire(context, x == null ? 'Nouvelle session · ${p['libelle']}' : 'Session · ${p['libelle']}', (maj) => [
+    while (true) {
+    final ok = await _formulaire(context, x == null ? 'Nouvelle évaluation · ${p['libelle']}' : '${x['libelle']}', (maj) => [
           TextField(controller: libelle, decoration: _champ('Nom', aide: 'Par exemple : Évaluation de novembre, Composition du 1er trimestre')),
           if (epreuves == 0)
-            _liste('Nature', type, {for (final t in actifs) t['id'] as String: '${t['libelle']}'}, (v) => maj(() => type = v))
+            _liste('Type', type, {for (final t in actifs) t['id'] as String: '${t['libelle']}'}, (v) => maj(() => type = v))
           else
-            Text('Nature : ${types.firstWhere((t) => t['id'] == type, orElse: () => const {'libelle': ''})['libelle']} '
+            Text('Type : ${types.firstWhere((t) => t['id'] == type, orElse: () => const {'libelle': ''})['libelle']} '
                 '($epreuves épreuve(s) déjà placée(s))'),
           Row(children: [
-            Expanded(child: date('Début de la fenêtre', debut, (d) => maj(() => debut = d))),
+            Expanded(child: date('Du', debut, (d) => maj(() => debut = d))),
             const SizedBox(width: 12),
-            Expanded(child: date('Fin', fin, (d) => maj(() => fin = d))),
+            Expanded(child: date('Au', fin, (d) => maj(() => fin = d))),
           ]),
           TextField(
               controller: attendues,
               keyboardType: TextInputType.number,
-              decoration: _champ('Épreuves attendues par matière (facultatif)', aide: 'En deçà, une alerte pour la direction, sans blocage')),
+              decoration: _champ('Épreuves par matière (facultatif)', aide: 'En dessous, la direction est prévenue ; rien n\'est bloqué')),
           if (calendrier == 'publie')
-            const Text('Calendrier publié (Évaluations › Calendrier).')
+            const Text('Dates annoncées (Évaluations › Calendrier).')
           else ...[
               InkWell(
                 onTap: () async {
                   final d = await _choisirDate(context, avant, premier: DateTime(avant.year - 1), dernier: pFin);
                   if (d != null) maj(() => avant = d);
                 },
-                child: InputDecorator(decoration: _champ('À programmer avant le'), child: Text(_dateLisible(_date(avant)))),
+                child: InputDecorator(decoration: _champ('Dates à fixer avant le'), child: Text(_dateLisible(_date(avant)))),
               ),
           ],
         ]);
     if (!ok) return;
+    final erreur = libelle.text.trim().length < 2
+        ? 'Donnez un nom à cette évaluation.'
+        : fin.isBefore(debut)
+            ? 'La fin doit venir après le début.'
+            : debut.isBefore(pDebut) || fin.isAfter(pFin)
+                ? 'L\'évaluation doit rester dans « ${p['libelle']} ».'
+                : null;
+    if (erreur == null) break;
+    messager.showSnackBar(SnackBar(content: Text(erreur)));
+    }
     final n = int.tryParse(attendues.text.trim());
-    if (libelle.text.trim().length < 2 || fin.isBefore(debut)) {
-      messager.showSnackBar(const SnackBar(content: Text('Nom ou dates incorrects.')));
-      return;
-    }
-    if (debut.isBefore(pDebut) || fin.isAfter(pFin)) {
-      messager.showSnackBar(const SnackBar(content: Text('La session doit rester dans la période.')));
-      return;
-    }
     final valeurs = {
       'libelle': libelle.text.trim(),
       'type_id': type,
@@ -1794,8 +1805,9 @@ class _ReglagesNotesScreen extends StatelessWidget {
     String nb(Object? v, num defaut) => noteLisible(((v as num?) ?? defaut).toDouble()).replaceAll(',00', '');
     final seuil10 = TextEditingController(text: nb(r?['seuil_passage_10'], 5));
     final seuil20 = TextEditingController(text: nb(r?['seuil_passage_20'], 10));
-    final ok = await _formulaire(context, 'Règles de calcul', (maj) => [
-          const Text('Absences', style: TextStyle(fontWeight: FontWeight.w600)),
+    while (true) {
+    final ok = await _formulaire(context, 'Calcul des moyennes', (maj) => [
+          const Text('Élève absent', style: TextStyle(fontWeight: FontWeight.w600)),
           for (final e in traitementsAbsence.entries)
             ListTile(
               dense: true,
@@ -1807,15 +1819,15 @@ class _ReglagesNotesScreen extends StatelessWidget {
           TextField(
               controller: delai,
               keyboardType: TextInputType.number,
-              decoration: _champ('Délai de remise des notes (jours après l\'épreuve)', aide: 'Au-delà : alerte pour la direction, sans blocage')),
-          _liste('Moyenne annuelle', annuelle, const {'simple': 'Simple (moyenne des périodes)', 'ponderee': 'Pondérée : la dernière période pèse plus'},
+              decoration: _champ('Notes à rendre sous (jours après l\'épreuve)', aide: 'Au-delà, la direction est prévenue ; rien n\'est bloqué')),
+          _liste('Moyenne annuelle', annuelle, const {'simple': 'Les périodes comptent pareil', 'ponderee': 'La dernière période compte plus'},
               (v) => maj(() => annuelle = v)),
           if (annuelle == 'ponderee')
             TextField(controller: poids, keyboardType: TextInputType.number, decoration: _champ('Poids de la dernière période', aide: '2 : elle compte double')),
           Row(children: [
-            Expanded(child: TextField(controller: seuil10, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _champ('Passage (sur 10)'))),
+            Expanded(child: TextField(controller: seuil10, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _champ('Pour passer (sur 10)'))),
             const SizedBox(width: 12),
-            Expanded(child: TextField(controller: seuil20, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _champ('Passage (sur 20)'))),
+            Expanded(child: TextField(controller: seuil20, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: _champ('Pour passer (sur 20)'))),
           ]),
           const Text('Le calcul propose « Admis » ou « Redouble » ; le conseil décide.', style: TextStyle(fontSize: 12)),
         ]);
@@ -1824,10 +1836,15 @@ class _ReglagesNotesScreen extends StatelessWidget {
     final w = int.tryParse(poids.text.trim());
     final s10 = double.tryParse(seuil10.text.trim().replaceAll(',', '.'));
     final s20 = double.tryParse(seuil20.text.trim().replaceAll(',', '.'));
-    if (d == null || d < 1 || d > 90 || w == null || w < 1 || w > 5 || s10 == null || s10 < 0 || s10 > 10 || s20 == null || s20 < 0 || s20 > 20) {
-      messager.showSnackBar(const SnackBar(content: Text('Délai entre 1 et 90 jours, poids entre 1 et 5, seuils dans leur barème.')));
-      return;
+    if (d != null && d >= 1 && d <= 90 && w != null && w >= 1 && w <= 5 && s10 != null && s10 >= 0 && s10 <= 10 && s20 != null && s20 >= 0 && s20 <= 20) {
+      break;
     }
+    messager.showSnackBar(const SnackBar(content: Text('Délai entre 1 et 90 jours, poids entre 1 et 5, seuils dans leur barème.')));
+    }
+    final d = int.parse(delai.text.trim());
+    final w = int.parse(poids.text.trim());
+    final s10 = double.parse(seuil10.text.trim().replaceAll(',', '.'));
+    final s20 = double.parse(seuil20.text.trim().replaceAll(',', '.'));
     final valeurs = {
       'absences': absences,
       'delai_remise_jours': d,
@@ -1930,6 +1947,8 @@ class _ReglagesNotesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _Page(
         titre: titres[partie.index],
+        ajouter: partie == PartieReglagesNotes.types && modifiable ? () => _type(context, null) : null,
+        libelleAjouter: 'Type',
         corps: Requete(
           'SELECT * FROM periodes_evaluation WHERE annee_id = ? ORDER BY cycle, ordre',
           parametres: [annee['id']],
@@ -1937,204 +1956,366 @@ class _ReglagesNotesScreen extends StatelessWidget {
             'SELECT * FROM types_evaluation WHERE organisation_id = ? ORDER BY ordre, libelle',
             parametres: [espace.orgId],
             builder: (context, types) => Requete(
-              '''SELECT s.*, t.libelle AS type, (SELECT count(*) FROM evaluations e WHERE e.session_id = s.id) AS epreuves
+              '''SELECT s.*, t.libelle AS type, t.poids, t.compte,
+                   (SELECT count(*) FROM evaluations e WHERE e.session_id = s.id) AS epreuves
                  FROM sessions_evaluation s JOIN types_evaluation t ON t.id = s.type_id
                  JOIN periodes_evaluation p ON p.id = s.periode_id WHERE p.annee_id = ? ORDER BY s.debut, s.ordre''',
               parametres: [annee['id']],
               builder: (context, sessions) => Requete(
-                '''SELECT 'regle' AS sorte, id, absences AS libelle, NULL AS cycle, NULL AS minimum FROM regles_notes WHERE organisation_id = ?
-                   UNION ALL
-                   SELECT 'mention', id, libelle, cycle, minimum FROM mentions_notes WHERE organisation_id = ?''',
-                parametres: [espace.orgId, espace.orgId],
-                builder: (context, reglages) {
-              final gris = Theme.of(context).colorScheme.onSurfaceVariant;
-              final parCycle = <String, List<Map<String, Object?>>>{};
-              for (final p in periodes) {
-                parCycle.putIfAbsent('${p['cycle']}', () => []).add(p);
-              }
-              final m = modifiable;
-              return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
-                if (!m)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text('Lecture seule : le droit « Planifier les évaluations » permet de modifier.',
-                        style: TextStyle(fontSize: 12, color: gris)),
-                  ),
-                if (partie == PartieReglagesNotes.periodes) ...[
-                Text('PÉRIODES · ${annee['libelle']}', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris)),
-                const SizedBox(height: 6),
-                if (periodes.isEmpty && !m)
-                  Text('Aucune période pour cette année.', style: TextStyle(color: gris)),
-                if (periodes.isEmpty && m)
-                  FilledButton.icon(
-                    onPressed: () => _preparerNotes(espace.orgId, annee),
-                    icon: const Icon(Icons.auto_fix_high, size: 16),
-                    label: const Text('Créer les périodes et types par défaut'),
-                  ),
-                for (final e in parCycle.entries) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8, bottom: 4),
-                    child: Text(cycles[e.key] ?? e.key, style: const TextStyle(fontWeight: FontWeight.w600)),
-                  ),
-                  for (final p in e.value) ...[
-                    Card(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      child: ListTile(
-                        dense: true,
-                        title: Text('${p['libelle']}'),
-                        subtitle: Text('du ${_dateLisible(p['debut'])} au ${_dateLisible(p['fin'])} · '
-                            '${p['nature'] == 'appreciations' ? 'acquis (sans moyenne)' : 'notes sur ${p['bareme']}'}'),
-                        trailing: p['statut'] == 'cloturee' ? const Etat('Clôturée', icone: Icons.lock_outline) : const Icon(Icons.edit_outlined, size: 18),
-                        onTap: p['statut'] == 'cloturee' || !m ? null : () => _periode(context, p),
-                      ),
-                    ),
-                    // Ses sessions : les fenêtres où les matières placent leurs épreuves.
-                    Padding(
-                      padding: const EdgeInsets.only(left: 16, bottom: 10),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        for (final x in sessions.where((x) => x['periode_id'] == p['id']))
-                          InkWell(
-                            onTap: p['statut'] == 'cloturee' || !m ? null : () => _session(context, p, x, types),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Row(children: [
-                                Icon(x['statut'] == 'cloturee' ? Icons.lock_outline : Icons.subdirectory_arrow_right, size: 16, color: gris),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text.rich(TextSpan(children: [
-                                    TextSpan(text: '${x['libelle']}', style: const TextStyle(fontSize: 13)),
-                                    TextSpan(
-                                        text: '  ${x['type']} · du ${_dateLisible(x['debut'])} au ${_dateLisible(x['fin'])}'
-                                            ' · ${x['epreuves']} épreuve(s)'
-                                            '${switch (x['calendrier']) {
-                                              'preparation' => ' · calendrier à programmer avant le ${_dateLisible(x['programmation_avant'])}',
-                                              'publie' => ' · calendrier publié',
-                                              _ => ''
-                                            }}'
-                                            '${x['epreuves_attendues'] != null ? ' · ${x['epreuves_attendues']} attendue(s) par matière' : ''}',
-                                        style: TextStyle(fontSize: 12, color: gris)),
-                                  ])),
-                                ),
-                                if (m && p['statut'] != 'cloturee' && x['epreuves'] == 0)
-                                  IconButton(
-                                    tooltip: 'Supprimer cette session',
-                                    visualDensity: VisualDensity.compact,
-                                    icon: Icon(Icons.delete_outline, size: 18, color: gris),
-                                    onPressed: () async {
-                                      if (await _confirmer(context, 'Supprimer « ${x['libelle']} » ?')) {
-                                        await _supprimer('sessions_evaluation', x['id'] as String);
-                                      }
-                                    },
-                                  ),
-                              ]),
-                            ),
-                          ),
-                        if (m && p['statut'] != 'cloturee')
-                          Wrap(spacing: 8, children: [
-                            TextButton.icon(
-                              onPressed: () => _session(context, p, null, types),
-                              icon: const Icon(Icons.add, size: 16),
-                              label: const Text('Ajouter une session'),
-                            ),
-                            if (!sessions.any((x) => x['periode_id'] == p['id']))
-                              TextButton.icon(
-                                onPressed: () => db.writeTransaction((tx) => _preparerSessions(tx, espace.orgId, [p])),
-                                icon: const Icon(Icons.auto_fix_high, size: 16),
-                                label: const Text('Sessions par défaut (mensuelles + composition)'),
-                              ),
-                          ]),
-                      ]),
-                    ),
-                  ],
-                ],
-                Text('Une session est une fenêtre de la période (« Évaluation d\'octobre », « Composition ») : '
-                    'chaque matière y place ses épreuves ; ses notes donnent un bulletin de suivi.',
-                    style: TextStyle(fontSize: 12, color: gris)),
-                ],
-                if (partie == PartieReglagesNotes.types) ...[
-                Row(children: [
-                  Expanded(child: Text("TYPES D'ÉVALUATION", style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris))),
-                  if (m) TextButton.icon(onPressed: () => _type(context, null), icon: const Icon(Icons.add, size: 16), label: const Text('Ajouter')),
-                ]),
-                for (final t in types)
-                  Card(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    child: ListTile(
-                      dense: true,
-                      title: Text('${t['libelle']}${t['actif'] == 1 ? '' : ' (retiré)'}'),
-                      subtitle: Text([
-                        'poids ${noteLisible((t['poids'] as num).toDouble()).replaceAll(',00', '')}',
-                        if (t['compte'] != 1) 'hors moyenne',
-                        if (t['unique_par_periode'] == 1) 'une par période',
-                      ].join(' · ')),
-                      trailing: m ? const Icon(Icons.edit_outlined, size: 18) : null,
-                      onTap: m ? () => _type(context, t) : null,
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                Text('Le poids joue entre les notes d\'une même matière ; le coefficient (Paramètres › Matières) entre les matières. '
-                    'La session dit quand (une fenêtre), le type dit la nature et le poids.',
-                    style: TextStyle(fontSize: 12, color: gris)),
-                ],
-                if (partie == PartieReglagesNotes.calcul) ...[
-                Text('RÈGLES DE CALCUL', style: TextStyle(fontSize: 12, letterSpacing: .6, color: gris)),
-                const SizedBox(height: 6),
-                Requete(
-                  'SELECT * FROM regles_notes WHERE organisation_id = ?',
-                  parametres: [espace.orgId],
-                  builder: (context, l) {
-                    final r = l.isEmpty ? null : Map<String, Object?>.from(l.first);
-                    final absences = '${r?['absences'] ?? 'justifie_exclu'}';
-                    String nb(Object? v, num defaut) => noteLisible(((v as num?) ?? defaut).toDouble()).replaceAll(',00', '');
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      child: ListTile(
-                        dense: true,
-                        title: const Text('Absences, remise des notes, fin d\'année'),
-                        subtitle: Text([
-                          traitementsAbsence[absences] ?? absences,
-                          'remise sous ${r?['delai_remise_jours'] ?? 15} jours',
-                          r?['moyenne_annuelle'] == 'ponderee'
-                              ? 'moyenne annuelle pondérée (dernière ×${r?['poids_derniere'] ?? 2})'
-                              : 'moyenne annuelle simple',
-                          'passage ${nb(r?['seuil_passage_10'], 5)}/10 et ${nb(r?['seuil_passage_20'], 10)}/20',
-                        ].join(' · ')),
-                        trailing: m ? const Icon(Icons.edit_outlined, size: 18) : null,
-                        onTap: m ? () => _regles(context, r) : null,
-                      ),
-                    );
-                  },
-                ),
-                // Les mentions de chaque cycle noté (la maternelle n'a pas de mention).
-                for (final e in parCycle.entries)
-                  if (e.value.any((p) => p['nature'] != 'appreciations'))
-                    Builder(builder: (context) {
-                      final bareme = e.value.firstWhere((p) => p['nature'] != 'appreciations')['bareme'] as int? ?? 20;
-                      final siennes = [for (final r in reglages) if (r['sorte'] == 'mention' && r['cycle'] == e.key) r];
-                      final seuils = siennes.isEmpty
-                          ? mentionsParDefaut(bareme)
-                          : ([for (final r in siennes) (minimum: (r['minimum'] as num).toDouble(), libelle: '${r['libelle']}')]
-                            ..sort((a, b) => b.minimum.compareTo(a.minimum)));
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 6),
-                        child: ListTile(
-                          dense: true,
-                          title: Text('Mentions · ${cycles[e.key] ?? e.key} (sur $bareme)${siennes.isEmpty ? ' · par défaut' : ''}'),
-                          subtitle: Text(seuils.map((x) => '${x.libelle} ≥ ${noteLisible(x.minimum).replaceAll(',00', '')}').join(' · ')),
-                          trailing: m ? const Icon(Icons.edit_outlined, size: 18) : null,
-                          onTap: m ? () => _mentions(context, e.key, bareme, siennes) : null,
-                        ),
-                      );
-                    }),
-                if (periodes.isEmpty)
-                  Text('Les mentions apparaissent une fois les périodes créées (Périodes et sessions).',
-                      style: TextStyle(fontSize: 12, color: gris)),
-                ],
-              ]);
+                'SELECT * FROM mentions_notes WHERE organisation_id = ? ORDER BY cycle, minimum DESC',
+                parametres: [espace.orgId],
+                builder: (context, mentions) {
+                  final parCycle = <String, List<Map<String, Object?>>>{};
+                  for (final p in periodes) {
+                    parCycle.putIfAbsent('${p['cycle']}', () => []).add(p);
+                  }
+                  final enTete = <Widget>[
+                    if (!modifiable)
+                      _noteGrise(context, 'Vous pouvez consulter ces réglages ; la direction des études les modifie.'),
+                  ];
+                  return switch (partie) {
+                    PartieReglagesNotes.periodes => _corpsPeriodes(context, enTete, parCycle, sessions, types),
+                    PartieReglagesNotes.types => _corpsTypes(context, enTete, types),
+                    PartieReglagesNotes.calcul => _corpsCalcul(context, enTete, parCycle, mentions),
+                  };
                 },
               ),
             ),
           ),
         ),
       );
+
+  static Widget _noteGrise(BuildContext context, String texte) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(texte, style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      );
+
+  /// « ×2 », « ×1 » ou « hors moyenne » : ce que pèse un type d'évaluation.
+  static Widget _poids(Object? poids, Object? compte) {
+    if (compte != 1) return const Etat('Hors moyenne');
+    final p = noteLisible(((poids as num?) ?? 1).toDouble()).replaceAll(',00', '');
+    return Etat('×$p', ton: p == '1' ? Ton.neutre : Ton.info);
+  }
+
+  /// L'état d'une évaluation (session) : clôturée, en cours, à clôturer, à venir.
+  static Widget _etatSession(Map<String, Object?> x) {
+    final aujourdhui = _date(DateTime.now());
+    if (x['statut'] == 'cloturee') return const Etat('Clôturée', icone: Icons.lock_outline);
+    if ('${x['debut']}'.compareTo(aujourdhui) > 0) return const Etat('À venir');
+    if ('${x['fin']}'.compareTo(aujourdhui) < 0) return const Etat('À clôturer', ton: Ton.attente);
+    return const Etat('En cours', ton: Ton.info);
+  }
+
+  // --- Périodes et évaluations -------------------------------------------------
+
+  Widget _corpsPeriodes(BuildContext context, List<Widget> enTete, Map<String, List<Map<String, Object?>>> parCycle, Lignes sessions, Lignes types) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    if (parCycle.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ...enTete,
+            const Text('Aucune période pour cette année.', textAlign: TextAlign.center),
+            const SizedBox(height: 6),
+            Text('Trimestres au primaire, semestres au collège et au lycée, avec leurs évaluations du mois et leur composition.',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: gris)),
+            const SizedBox(height: 16),
+            if (modifiable)
+              FilledButton.icon(
+                onPressed: () => _preparerNotes(espace.orgId, annee),
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Utiliser le modèle guinéen'),
+              ),
+          ]),
+        ),
+      );
+    }
+    final ordre = [for (final c in cycles.keys) if (parCycle.containsKey(c)) c, for (final c in parCycle.keys) if (!cycles.containsKey(c)) c];
+    return StatefulBuilder(builder: (context, maj) {
+      final cycle = ordre.contains(_cycleReglagesNotes) ? _cycleReglagesNotes! : ordre.firstWhere((c) => c != 'maternelle', orElse: () => ordre.first);
+      final siennes = parCycle[cycle]!;
+      final large = MediaQuery.sizeOf(context).width > 760;
+      String resume(String c) {
+        final ps = parCycle[c]!;
+        final nom = ps.length == 1 ? "l'année" : '${ps.length} ${ps.first['libelle'].toString().contains('semestre') ? 'semestres' : 'trimestres'}';
+        return ps.first['nature'] == 'appreciations' ? '$nom, acquis' : '$nom, notes sur ${ps.first['bareme']}';
+      }
+
+      return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
+        ...enTete,
+        Text('${annee['libelle']} · ${[for (final c in ordre) '${cycles[c] ?? c} : ${resume(c)}'].join(' · ')}',
+            style: TextStyle(fontSize: 13, color: gris)),
+        const SizedBox(height: 12),
+        if (ordre.length > 1)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _Pilules(
+              choix: {for (final c in ordre) c: cycles[c] ?? c},
+              valeur: cycle,
+              onChanged: (c) => maj(() => _cycleReglagesNotes = c),
+            ),
+          ),
+        for (final p in siennes) ...[
+          const SizedBox(height: 18),
+          _entetePeriode(context, p),
+          const SizedBox(height: 8),
+          Builder(builder: (context) {
+            final ses = [for (final x in sessions) if (x['periode_id'] == p['id']) x];
+            final ouverte = p['statut'] != 'cloturee';
+            if (ses.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(8)),
+                child: Row(children: [
+                  Expanded(child: Text('Aucune évaluation dans cette période.', style: TextStyle(color: gris))),
+                  if (modifiable && ouverte)
+                    OutlinedButton.icon(
+                      onPressed: () => db.writeTransaction((tx) => _preparerSessions(tx, espace.orgId, [p])),
+                      icon: const Icon(Icons.auto_awesome, size: 16),
+                      label: const Text('Évaluations du mois et composition'),
+                    ),
+                ]),
+              );
+            }
+            return Tableau(
+              colonnes: [
+                const ColonneTableau('Évaluation', flex: 3),
+                if (large) const ColonneTableau('Du', largeur: 104),
+                if (large) const ColonneTableau('Au', largeur: 104),
+                const ColonneTableau('Compte', largeur: 112),
+                if (large) const ColonneTableau('Épreuves', largeur: 84, droite: true),
+                ColonneTableau('État', largeur: large ? 120 : 104),
+                if (modifiable && ouverte) const ColonneTableau('', largeur: 48),
+              ],
+              lignes: [
+                for (final x in ses)
+                  [
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text('${x['libelle']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                      if (!large)
+                        Text('${_dateCourte(x['debut'])} → ${_dateCourte(x['fin'])}', style: styleMono.copyWith(fontSize: 12, color: gris)),
+                    ]),
+                    if (large) Text(_dateLisible(x['debut']), style: styleMono.copyWith(fontSize: 13)),
+                    if (large) Text(_dateLisible(x['fin']), style: styleMono.copyWith(fontSize: 13)),
+                    Align(alignment: Alignment.centerLeft, child: _poids(x['poids'], x['compte'])),
+                    if (large) Text('${x['epreuves']}', style: styleMono.copyWith(fontSize: 13)),
+                    Align(alignment: Alignment.centerLeft, child: _etatSession(x)),
+                    if (modifiable && ouverte)
+                      PopupMenuButton<String>(
+                        tooltip: 'Actions',
+                        icon: const Icon(Icons.more_horiz, size: 18),
+                        onSelected: (v) async {
+                          if (v == 'modifier') await _session(context, p, x, types);
+                          if (v == 'supprimer' && context.mounted && await _confirmer(context, 'Supprimer « ${x['libelle']} » ?')) {
+                            await _supprimer('sessions_evaluation', x['id'] as String);
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(value: 'modifier', child: Text('Modifier')),
+                          if (x['epreuves'] == 0) const PopupMenuItem(value: 'supprimer', child: Text('Supprimer')),
+                        ],
+                      ),
+                  ],
+              ],
+              onTap: modifiable && ouverte ? (i) => _session(context, p, ses[i], types) : null,
+            );
+          }),
+          if (modifiable && p['statut'] != 'cloturee')
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _session(context, p, null, types),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Ajouter une évaluation'),
+              ),
+            ),
+        ],
+        const SizedBox(height: 10),
+        Text("Le nom d'une évaluation est une étiquette : l'évaluation d'octobre peut se passer début novembre. "
+            'Le barème ne change plus dès qu\'une note est saisie.', style: TextStyle(fontSize: 12, color: gris)),
+      ]);
+    });
+  }
+
+  Widget _entetePeriode(BuildContext context, Map<String, Object?> p) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final cloturee = p['statut'] == 'cloturee';
+    return Row(children: [
+      Expanded(
+        child: Wrap(spacing: 10, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          Text('${p['libelle']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          Text('${_dateLisible(p['debut'])} → ${_dateLisible(p['fin'])}', style: styleMono.copyWith(fontSize: 13, color: gris)),
+          Etat(p['nature'] == 'appreciations' ? 'Acquis' : 'Sur ${p['bareme']}'),
+          if (cloturee) const Etat('Clôturée', icone: Icons.lock_outline),
+        ]),
+      ),
+      if (modifiable && !cloturee)
+        TextButton(onPressed: () => _periode(context, p), child: const Text('Modifier')),
+    ]);
+  }
+
+  // --- Types d'évaluation --------------------------------------------------------
+
+  Widget _corpsTypes(BuildContext context, List<Widget> enTete, Lignes types) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    final large = MediaQuery.sizeOf(context).width > 760;
+    return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
+      ...enTete,
+      Text('Ce que pèse chaque note dans la moyenne de sa matière.', style: TextStyle(fontSize: 13, color: gris)),
+      const SizedBox(height: 10),
+      Tableau(
+        vide: "Aucun type : ils se créent avec les périodes (modèle guinéen).",
+        colonnes: [
+          const ColonneTableau('Type', flex: 3),
+          const ColonneTableau('Compte', largeur: 120),
+          if (large) const ColonneTableau('Combien', flex: 2),
+          const ColonneTableau('Utilisé', largeur: 90),
+          if (modifiable) const ColonneTableau('', largeur: 48),
+        ],
+        lignes: [
+          for (final t in types)
+            [
+              Text('${t['libelle']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              Align(alignment: Alignment.centerLeft, child: _poids(t['poids'], t['compte'])),
+              if (large) Text(t['unique_par_periode'] == 1 ? 'Une par période et par matière' : 'Autant que nécessaire', style: const TextStyle(fontSize: 13)),
+              Align(alignment: Alignment.centerLeft, child: t['actif'] == 1 ? const Etat('Oui', ton: Ton.regle) : const Etat('Retiré')),
+              if (modifiable) Icon(Icons.chevron_right, size: 16, color: gris),
+            ],
+        ],
+        onTap: modifiable ? (i) => _type(context, types[i]) : null,
+      ),
+      const SizedBox(height: 10),
+      Text('Le poids joue entre les notes d\'une même matière (la composition compte double). '
+          'Le coefficient, réglé dans Matières, joue entre les matières.', style: TextStyle(fontSize: 12, color: gris)),
+    ]);
+  }
+
+  // --- Calcul et mentions ----------------------------------------------------------
+
+  Widget _corpsCalcul(BuildContext context, List<Widget> enTete, Map<String, List<Map<String, Object?>>> parCycle, Lignes mentions) {
+    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Requete(
+      'SELECT * FROM regles_notes WHERE organisation_id = ?',
+      parametres: [espace.orgId],
+      builder: (context, l) {
+        final r = l.isEmpty ? null : Map<String, Object?>.from(l.first);
+        String nb(Object? v, num defaut) => noteLisible(((v as num?) ?? defaut).toDouble()).replaceAll(',00', '');
+        final absences = '${r?['absences'] ?? 'justifie_exclu'}';
+        final reglages = <(String, String)>[
+          ('Élève absent', traitementsAbsence[absences] ?? absences),
+          ('Notes à rendre', 'Sous ${r?['delai_remise_jours'] ?? 15} jours après l\'épreuve'),
+          ('Moyenne de l\'année', r?['moyenne_annuelle'] == 'ponderee' ? 'La dernière période compte ×${r?['poids_derniere'] ?? 2}' : 'Les périodes comptent pareil'),
+          ('Pour passer', '${nb(r?['seuil_passage_20'], 10)} / 20 · ${nb(r?['seuil_passage_10'], 5)} / 10'),
+        ];
+        final notes = [for (final e in parCycle.entries) if (e.value.any((p) => p['nature'] != 'appreciations')) e];
+        return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 40), children: [
+          ...enTete,
+          Tableau(
+            colonnes: [
+              const ColonneTableau('Réglage', flex: 2),
+              const ColonneTableau('Choix', flex: 3),
+              if (modifiable) const ColonneTableau('', largeur: 40),
+            ],
+            lignes: [
+              for (final (titre, valeur) in reglages)
+                [
+                  Text(titre, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                  Text(valeur, style: const TextStyle(fontSize: 14)),
+                  if (modifiable) Icon(Icons.chevron_right, size: 16, color: gris),
+                ],
+            ],
+            onTap: modifiable ? (_) => _regles(context, r) : null,
+          ),
+          for (final e in notes) ...[
+            const SizedBox(height: 24),
+            Builder(builder: (context) {
+              final bareme = e.value.firstWhere((p) => p['nature'] != 'appreciations')['bareme'] as int? ?? 20;
+              final siennes = [for (final m in mentions) if (m['cycle'] == e.key) m];
+              final seuils = siennes.isEmpty
+                  ? mentionsParDefaut(bareme)
+                  : ([for (final m in siennes) (minimum: (m['minimum'] as num).toDouble(), libelle: '${m['libelle']}')]
+                    ..sort((a, b) => b.minimum.compareTo(a.minimum)));
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(children: [
+                  Expanded(
+                    child: Wrap(spacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                      Text('Mentions · ${cycles[e.key] ?? e.key}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      Etat('Sur $bareme'),
+                      if (siennes.isEmpty) Text('par défaut', style: TextStyle(fontSize: 12, color: gris)),
+                    ]),
+                  ),
+                  if (modifiable) TextButton(onPressed: () => _mentions(context, e.key, bareme, siennes), child: const Text('Modifier')),
+                ]),
+                const SizedBox(height: 8),
+                Tableau(
+                  colonnes: const [ColonneTableau('Mention', flex: 3), ColonneTableau('À partir de', largeur: 120, droite: true)],
+                  lignes: [
+                    for (final s in seuils)
+                      [
+                        Text(s.libelle, style: const TextStyle(fontSize: 14)),
+                        Text(s.minimum == 0 ? '—' : noteLisible(s.minimum).replaceAll(',00', ''), style: styleMono.copyWith(fontSize: 13)),
+                      ],
+                  ],
+                ),
+              ]);
+            }),
+          ],
+          if (notes.isEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Les mentions apparaissent une fois les périodes créées (Périodes et évaluations).', style: TextStyle(fontSize: 12, color: gris)),
+          ],
+        ]);
+      },
+    );
+  }
+}
+
+/// Le cycle choisi dans Périodes et évaluations : on le retrouve en revenant.
+String? _cycleReglagesNotes;
+
+String _dateCourte(Object? iso) {
+  final d = DateTime.tryParse('$iso');
+  return d == null ? '' : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+}
+
+/// Un choix en « pilules », comme les onglets de la fiche élève.
+class _Pilules extends StatelessWidget {
+  const _Pilules({required this.choix, required this.valeur, required this.onChanged});
+
+  final Map<String, String> choix;
+  final String valeur;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final schema = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: Couleurs.doux(context), borderRadius: BorderRadius.circular(8)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          for (final e in choix.entries)
+            Material(
+              color: e.key == valeur ? schema.surface : Colors.transparent,
+              borderRadius: BorderRadius.circular(6),
+              elevation: e.key == valeur ? .5 : 0,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => onChanged(e.key),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Text(e.value,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: e.key == valeur ? FontWeight.w500 : FontWeight.w400,
+                          color: e.key == valeur ? schema.onSurface : schema.onSurfaceVariant)),
+                ),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
 }

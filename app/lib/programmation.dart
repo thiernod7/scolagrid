@@ -221,7 +221,7 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
           Text('${s['libelle']}${cycles.length > 1 ? ' (${nomsCycles[s['cycle']] ?? s['cycle']})' : ''} · '
               '${_jourCourt(s['debut'])} → ${_jourCourt(s['fin'])}', style: TextStyle(fontSize: 12, color: gris)),
         ]),
-      if (visibles.isEmpty) Text('Aucune session sur cette période.', style: TextStyle(fontSize: 12, color: gris)),
+      if (visibles.isEmpty) Text('Aucune évaluation sur cette période.', style: TextStyle(fontSize: 12, color: gris)),
     ]);
 
     final Widget corps = switch (vue) {
@@ -855,7 +855,7 @@ Future<void> ajouterEvaluation(BuildContext context, Espace espace, _DonneesCale
           borderRadius: BorderRadius.circular(10),
         ),
         child: s == null
-            ? const Text('Aucune session ne couvre cette date pour ce niveau : créez-la dans Paramètres › Périodes et sessions.',
+            ? const Text('Aucune évaluation ne couvre cette date pour ce niveau : ajoutez-la dans Paramètres › Périodes et évaluations.',
                 style: TextStyle(color: Couleurs.retard))
             : Text(
                 '${s['libelle']} (du ${_dateLisible(s['debut']).substring(0, 5)} au ${_dateLisible(s['fin']).substring(0, 5)}) · '
@@ -888,7 +888,7 @@ Future<void> ajouterEvaluation(BuildContext context, Espace espace, _DonneesCale
   }
   final s = session();
   if (s == null || s['statut'] != 'ouverte') {
-    messager.showSnackBar(const SnackBar(content: Text('Aucune session ouverte ne couvre cette date pour ce niveau.')));
+    messager.showSnackBar(const SnackBar(content: Text('Aucune évaluation ouverte ne couvre cette date pour ce niveau.')));
     return;
   }
   final m0 = _maintenant();

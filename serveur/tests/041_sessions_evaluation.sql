@@ -32,7 +32,8 @@ do $$ declare n integer; l text; begin
   assert n = 3, format('Octobre, novembre, composition : %s sessions', n);
   select string_agg(libelle || ' ' || debut || '→' || fin, ' | ' order by ordre) into l
     from public.sessions_evaluation where periode_id = (select id from public.periodes_evaluation where cycle = 'test-041');
-  assert l = 'Évaluation d''octobre 2026-10-01→2026-10-31 | Évaluation de novembre 2026-11-01→2026-12-05 | Composition du 1er trimestre 2026-12-06→2026-12-19',
+  -- Les fenêtres débordent jusqu'au 7 du mois suivant (migration 047).
+  assert l = 'Évaluation d''octobre 2026-10-01→2026-11-07 | Évaluation de novembre 2026-11-08→2026-12-05 | Composition du 1er trimestre 2026-12-06→2026-12-19',
     l;
 end $$;
 select id as s_oct from public.sessions_evaluation where periode_id = :'periode' and ordre = 1 \gset
@@ -40,13 +41,13 @@ select id as s_compo from public.sessions_evaluation where periode_id = :'period
 select set_config('test.org', :'org', false), set_config('test.periode', :'periode', false), set_config('test.classe', :'classe', false),
        set_config('test.matiere', :'matiere', false), set_config('test.s_oct', :'s_oct', false), set_config('test.t_compo', :'t_compo', false);
 
--- L'enseignant place son épreuve d'octobre le 5 novembre : hors fenêtre, refusée.
+-- L'enseignant place son épreuve d'octobre le 12 novembre : hors fenêtre, refusée.
 select pg_temp.connecte(:'g');
 set local role authenticated;
 do $$ begin
   insert into public.evaluations (organisation_id, periode_id, session_id, classe_id, matiere_id, type_id, date_evaluation)
     values (current_setting('test.org')::uuid, current_setting('test.periode')::uuid, current_setting('test.s_oct')::uuid,
-            current_setting('test.classe')::uuid, current_setting('test.matiere')::uuid, current_setting('test.t_compo')::uuid, '2026-11-05');
+            current_setting('test.classe')::uuid, current_setting('test.matiere')::uuid, current_setting('test.t_compo')::uuid, '2026-11-12');
   assert false, 'Épreuve hors fenêtre acceptée';
 exception when check_violation then null;
 end $$;

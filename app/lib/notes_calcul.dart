@@ -22,9 +22,9 @@ class NoteCalcul {
 /// Traitement de l'absence, au choix de l'école (spécification §5.7) :
 /// justifié exclu / non justifié 0 (défaut), toujours 0, toujours exclu.
 const traitementsAbsence = {
-  'justifie_exclu': 'Absent justifié exclu, non justifié compté 0',
-  'toujours_zero': 'Toute absence comptée 0',
-  'toujours_exclu': 'Toute absence exclue de la moyenne',
+  'justifie_exclu': 'Justifié : pas compté · sans justificatif : 0',
+  'toujours_zero': 'Toujours 0',
+  'toujours_exclu': 'Jamais compté',
 };
 
 /// Ce que vaut une note dans la moyenne : null si elle en est exclue.
