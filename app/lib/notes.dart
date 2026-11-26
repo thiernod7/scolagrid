@@ -149,14 +149,16 @@ class _SelonSynchro extends StatelessWidget {
 
 const _moisNoms = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
-/// Les sessions proposées pour une période : une « Évaluation de (mois) » par mois,
-/// puis la composition sur les deux dernières semaines. Même découpage que le
-/// serveur (scolagrid.sessions_par_defaut, migration 041).
-List<(String, DateTime, DateTime, bool)> _sessionsParDefaut(String periode, DateTime debut, DateTime fin, {required bool avecCompo}) {
+/// Les sessions proposées pour une période : une « Évaluation de (mois) » par mois
+/// (jusqu'au 7 du mois suivant ; aucune au primaire), puis la composition sur les deux
+/// dernières semaines. Même découpage que le serveur (scolagrid.sessions_par_defaut, migration 048).
+List<(String, DateTime, DateTime, bool)> _sessionsParDefaut(String periode, DateTime debut, DateTime fin,
+    {required bool avecCompo, bool mensuelles = true}) {
   final r = <(String, DateTime, DateTime, bool)>[];
   DateTime jour(DateTime d, int plus) => DateTime(d.year, d.month, d.day + plus);
   final debutCompo = avecCompo && fin.difference(debut).inDays >= 40 ? jour(fin, -13) : jour(fin, 1);
-  var curseur = debut;
+  // Au primaire, pas d'évaluation du mois par défaut : seulement la composition.
+  var curseur = mensuelles ? debut : debutCompo;
   while (curseur.isBefore(debutCompo)) {
     // L'évaluation d'un mois peut se passer jusqu'au 7 du mois suivant : le mois est une étiquette.
     var finMois = DateTime(curseur.year, curseur.month + 1, 7);
@@ -185,7 +187,8 @@ Future<void> _preparerSessions(dynamic tx, String orgId, Iterable<Map<String, Ob
   for (final p in periodes) {
     if (p['statut'] != 'ouverte') continue;
     if (await tx.getOptional('SELECT 1 FROM sessions_evaluation WHERE periode_id = ?', [p['id']]) != null) continue;
-    final sessions = _sessionsParDefaut('${p['libelle']}', DateTime.parse('${p['debut']}'), DateTime.parse('${p['fin']}'), avecCompo: compo != null);
+    final sessions = _sessionsParDefaut('${p['libelle']}', DateTime.parse('${p['debut']}'), DateTime.parse('${p['fin']}'),
+        avecCompo: compo != null, mensuelles: p['cycle'] != 'primaire');
     for (var i = 0; i < sessions.length; i++) {
       final (libelle, d, f, estCompo) = sessions[i];
       // Toutes les évaluations passent par le calendrier : à programmer 5 jours avant.
@@ -2073,7 +2076,7 @@ class _ReglagesNotesScreen extends StatelessWidget {
                     OutlinedButton.icon(
                       onPressed: () => db.writeTransaction((tx) => _preparerSessions(tx, espace.orgId, [p])),
                       icon: const Icon(Icons.auto_awesome, size: 16),
-                      label: const Text('Évaluations du mois et composition'),
+                      label: Text(p['cycle'] == 'primaire' ? 'Ajouter la composition' : 'Évaluations du mois et composition'),
                     ),
                 ]),
               );
