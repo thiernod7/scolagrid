@@ -240,14 +240,11 @@ Les réglages restent dans **Paramètres › Évaluations**
 
 ---
 
-## 10. À décider
+## 10. Décisions
 
-Tranché : primaire en trimestres, collège et lycée en semestres (comme la spécification).
-
-1. **À l'évaluation du mois, toutes les matières sont-elles évaluées dans chaque classe ?**
-   - Oui → une épreuve par matière d'office.
-   - Non → il faut pouvoir en retirer (ou choisir les matières du mois).
-2. **Les fenêtres des mois** : collées au calendrier (1er → 31) ou débordantes comme dans
-   la spécification (05/10 → 07/11) ?
-3. **Le bulletin du mois** : les écoles le distribuent-elles vraiment chaque mois ?
-4. **Le nom du menu** « Dates des évaluations » te convient-il ?
+- Primaire en trimestres, collège et lycée en semestres, maternelle sur l'année (comme la spécification).
+- **Toutes les matières** sont évaluées chaque mois : une épreuve par classe et par matière d'office.
+- **Les fenêtres débordent** : l'évaluation d'un mois peut se passer au début du mois suivant
+  (par défaut jusqu'au 7). Le mois reste une étiquette.
+- **Le bulletin du mois** est distribué chaque mois : il faut le garder simple à sortir.
+- Le menu s'appelle **« Dates des évaluations »**.
