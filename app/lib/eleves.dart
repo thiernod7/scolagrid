@@ -951,7 +951,7 @@ class _TableauEleves extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(10),
                 child: Row(children: [
-                  _AvatarListe(eleve: e, taille: 52),
+                  _AvatarListe(eleve: e, taille: 44),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1034,12 +1034,11 @@ class _TableauEleves extends StatelessWidget {
           hoverColor: Couleurs.doux(context).withValues(alpha: .5),
           child: Container(
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
-            // La photo prend presque toute la hauteur de la ligne, qui ne grandit pas.
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 8),
             child: Row(children: [
               Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: _AvatarListe(eleve: e, taille: telephone ? 48 : 64),
+                padding: const EdgeInsets.only(left: 8),
+                child: _AvatarListe(eleve: e, taille: telephone ? 40 : 56),
               ),
               cellule(
                 null,
@@ -1186,13 +1185,12 @@ class _AvatarListe extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sansPhoto = eleve['photo_maj'] == null;
-    // Une photo d'identité (3 × 4) : [taille] est sa hauteur.
     return SizedBox(
-      width: (taille * 3 / 4).roundToDouble(),
+      width: taille,
       height: taille,
       child: Stack(clipBehavior: Clip.none, children: [
         PhotoEleve(
-            eleveId: eleve['id'] as String, nom: _nomEleve(eleve), version: eleve['photo_maj'] as String?, taille: taille, portrait: true),
+            eleveId: eleve['id'] as String, nom: _nomEleve(eleve), version: eleve['photo_maj'] as String?, taille: taille),
         if (sansPhoto)
           Positioned(
             right: -2,

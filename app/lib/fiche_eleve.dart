@@ -607,7 +607,7 @@ class _FicheEleveState extends State<FicheEleve> {
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         InkWell(
-          borderRadius: BorderRadius.circular(6),
+          customBorder: const CircleBorder(),
           // Avec photo : on la voit en grand ; sans photo : on en ajoute une (si on en a le droit).
           onTap: e['photo_maj'] != null
               ? () => voirPhotoEleve(context,
@@ -616,8 +616,7 @@ class _FicheEleveState extends State<FicheEleve> {
                   version: '${e['photo_maj']}',
                   changer: _peutModifier ? () => _choisirPhotoEleve(context, e) : null)
               : (_peutModifier ? () => _choisirPhotoEleve(context, e) : null),
-          child: PhotoEleve(
-              eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: telephone ? 80 : 96, portrait: true),
+          child: PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: telephone ? 64 : 72),
         ),
         const SizedBox(width: 12),
         Expanded(
