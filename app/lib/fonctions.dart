@@ -7,6 +7,7 @@ const fonctions = {
   'fondateur': 'Fondateur',
   'directeur': 'Directeur',
   'directeur_etudes': 'Directeur des études',
+  'responsable_cycle': 'Responsable de cycle',
   'surveillant': 'Surveillant',
   'secretaire': 'Secrétaire',
   'comptable': 'Comptable',
@@ -24,9 +25,10 @@ const fonctionsDeDirection = {'fondateur', 'directeur'};
 const titres = <String, ({String fonction, String? libelle})>{
   'directeur_general': (fonction: 'directeur', libelle: 'Directeur général'),
   'directeur': (fonction: 'directeur', libelle: null),
-  'proviseur': (fonction: 'directeur', libelle: 'Proviseur'),
-  'principal': (fonction: 'directeur', libelle: 'Principal'),
-  'directeur_primaire': (fonction: 'directeur', libelle: 'Directeur du primaire'),
+  // Un responsable de cycle : élèves, évaluations et vie scolaire de ses cycles seulement.
+  'proviseur': (fonction: 'responsable_cycle', libelle: 'Proviseur'),
+  'principal': (fonction: 'responsable_cycle', libelle: 'Principal'),
+  'directeur_primaire': (fonction: 'responsable_cycle', libelle: 'Directeur du primaire'),
   'censeur': (fonction: 'directeur_etudes', libelle: 'Censeur'),
   'directeur_etudes': (fonction: 'directeur_etudes', libelle: null),
   'surveillant_general': (fonction: 'surveillant', libelle: 'Surveillant général'),
@@ -38,6 +40,17 @@ const titres = <String, ({String fonction, String? libelle})>{
   'autre': (fonction: 'autre', libelle: null),
   'lecteur': (fonction: 'lecteur', libelle: null),
 };
+
+/// Les cycles qu'un titre couvre d'office (le reste de l'école n'est pas à lui).
+const cyclesParDefaut = <String, Set<String>>{
+  'principal': {'college', 'lycee'},
+  'proviseur': {'college', 'lycee'},
+  'directeur_primaire': {'maternelle', 'primaire'},
+};
+
+/// Les fonctions qui peuvent être limitées à des cycles (pas le fondateur, ni l'enseignant :
+/// lui suit ses classes).
+bool limitableParCycle(String fonction) => fonction != 'fondateur' && fonction != 'enseignant';
 
 /// « Proviseur », ou le nom de la fonction s'il n'y a pas de titre.
 String nomTitre(String cle) => titres[cle]?.libelle ?? fonctions[titres[cle]?.fonction] ?? cle;
@@ -82,6 +95,10 @@ const droitsParDefaut = <String, Set<String>>{
     'valider_remboursement', 'annuler_recu', 'gerer_emploi_du_temps',
     'planifier_evaluations', 'justifier_absence', 'consulter_tableau_bord', 'gerer_inscriptions',
     'voir_familles', 'voir_caisse', 'voir_personnel', 'autoriser_depense',
+  },
+  'responsable_cycle': {
+    'gerer_emploi_du_temps', 'planifier_evaluations', 'saisir_notes', 'faire_appel',
+    'justifier_absence', 'gerer_inscriptions', 'voir_familles', 'voir_personnel',
   },
   'directeur_etudes': {'gerer_emploi_du_temps', 'planifier_evaluations', 'justifier_absence'},
   'surveillant': {'faire_appel', 'justifier_absence'},

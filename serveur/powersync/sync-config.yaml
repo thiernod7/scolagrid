@@ -24,10 +24,12 @@ streams:
     priority: 2
     with:
       mes_orgs: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true
+      # Les classes : toutes, sauf pour qui est limité à des cycles (voir le flux « perimetre »).
+      orgs_sans_limite: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND cycles IS NULL
     queries:
       - SELECT * FROM annees_scolaires WHERE organisation_id IN mes_orgs
       - SELECT * FROM niveaux WHERE organisation_id IN mes_orgs
-      - SELECT * FROM classes WHERE organisation_id IN mes_orgs
+      - SELECT * FROM classes WHERE organisation_id IN orgs_sans_limite
       - SELECT * FROM matieres WHERE organisation_id IN mes_orgs
       - SELECT * FROM frais WHERE organisation_id IN mes_orgs
       - SELECT * FROM echeances WHERE organisation_id IN mes_orgs
@@ -109,7 +111,7 @@ streams:
     auto_subscribe: true
     priority: 3
     with:
-      mes_orgs: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role != 'enseignant'
+      mes_orgs: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND role != 'enseignant' AND cycles IS NULL
     queries:
       - SELECT * FROM eleves WHERE organisation_id IN mes_orgs
       - SELECT * FROM inscriptions WHERE organisation_id IN mes_orgs
@@ -156,7 +158,7 @@ streams:
     auto_subscribe: true
     priority: 3
     with:
-      orgs_familles: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_familles = true
+      orgs_familles: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_familles = true AND cycles IS NULL
     queries:
       - SELECT * FROM contacts WHERE organisation_id IN orgs_familles
       - SELECT * FROM eleves_contacts WHERE organisation_id IN orgs_familles
@@ -167,7 +169,7 @@ streams:
     auto_subscribe: true
     priority: 3
     with:
-      orgs_caisse: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_caisse = true
+      orgs_caisse: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_caisse = true AND cycles IS NULL
     queries:
       - SELECT * FROM encaissements WHERE organisation_id IN orgs_caisse
       - SELECT * FROM lignes_encaissement WHERE organisation_id IN orgs_caisse
@@ -185,7 +187,7 @@ streams:
     auto_subscribe: true
     priority: 3
     with:
-      orgs_notes: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_notes = true
+      orgs_notes: SELECT organisation_id FROM rattachements WHERE user_id = auth.user_id() AND actif = true AND lit_notes = true AND cycles IS NULL
     queries:
       - SELECT * FROM periodes_evaluation WHERE organisation_id IN orgs_notes
       - SELECT * FROM types_evaluation WHERE organisation_id IN orgs_notes
@@ -216,3 +218,35 @@ streams:
   hellos:
     auto_subscribe: true
     query: SELECT * FROM hellos
+
+  # Responsable de cycle (un principal : collège et lycée) : seulement les classes de ses
+  # cycles (table perimetres, tenue par le serveur), leurs élèves, leurs parents s'il voit
+  # les familles, leurs notes s'il lit les notes. Ni caisse, ni autres cycles.
+  perimetre:
+    auto_subscribe: true
+    priority: 3
+    with:
+      classes_perim: SELECT classe_id FROM perimetres WHERE user_id = auth.user_id()
+      classes_familles: SELECT classe_id FROM perimetres WHERE user_id = auth.user_id() AND familles = true
+      classes_notes: SELECT classe_id FROM perimetres WHERE user_id = auth.user_id() AND notes = true
+      orgs_notes_perim: SELECT organisation_id FROM perimetres WHERE user_id = auth.user_id() AND notes = true
+    queries:
+      - SELECT * FROM perimetres WHERE user_id = auth.user_id()
+      - SELECT * FROM classes WHERE id IN classes_perim
+      - SELECT * FROM inscriptions WHERE classe_id IN classes_perim
+      - SELECT * FROM eleves WHERE id IN (SELECT eleve_id FROM inscriptions WHERE classe_id IN classes_perim)
+      - SELECT * FROM photos_eleves WHERE eleve_id IN (SELECT eleve_id FROM inscriptions WHERE classe_id IN classes_perim)
+      - SELECT * FROM historique_eleves WHERE eleve_id IN (SELECT eleve_id FROM inscriptions WHERE classe_id IN classes_perim)
+      - SELECT * FROM impressions_documents WHERE eleve_id IN (SELECT eleve_id FROM inscriptions WHERE classe_id IN classes_perim)
+      - SELECT * FROM eleves_contacts WHERE eleve_id IN (SELECT eleve_id FROM inscriptions WHERE classe_id IN classes_familles)
+      - SELECT * FROM contacts WHERE id IN (SELECT contact_id FROM eleves_contacts WHERE eleve_id IN (SELECT eleve_id FROM inscriptions WHERE classe_id IN classes_familles))
+      - SELECT * FROM periodes_evaluation WHERE organisation_id IN orgs_notes_perim
+      - SELECT * FROM types_evaluation WHERE organisation_id IN orgs_notes_perim
+      - SELECT * FROM sessions_evaluation WHERE organisation_id IN orgs_notes_perim
+      - SELECT * FROM regles_notes WHERE organisation_id IN orgs_notes_perim
+      - SELECT * FROM mentions_notes WHERE organisation_id IN orgs_notes_perim
+      - SELECT * FROM evaluations WHERE classe_id IN classes_notes
+      - SELECT * FROM notes WHERE evaluation_id IN (SELECT id FROM evaluations WHERE classe_id IN classes_notes)
+      - SELECT * FROM notes_historique WHERE evaluation_id IN (SELECT id FROM evaluations WHERE classe_id IN classes_notes)
+      - SELECT * FROM appreciations WHERE eleve_id IN (SELECT eleve_id FROM inscriptions WHERE classe_id IN classes_notes)
+      - SELECT * FROM decisions_annee WHERE eleve_id IN (SELECT eleve_id FROM inscriptions WHERE classe_id IN classes_notes)

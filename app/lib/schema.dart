@@ -63,6 +63,8 @@ const schema = Schema([
     Column.text('user_id'),
     Column.text('role'),
     Column.integer('actif'),
+    // Les cycles couverts (JSON, vide : toute l'école) — migration 050.
+    Column.text('cycles'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ]),
@@ -324,6 +326,7 @@ const schema = Schema([
     Column.text('fonction'),
     Column.text('libelle'),
     Column.integer('actif'),
+    Column.text('cycles'),
     Column.text('created_at'),
     Column.text('updated_at'),
   ], indexes: [

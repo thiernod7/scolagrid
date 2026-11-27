@@ -4,6 +4,47 @@ part of 'configuration.dart';
 /// Fiche ≠ compte : on crée la fiche (hors ligne), on lui donne ses fonctions,
 /// puis, si la personne utilise l'app, on l'invite avec un code (en ligne).
 
+// Cycles couverts --------------------------------------------------------------
+
+/// Les cycles de l'école, dans l'ordre (maternelle, primaire, collège, lycée).
+Future<List<String>> _cyclesEcole(String orgId) async {
+  final presents = {for (final r in await db.getAll('SELECT DISTINCT cycle FROM niveaux WHERE organisation_id = ? AND cycle IS NOT NULL', [orgId])) '${r['cycle']}'};
+  return [for (final c in cycles.keys) if (presents.contains(c)) c, for (final c in presents) if (!cycles.containsKey(c)) c];
+}
+
+/// « Collège, Lycée », ou « Toute l'école ».
+String cyclesLisibles(Object? json) {
+  final l = _cyclesDe(json);
+  return l.isEmpty ? "Toute l'école" : l.map((c) => cycles[c] ?? c).join(', ');
+}
+
+List<String> _cyclesDe(Object? json) {
+  if (json == null || '$json'.isEmpty) return const [];
+  try {
+    return [for (final c in jsonDecode('$json') as List) '$c'];
+  } catch (_) {
+    return const [];
+  }
+}
+
+/// Le choix des cycles couverts : aucun coché, toute l'école.
+Widget _choixCycles(List<String> dispo, Set<String> choisis, StateSetter maj) =>
+    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Cycles couverts', style: TextStyle(fontSize: 13)),
+      const SizedBox(height: 6),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        for (final c in dispo)
+          FilterChip(
+            label: Text(cycles[c] ?? c),
+            selected: choisis.contains(c),
+            onSelected: (v) => maj(() => v ? choisis.add(c) : choisis.remove(c)),
+          ),
+      ]),
+      const SizedBox(height: 4),
+      Text(choisis.isEmpty ? "Aucun coché : toute l'école." : "Hors de ces cycles, la personne ne voit aucun élève.",
+          style: const TextStyle(fontSize: 12)),
+    ]);
+
 // Liste du personnel ----------------------------------------------------------
 
 class PersonnelScreen extends StatelessWidget {
@@ -37,6 +78,9 @@ class PersonnelScreen extends StatelessWidget {
     var inviter = false;
     final paie = gerePaie(espace);
     final choisis = <String>{};
+    final dispoCycles = await _cyclesEcole(espace.orgId);
+    final cyclesChoisis = <String>{};
+    if (!context.mounted) return null;
     final choixTitres = [
       for (final t in titres.entries)
         if (espace.fondateur || !fonctionsDeDirection.contains(t.value.fonction)) t.key,
@@ -87,11 +131,17 @@ class PersonnelScreen extends StatelessWidget {
                 FilterChip(
                   label: Text(nomTitre(t)),
                   selected: choisis.contains(t),
-                  onSelected: (v) => maj(() => v ? choisis.add(t) : choisis.remove(t)),
+                  onSelected: (v) => maj(() {
+                    v ? choisis.add(t) : choisis.remove(t);
+                    // Principal, proviseur, directeur du primaire : leurs cycles d'office.
+                    if (v && cyclesParDefaut[t] != null) cyclesChoisis.addAll(cyclesParDefaut[t]!.where(dispoCycles.contains));
+                  }),
                 ),
             ]),
             if (choisis.contains('autre'))
               TextField(controller: libelle, decoration: _champ('Précisez', aide: 'Gardien, chauffeur, cuisinière…')),
+            if (dispoCycles.length > 1 && choisis.any((t) => limitableParCycle(titres[t]!.fonction)))
+              _choixCycles(dispoCycles, cyclesChoisis, maj),
             if (sites.length > 1) _liste('Site', site, sites, (v) => maj(() => site = v)),
             Row(children: [
               Expanded(child: _liste('Contrat', contrat, contratsPersonnel, (v) => maj(() => contrat = v))),
@@ -165,11 +215,12 @@ class PersonnelScreen extends StatelessWidget {
       for (final t in choisis) {
         final titre = titres[t]!;
         await tx.execute(
-            'INSERT INTO affectations (id, organisation_id, personnel_id, site_id, fonction, libelle, actif, created_at, updated_at) '
-            'VALUES (uuid(), ?, ?, ?, ?, ?, 1, ?, ?)',
+            'INSERT INTO affectations (id, organisation_id, personnel_id, site_id, fonction, libelle, cycles, actif, created_at, updated_at) '
+            'VALUES (uuid(), ?, ?, ?, ?, ?, ?, 1, ?, ?)',
             [
               espace.orgId, id, site, titre.fonction,
               t == 'autre' ? (libelle.text.trim().length >= 2 ? libelle.text.trim() : null) : titre.libelle,
+              limitableParCycle(titre.fonction) && cyclesChoisis.isNotEmpty ? jsonEncode(cyclesChoisis.toList()) : null,
               maintenant, maintenant,
             ]);
       }
@@ -483,9 +534,18 @@ class FichePersonnel extends StatelessWidget {
     var cle = 'enseignant';
     String? site = sites.containsKey(fiche['site_id']) ? fiche['site_id'] as String? : sites.keys.first;
     final libelle = TextEditingController();
+    final dispoCycles = await _cyclesEcole(espace.orgId);
+    final cyclesChoisis = <String>{};
+    if (!context.mounted) return;
     final ok = await _formulaire(context, 'Ajouter une fonction', (maj) => [
-          _liste('Fonction', cle, choix, (v) => maj(() => cle = v)),
+          _liste('Fonction', cle, choix, (v) => maj(() {
+                cle = v;
+                cyclesChoisis
+                  ..clear()
+                  ..addAll((cyclesParDefaut[v] ?? const <String>{}).where(dispoCycles.contains));
+              })),
           if (cle == 'autre') TextField(controller: libelle, decoration: _champ('Précisez')),
+          if (dispoCycles.length > 1 && limitableParCycle(titres[cle]!.fonction)) _choixCycles(dispoCycles, cyclesChoisis, maj),
           const Text('Elle s\'ajoute aux fonctions actuelles : les droits s\'additionnent.', style: TextStyle(fontSize: 12)),
           if (sites.length > 1) _liste('Sur', site, sites, (v) => maj(() => site = v)),
         ]);
@@ -496,8 +556,9 @@ class FichePersonnel extends StatelessWidget {
     final existante = await db.getOptional(
         'SELECT id FROM affectations WHERE personnel_id = ? AND fonction = ? AND site_id IS ? AND libelle IS ?',
         [ficheId, fonction, site, titre]);
+    final cyclesJson = limitableParCycle(fonction) && cyclesChoisis.isNotEmpty ? jsonEncode(cyclesChoisis.toList()) : null;
     if (existante != null) {
-      await _modifier('affectations', existante['id'] as String, {'actif': 1});
+      await _modifier('affectations', existante['id'] as String, {'actif': 1, 'cycles': cyclesJson});
     } else {
       await _inserer('affectations', {
         'organisation_id': espace.orgId,
@@ -505,9 +566,22 @@ class FichePersonnel extends StatelessWidget {
         'site_id': site,
         'fonction': fonction,
         'libelle': titre,
+        'cycles': cyclesJson,
         'actif': 1,
       });
     }
+  }
+
+  /// Changer les cycles couverts par une fonction.
+  Future<void> _changerCycles(BuildContext context, Map<String, Object?> a) async {
+    final dispo = await _cyclesEcole(espace.orgId);
+    final choisis = _cyclesDe(a['cycles']).toSet();
+    if (!context.mounted) return;
+    final ok = await _formulaire(context, '${a['libelle'] ?? fonctions[a['fonction']] ?? a['fonction']} · cycles', (maj) => [
+          _choixCycles(dispo, choisis, maj),
+        ]);
+    if (!ok) return;
+    await _modifier('affectations', a['id'] as String, {'cycles': choisis.isEmpty ? null : jsonEncode(choisis.toList())});
   }
 
   Future<void> _changerDroit(String droit, bool parDefaut, bool voulu, String? exceptionId) async {
@@ -677,7 +751,12 @@ class FichePersonnel extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.work_outline),
           title: Text('${a['libelle'] ?? fonctions[a['fonction']] ?? a['fonction']}'),
-          subtitle: Text('${a['site'] ?? 'Tous les sites'}'),
+          subtitle: Text([
+            '${a['site'] ?? 'Tous les sites'}',
+            if (limitableParCycle('${a['fonction']}')) cyclesLisibles(a['cycles']),
+          ].join(' · ')),
+          // Toucher la fonction : changer les cycles qu'elle couvre.
+          onTap: modifiable && limitableParCycle('${a['fonction']}') ? () => _changerCycles(context, a) : null,
           trailing: modifiable && a['fonction'] != 'fondateur'
               ? IconButton(
                   tooltip: 'Retirer cette fonction',
