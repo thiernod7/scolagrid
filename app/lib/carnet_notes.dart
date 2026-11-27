@@ -156,13 +156,6 @@ class _CarnetNotesState extends State<_CarnetNotes> {
     _focus['${epreuves[colonne]['id']}|${eleves[ligne]['id']}']?.requestFocus();
   }
 
-  String _court(Object? date) {
-    final d = DateTime.tryParse('$date');
-    if (d == null) return '';
-    const mois = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    return '${d.day.toString().padLeft(2, '0')} ${mois[d.month - 1]}';
-  }
-
   Widget _contenu(BuildContext context, Lignes services, Map<String, Object?> matiere, Lignes epreuves, Lignes eleves, Lignes notes,
       String absences) {
     final schema = Theme.of(context).colorScheme;
