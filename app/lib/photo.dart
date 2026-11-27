@@ -332,7 +332,7 @@ final _cachePhotos = <String, (String, MemoryImage)>{};
 /// Photo de l'élève dans un rond, ou ses initiales s'il n'en a pas.
 /// [version] : date de mise à jour de la photo (null = pas de photo).
 class PhotoEleve extends StatefulWidget {
-  const PhotoEleve({super.key, required this.eleveId, required this.nom, this.version, this.taille = 40, this.carre = false});
+  const PhotoEleve({super.key, required this.eleveId, required this.nom, this.version, this.taille = 40, this.carre = false, this.portrait = false});
 
   final String eleveId;
   final String nom;
@@ -341,6 +341,10 @@ class PhotoEleve extends StatefulWidget {
 
   /// Grande photo carrée (grille des élèves) au lieu d'un rond.
   final bool carre;
+
+  /// Photo d'identité (3 × 4, coins arrondis) : [taille] est la hauteur. On voit tout
+  /// le visage, là où le rond le rogne.
+  final bool portrait;
 
   @override
   State<PhotoEleve> createState() => _PhotoEleveState();
@@ -389,6 +393,15 @@ class _PhotoEleveState extends State<PhotoEleve> {
       return _image == null
           ? Container(color: Couleurs.doux(context), alignment: Alignment.center, child: Initiales(widget.nom, taille: 64))
           : Image(image: _image!, fit: BoxFit.cover, alignment: alignementVisage, width: double.infinity, height: double.infinity);
+    }
+    if (widget.portrait) {
+      final h = widget.taille, l = (widget.taille * 3 / 4).roundToDouble();
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: _image == null
+            ? Container(width: l, height: h, color: Couleurs.doux(context), alignment: Alignment.center, child: Initiales(widget.nom, taille: l * .8))
+            : Image(image: _image!, width: l, height: h, fit: BoxFit.cover, alignment: alignementVisage, filterQuality: FilterQuality.medium),
+      );
     }
     return _image == null
         ? Initiales(widget.nom, taille: widget.taille)
