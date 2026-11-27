@@ -951,7 +951,7 @@ class _TableauEleves extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(10),
                 child: Row(children: [
-                  _AvatarListe(eleve: e, taille: 44),
+                  _AvatarListe(eleve: e, taille: 48),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1034,11 +1034,12 @@ class _TableauEleves extends StatelessWidget {
           hoverColor: Couleurs.doux(context).withValues(alpha: .5),
           child: Container(
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            // Un rond plus grand, la même hauteur de ligne (moins de marge autour).
+            padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(children: [
               Padding(
                 padding: const EdgeInsets.only(left: 8),
-                child: _AvatarListe(eleve: e, taille: telephone ? 40 : 56),
+                child: _AvatarListe(eleve: e, taille: telephone ? 48 : 64),
               ),
               cellule(
                 null,

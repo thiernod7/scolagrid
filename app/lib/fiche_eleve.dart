@@ -616,7 +616,7 @@ class _FicheEleveState extends State<FicheEleve> {
                   version: '${e['photo_maj']}',
                   changer: _peutModifier ? () => _choisirPhotoEleve(context, e) : null)
               : (_peutModifier ? () => _choisirPhotoEleve(context, e) : null),
-          child: PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: telephone ? 64 : 72),
+          child: PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: telephone ? 72 : 80),
         ),
         const SizedBox(width: 12),
         Expanded(
