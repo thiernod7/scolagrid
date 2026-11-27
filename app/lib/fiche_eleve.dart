@@ -616,25 +616,7 @@ class _FicheEleveState extends State<FicheEleve> {
                   version: '${e['photo_maj']}',
                   changer: _peutModifier ? () => _choisirPhotoEleve(context, e) : null)
               : (_peutModifier ? () => _choisirPhotoEleve(context, e) : null),
-          child: Stack(clipBehavior: Clip.none, children: [
-            PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: telephone ? 64 : 72),
-            // Une loupe dit qu'on peut l'agrandir.
-            if (e['photo_maj'] != null)
-              Positioned(
-                right: -2,
-                bottom: -2,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                  ),
-                  child: Icon(Icons.zoom_in, size: 15, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                ),
-              ),
-          ]),
+          child: PhotoEleve(eleveId: widget.eleveId, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: telephone ? 64 : 72),
         ),
         const SizedBox(width: 12),
         Expanded(

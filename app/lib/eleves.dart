@@ -1189,8 +1189,7 @@ class _AvatarListe extends StatelessWidget {
       width: taille,
       height: taille,
       child: Stack(clipBehavior: Clip.none, children: [
-        // Toucher la photo l'ouvre en grand ; le reste de la ligne ouvre la fiche.
-        PhotoAgrandissable(
+        PhotoEleve(
             eleveId: eleve['id'] as String, nom: _nomEleve(eleve), version: eleve['photo_maj'] as String?, taille: taille),
         if (sansPhoto)
           Positioned(

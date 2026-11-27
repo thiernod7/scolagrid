@@ -396,45 +396,6 @@ class _PhotoEleveState extends State<PhotoEleve> {
   }
 }
 
-/// La photo d'un élève qu'on agrandit sans toucher à la ligne qui la contient :
-/// on la touche, elle s'ouvre en grand (zoom à deux doigts ou à la molette) ; sur
-/// ordinateur, le survol en montre un aperçu. Sans photo : les initiales, sans geste.
-class PhotoAgrandissable extends StatelessWidget {
-  const PhotoAgrandissable({super.key, required this.eleveId, required this.nom, required this.version, this.taille = 40, this.changer});
-
-  final String eleveId;
-  final String nom;
-  final String? version;
-  final double taille;
-  final VoidCallback? changer;
-
-  @override
-  Widget build(BuildContext context) {
-    final photo = PhotoEleve(eleveId: eleveId, nom: nom, version: version, taille: taille);
-    final v = version;
-    if (v == null) return photo;
-    return Tooltip(
-      waitDuration: const Duration(milliseconds: 350),
-      padding: EdgeInsets.zero,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 16)]),
-      richMessage: WidgetSpan(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: SizedBox(width: 180, height: 240, child: PhotoEleve(eleveId: eleveId, nom: nom, version: v, carre: true)),
-        ),
-      ),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.zoomIn,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => voirPhotoEleve(context, eleveId: eleveId, nom: nom, version: v, changer: changer),
-          child: photo,
-        ),
-      ),
-    );
-  }
-}
-
 /// La photo d'un élève en grand, plein écran, qu'on peut agrandir avec deux doigts
 /// (ou la molette) ; « Changer la photo » si on en a le droit.
 Future<void> voirPhotoEleve(BuildContext context,

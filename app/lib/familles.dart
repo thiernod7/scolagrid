@@ -1067,7 +1067,7 @@ class FicheFamille extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
               child: Row(children: [
-                PhotoAgrandissable(eleveId: e['id'] as String, nom: nom, version: e['photo_maj'] as String?, taille: 40),
+                PhotoEleve(eleveId: e['id'] as String, nom: nom, version: e['photo_maj'] as String?, taille: 40),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
