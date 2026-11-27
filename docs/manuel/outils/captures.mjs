@@ -282,14 +282,19 @@ if (etape === 'connexion') {
     const creer = page.getByRole('button', { name: /Créer les périodes/ });
     if (await creer.count()) { await creer.first().click(); await pause(4000); await semantique(); await photo('64-notes-periodes'); }
     // La CE2 A a des notes de démonstration.
-    await page.mouse.click(500, 92); await pause(1500); await semantique();
+    // Le choix de la classe (« CP1 A · 5 él. »), sous le titre.
+    const menuClasse = page.getByText(/ · \d+ él\./);
+    if (await menuClasse.count()) await menuClasse.first().click(); else await page.mouse.click(330, 140);
+    await pause(1500); await semantique();
     await photo('63a-notes-menu-classe');
     const ce2a = page.getByText(/^CE2 A\b/);
     if (await ce2a.count()) { await ce2a.last().click(); } else { await page.mouse.click(420, 203); }
     await pause(3000); await semantique();
     await photo('63b-notes-evaluations');
-    // Le menu des sessions (sous la période) : octobre, novembre, composition.
-    await page.mouse.click(400, 178); await pause(1500); await semantique(); await photo('63c-notes-sessions');
+    // Le choix de l'évaluation (novembre par défaut) : octobre, novembre, composition, toute la période.
+    const menuEval = page.getByText(/^(Évaluation (de |d')|Composition du|Toute la période)/);
+    if (await menuEval.count()) await menuEval.first().click(); else await page.mouse.click(900, 140);
+    await pause(1500); await semantique(); await photo('63c-notes-sessions');
     await page.keyboard.press('Escape'); await pause(1000);
     await page.mouse.click(700, 370); await pause(3500); await semantique(); await photo('66-notes-saisie');
     await retour();

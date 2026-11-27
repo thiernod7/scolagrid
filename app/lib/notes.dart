@@ -266,7 +266,7 @@ class _NotesScreenState extends State<NotesScreen> {
   String? get _classeId => _classeIdLocal;
   set _classeId(String? v) => _classeIdLocal = _derniereClasseNotes = v;
   String? _periodeId;
-  String? _sessionId; // null : toute la période
+  String? _sessionId; // null : l'évaluation en cours (saisie) ; '' : toute la période
   int get _onglet => widget.page.index; // 0 saisie, 1 bulletins (résultats), 2 fin d'année
 
   Espace get _e => widget.espace;
@@ -311,7 +311,6 @@ class _NotesScreenState extends State<NotesScreen> {
 
   Widget _contenu(BuildContext context, Map<String, Object?> annee, Lignes classes, Lignes toutesPeriodes, Lignes toutesSessions,
       MesCours? cours) {
-    final gris = Theme.of(context).colorScheme.onSurfaceVariant;
     final telephone = MediaQuery.sizeOf(context).width < 640;
     if (classes.isEmpty) {
       return Center(
@@ -336,58 +335,90 @@ class _NotesScreenState extends State<NotesScreen> {
     final close = periode['statut'] == 'cloturee';
     // Les sessions de la période ; aucune choisie : toute la période (bulletin officiel).
     final sessions = toutesSessions.where((x) => x['periode_id'] == periode['id']).toList();
-    final session = sessions.where((x) => x['id'] == _sessionId).firstOrNull;
+    // Saisie : on arrive sur l'évaluation en cours (celle de novembre), sinon la dernière commencée.
+    final session = _sessionId == null && _onglet == 0
+        ? sessions.where((x) => '${x['debut']}'.compareTo(aujourdhui) <= 0 && '${x['fin']}'.compareTo(aujourdhui) >= 0).firstOrNull ??
+            sessions.where((x) => '${x['debut']}'.compareTo(aujourdhui) <= 0).lastOrNull
+        : sessions.where((x) => x['id'] == _sessionId).firstOrNull;
     final sessionClose = session != null && session['statut'] == 'cloturee';
 
-    final enTete = Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      Text(_onglet == 0 && cours != null ? 'Mes classes' : const ['Saisie des notes', 'Bulletins', "Fin d'année"][_onglet],
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, letterSpacing: -.2)),
-      const SizedBox(width: 4),
-      _MenuClasse(
-        valeur: classe['id'] as String,
-        choix: {for (final c in classes) c['id'] as String: '${c['nom']} · ${c['effectif']} él.'},
-        onChanged: (v) => setState(() {
-          _classeId = v;
-          _periodeId = null;
-          _sessionId = null;
-        }),
+    String jj(Object? d) => _dateLisible(d).substring(0, 5);
+    final titre = _onglet == 0 && cours != null ? 'Mes classes' : const ['Saisie des notes', 'Bulletins', "Fin d'année"][_onglet];
+    final bareme = periode['nature'] == 'appreciations' ? 'acquis (pas de moyenne)' : 'notes sur ${periode['bareme']}';
+    final enTete = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      EnTetePage(
+        titre: titre,
+        sousTitre: periode.isEmpty || _onglet == 2
+            ? '${classe['nom']} · ${classe['effectif']} élève(s)'
+            : '${classe['nom']} · ${periode['libelle']} (${jj(periode['debut'])} → ${jj(periode['fin'])}) · $bareme',
+        actions: [
+          if (_planifie && periode.isNotEmpty)
+            PopupMenuButton<String>(
+              tooltip: 'Clôture',
+              icon: const Icon(Icons.more_horiz),
+              onSelected: (v) async {
+                if (v == 'cloturer' && periode.isNotEmpty) {
+                  await _cloturer(periode, !close);
+                } else if (v == 'session' && session != null) {
+                  await _cloturerSession(session, !sessionClose);
+                }
+              },
+              itemBuilder: (_) => [
+                if (session != null && !close)
+                  PopupMenuItem(
+                    value: 'session',
+                    child: _ItemMenu(sessionClose ? Icons.lock_open : Icons.lock_outline,
+                        sessionClose ? 'Rouvrir « ${session['libelle']} »' : 'Clôturer « ${session['libelle']} »'),
+                  ),
+                if (periode.isNotEmpty)
+                  PopupMenuItem(
+                    value: 'cloturer',
+                    child: _ItemMenu(close ? Icons.lock_open : Icons.lock_outline,
+                        close ? 'Rouvrir ${periode['libelle']}' : 'Clôturer ${periode['libelle']}'),
+                  ),
+              ],
+            ),
+        ],
       ),
-      // La fin d'année porte sur toutes les périodes : pas de choix de période.
-      if (periodes.isNotEmpty && _onglet != 2)
-        Segments<String>(
-          valeur: periode['id'] as String,
-          choix: {for (final p in periodes) p['id'] as String: '${p['libelle']}${p['statut'] == 'cloturee' ? ' · close' : ''}'},
+      const SizedBox(height: 12),
+      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        _MenuClasse(
+          largeur: telephone ? 150 : 180,
+          valeur: classe['id'] as String,
+          choix: {for (final c in classes) c['id'] as String: '${c['nom']} · ${c['effectif']} él.'},
           onChanged: (v) => setState(() {
-            _periodeId = v;
+            _classeId = v;
+            _periodeId = null;
             _sessionId = null;
           }),
         ),
-      if (_planifie && periode.isNotEmpty)
-        PopupMenuButton<String>(
-          tooltip: 'Clôture',
-          icon: const Icon(Icons.more_horiz),
-          onSelected: (v) async {
-            if (v == 'cloturer' && periode.isNotEmpty) {
-              await _cloturer(periode, !close);
-            } else if (v == 'session' && session != null) {
-              await _cloturerSession(session, !sessionClose);
-            }
-          },
-          itemBuilder: (_) => [
-            if (session != null && !close)
-              PopupMenuItem(
-                value: 'session',
-                child: _ItemMenu(sessionClose ? Icons.lock_open : Icons.lock_outline,
-                    sessionClose ? 'Rouvrir la session' : 'Clôturer la session'),
-              ),
-            if (periode.isNotEmpty)
-              PopupMenuItem(
-                value: 'cloturer',
-                child: _ItemMenu(close ? Icons.lock_open : Icons.lock_outline,
-                    close ? 'Rouvrir ${periode['libelle']}' : 'Clôturer ${periode['libelle']}'),
-              ),
-          ],
-        ),
+        // La fin d'année porte sur toutes les périodes : pas de choix de période.
+        if (periodes.length > 1 && _onglet != 2)
+          Segments<String>(
+            valeur: periode['id'] as String,
+            choix: {for (final p in periodes) p['id'] as String: '${p['libelle']}${p['statut'] == 'cloturee' ? ' · close' : ''}'},
+            onChanged: (v) => setState(() {
+              _periodeId = v;
+              _sessionId = null;
+            }),
+          ),
+        // L'évaluation (« Évaluation de novembre »), ou toute la période (bulletin officiel).
+        if (_onglet != 2 && sessions.isNotEmpty)
+          _MenuClasse(
+            largeur: telephone ? double.infinity : 300,
+            valeur: session?['id'] as String? ?? '',
+            choix: {
+              for (final x in sessions)
+                x['id'] as String: '${x['libelle']} · ${jj(x['debut'])} → ${jj(x['fin'])}${x['statut'] == 'cloturee' ? ' · close' : ''}',
+              '': 'Toute la période (bulletin officiel)',
+            },
+            onChanged: (v) => setState(() => _sessionId = v),
+          ),
+        if (_onglet != 2 && (close || sessionClose))
+          close
+              ? const Etat('Période clôturée', icone: Icons.lock_outline)
+              : Etat('« ${session!['libelle']} » clôturée', icone: Icons.lock_outline),
+      ]),
     ]);
 
     final Widget corps;
@@ -412,44 +443,16 @@ class _NotesScreenState extends State<NotesScreen> {
         ]),
       );
     } else {
-      String jj(Object? d) => _dateLisible(d).substring(0, 5);
       corps = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        // La session : une fenêtre de la période (« Évaluation d'octobre »), ou toute la période.
-        if (_onglet != 2) Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          _MenuClasse(
-            largeur: telephone ? double.infinity : 320,
-            valeur: session?['id'] as String? ?? '',
-            choix: {
-              '': 'Toute la période (bulletin officiel)',
-              for (final x in sessions)
-                x['id'] as String: '${x['libelle']} · ${jj(x['debut'])} → ${jj(x['fin'])}${x['statut'] == 'cloturee' ? ' · close' : ''}',
-            },
-            onChanged: (v) => setState(() => _sessionId = v.isEmpty ? null : v),
-          ),
-          // La programmation des épreuves est dans Évaluations › Calendrier ; ici, l'impression pour la classe.
-          OutlinedButton.icon(
-            onPressed: () => _calendrier(classe, periode, session),
-            icon: const Icon(Icons.print_outlined, size: 16),
-            label: const Text('Calendrier de la classe'),
-          ),
-
-          if (sessions.isEmpty && _planifie && !close)
-            TextButton.icon(
-              onPressed: () => _ouvrirReglages(PartieReglagesNotes.periodes),
-              icon: const Icon(Icons.settings_outlined, size: 16),
-              label: const Text('Créer les sessions (Paramètres)'),
-            ),
-        ]),
-        // Les pages (saisie, bulletins, fin d'année) sont dans le menu « Évaluations ».
-        if (_onglet != 2 && (close || sessionClose)) ...[
-          const SizedBox(height: 10),
+        if (_onglet != 2 && sessions.isEmpty && _planifie && !close)
           Align(
             alignment: Alignment.centerLeft,
-            child: close
-                ? const Etat('Période clôturée', ton: Ton.neutre, icone: Icons.lock_outline)
-                : const Etat('Session clôturée', ton: Ton.neutre, icone: Icons.lock_outline),
+            child: TextButton.icon(
+              onPressed: () => _ouvrirReglages(PartieReglagesNotes.periodes),
+              icon: const Icon(Icons.settings_outlined, size: 16),
+              label: const Text('Ajouter les évaluations de la période (Paramètres)'),
+            ),
           ),
-        ],
         const SizedBox(height: 14),
         if (_onglet == 2)
           _FinAnnee(espace: _e, annee: annee, classe: classe, periodes: periodes, peutDecider: _planifie)
@@ -487,12 +490,6 @@ class _NotesScreenState extends State<NotesScreen> {
         constraints: const BoxConstraints(maxWidth: 1600),
         child: ListView(padding: EdgeInsets.all(telephone ? 12 : 16), children: [
           enTete,
-          if (periode.isNotEmpty && _onglet != 2) ...[
-            const SizedBox(height: 4),
-            Text('${periode['libelle']} : du ${_dateLisible(periode['debut'])} au ${_dateLisible(periode['fin'])} · '
-                '${periode['nature'] == 'appreciations' ? 'acquis : acquis, en cours, non acquis (pas de moyenne)' : 'notes sur ${periode['bareme']}'}',
-                style: TextStyle(fontSize: 12, color: gris)),
-          ],
           const SizedBox(height: 16),
           corps,
         ]),
@@ -529,36 +526,6 @@ class _NotesScreenState extends State<NotesScreen> {
             : 'Rouvrir « ${session['libelle']} » ? Ses notes redeviennent modifiables : les bulletins de session déjà remis pourraient changer.');
     if (!ok) return;
     await _modifier('sessions_evaluation', session['id'] as String, {'statut': cloturer ? 'cloturee' : 'ouverte'});
-  }
-
-  /// Le calendrier des évaluations de la classe (session ou période), à afficher en classe.
-  Future<void> _calendrier(Map<String, Object?> classe, Map<String, Object?> periode, Map<String, Object?>? session) async {
-    final epreuves = await db.getAll('''
-        SELECT ev.date_evaluation, ev.heure, ev.duree_min, m.nom AS matiere, t.libelle AS type, coalesce(pe.nom_complet, '') AS enseignant
-        FROM evaluations ev JOIN matieres m ON m.id = ev.matiere_id JOIN types_evaluation t ON t.id = ev.type_id
-        LEFT JOIN personnes pe ON pe.id = ev.cree_par
-        WHERE ev.classe_id = ? AND ev.periode_id = ? AND (? IS NULL OR ev.session_id = ?)
-        ORDER BY ev.date_evaluation, m.nom''', [classe['id'], periode['id'], session?['id'], session?['id']]);
-    final ecole = await db.get('SELECT * FROM organisations WHERE id = ?', [_e.orgId]);
-    final source = session ?? periode;
-    final pdf = await calendrierEvaluationsPdf(
-      ecole: Map.of(ecole),
-      classe: '${classe['nom']}',
-      titre: '${source['libelle']}',
-      fenetre: 'du ${_dateLisible(source['debut'])} au ${_dateLisible(source['fin'])}',
-      epreuves: [
-        for (final e in epreuves)
-          (
-            date: _dateLisible(e['date_evaluation']),
-            heure: heureLisible(e['heure'], e['duree_min']),
-            matiere: '${e['matiere']}',
-            type: '${e['type']}',
-            enseignant: '${e['enseignant']}'
-          ),
-      ],
-      images: await _imagesEcole(_e.orgId),
-    );
-    await Printing.layoutPdf(onLayout: (_) async => pdf, name: 'Calendrier ${classe['nom']} ${source['libelle']}');
   }
 }
 

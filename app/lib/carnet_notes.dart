@@ -44,7 +44,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
   /// Ce que la base contient pour chaque case (pour n'enregistrer que ce qui a changé).
   final _enBase = <String, String>{};
 
-  static const _largeurNomMin = 180.0, _largeurCase = 112.0, _largeurTotal = 104.0, _largeurMoy = 124.0, _hauteurLigne = 56.0;
+  static const _largeurNomMin = 220.0, _largeurCase = 112.0, _largeurTotal = 104.0, _largeurMoy = 124.0, _hauteurLigne = 56.0;
 
   /// La case où l'on tape : enregistrée si l'on change de classe ou de période sans la quitter.
   Future<void> Function()? _enCours;
@@ -79,12 +79,15 @@ class _CarnetNotesState extends State<_CarnetNotes> {
   Widget build(BuildContext context) => Requete(
         // Les matières de la classe choisie, avec ce qui reste à saisir sur la période.
         '''SELECT m.id AS matiere_id, m.nom AS matiere, m.coefficient,
-             (SELECT count(*) FROM evaluations ev WHERE ev.classe_id = ? AND ev.periode_id = ? AND ev.matiere_id = m.id) AS epreuves,
+             (SELECT count(*) FROM evaluations ev WHERE ev.classe_id = ? AND ev.periode_id = ? AND ev.matiere_id = m.id
+                AND (? IS NULL OR ev.session_id = ?)) AS epreuves,
              (SELECT coalesce(sum(? - (SELECT count(*) FROM notes x WHERE x.evaluation_id = ev.id AND x.etat <> 'non_note')), 0)
-              FROM evaluations ev WHERE ev.classe_id = ? AND ev.periode_id = ? AND ev.matiere_id = m.id) AS manquantes
+              FROM evaluations ev WHERE ev.classe_id = ? AND ev.periode_id = ? AND ev.matiere_id = m.id
+                AND (? IS NULL OR ev.session_id = ?) AND ev.date_evaluation <= date('now')) AS manquantes
            FROM matieres m WHERE m.niveau_id = ? ORDER BY m.nom''',
         parametres: [
-          _classe['id'], _periode['id'], _classe['effectif'] ?? 0, _classe['id'], _periode['id'], _classe['niveau_id'],
+          _classe['id'], _periode['id'], widget.session?['id'], widget.session?['id'], _classe['effectif'] ?? 0,
+          _classe['id'], _periode['id'], widget.session?['id'], widget.session?['id'], _classe['niveau_id'],
         ],
         builder: (context, toutes) {
           final gris = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -281,9 +284,9 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                               overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                           Text(
                               ep == 0
-                                  ? 'aucune épreuve'
+                                  ? 'à programmer'
                                   : '$ep épreuve${ep > 1 ? 's' : ''} · ${manque > 0 ? '$manque à compléter' : 'à jour'}',
-                              style: TextStyle(fontSize: 12, color: gris)),
+                              style: TextStyle(fontSize: 12, color: ep == 0 ? Couleurs.attente : gris)),
                         ]),
                       ),
                       if (ep > 0)
@@ -307,12 +310,31 @@ class _CarnetNotesState extends State<_CarnetNotes> {
     );
 
     // --- Au centre : le carnet ----------------------------------------------------------
-    final bareme = _parAcquis ? 'acquis' : 'sur $_bareme';
     Widget enTete(Map<String, Object?> ev) {
       final actif = ev['id'] == choisie?['id'];
       final poids = (ev['poids'] as num? ?? 1).toDouble();
-      return InkWell(
-        onTap: () => setState(() => _epreuveId = ev['id'] as String),
+      final aVenir = '${ev['date_evaluation']}'.compareTo(_date(DateTime.now())) > 0;
+      final ferme = ev['statut_session'] == 'cloturee';
+      final d = DateTime.tryParse('${ev['date_evaluation']}');
+      final jour = d == null ? '' : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+      final details = [
+        if (heureLisible(ev['heure'], null).isNotEmpty) heureLisible(ev['heure'], null),
+        if (poids != 1) '×${nb(poids)}',
+        if (ev['compte'] != 1) 'hors moy.',
+      ].join(' · ');
+      return PopupMenuButton<String>(
+        tooltip: aVenir ? 'Épreuve à venir : notes à partir du $jour' : "Options de l'épreuve",
+        onOpened: () => setState(() => _epreuveId = ev['id'] as String),
+        onSelected: (v) => _actionEpreuve(context, v, ev),
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: 'historique', child: _ItemMenu(Icons.history, 'Historique, saisie détaillée')),
+          if (widget.cours != null && saisir)
+            PopupMenuItem(
+              value: 'remise',
+              child: _ItemMenu(Icons.task_alt, ev['remise_le'] == null ? "J'ai terminé : remettre les notes" : 'Annuler la remise'),
+            ),
+          if (saisir && !ferme) const PopupMenuItem(value: 'supprimer', child: _ItemMenu(Icons.delete_outline, "Supprimer l'épreuve")),
+        ],
         child: Container(
           width: largeurCase,
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
@@ -320,21 +342,17 @@ class _CarnetNotesState extends State<_CarnetNotes> {
             color: actif ? Couleurs.infoFond : null,
             border: Border(left: BorderSide(color: bordure), bottom: BorderSide(color: actif ? Couleurs.info : Colors.transparent, width: 2)),
           ),
-          child: Column(children: [
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              if (ev['statut_session'] == 'cloturee') Icon(Icons.lock_outline, size: 12, color: gris),
-              if (ev['remise_le'] != null) const Icon(Icons.task_alt, size: 12, color: Couleurs.regle),
+              if (ferme || aVenir) ...[Icon(Icons.lock_outline, size: 12, color: gris), const SizedBox(width: 3)],
+              if (ev['remise_le'] != null) ...[const Icon(Icons.task_alt, size: 12, color: Couleurs.regle), const SizedBox(width: 3)],
               Flexible(
-                child: Text(compo(ev) ? 'Composition' : '${ev['type']}',
-                    overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                child: Text('${compo(ev) ? 'Compo' : 'Éval.'} $jour',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: aVenir ? gris : null)),
               ),
             ]),
-            Text(
-                '${_court(ev['date_evaluation'])}${'${ev['date_evaluation']}'.compareTo(_date(DateTime.now())) > 0 ? ' · à venir' : ''}'
-                '${heureLisible(ev['heure'], null).isEmpty ? '' : ' · ${heureLisible(ev['heure'], null)}'}',
-                style: TextStyle(fontSize: 12, color: gris)),
-            Text('$bareme${poids != 1 ? ' · ×${nb(poids)}' : ''}${ev['compte'] == 1 ? '' : ' · hors moy.'}',
-                style: TextStyle(fontSize: 11, color: gris)),
+            if (details.isNotEmpty) Text(details, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: gris)),
           ]),
         ),
       );
@@ -466,7 +484,8 @@ class _CarnetNotesState extends State<_CarnetNotes> {
         child: FocusTraversalGroup(
           policy: ReadingOrderTraversalPolicy(),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Bandeaux de session.
+            // Bandeaux de session (toute la période) ; une seule évaluation : inutile.
+            if (widget.session == null)
             Container(
               color: Couleurs.doux(context).withValues(alpha: .5),
               child: Row(children: [
@@ -610,102 +629,6 @@ class _CarnetNotesState extends State<_CarnetNotes> {
       ),
     );
 
-    // --- À droite : l'épreuve choisie ----------------------------------------------------
-    Widget chiffre(String libelle, String valeur, {Color? couleur}) => Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(border: Border.all(color: bordure), borderRadius: BorderRadius.circular(8)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(libelle, style: TextStyle(fontSize: 11, color: gris)),
-              Text(valeur, style: _chiffresDep.copyWith(fontSize: 18, fontWeight: FontWeight.w700, color: couleur)),
-            ]),
-          ),
-        );
-    Widget panneau(Map<String, Object?> ev) {
-      final st = stats(ev);
-      final ferme = ev['statut_session'] == 'cloturee';
-      return Container(
-        width: 290,
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: bordure)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Épreuve choisie', style: TextStyle(fontSize: 12, color: gris)),
-          Text('${compo(ev) ? 'Composition' : ev['type']} du ${_dateLisible(ev['date_evaluation']).substring(0, 5)}',
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          Text(
-              [
-                '${ev['session'] ?? 'Hors session'}',
-                bareme,
-                'poids ${nb((ev['poids'] as num? ?? 1))}',
-                if (ev['libelle'] != null) '${ev['libelle']}',
-              ].join(' · '),
-              style: TextStyle(fontSize: 13, color: gris)),
-          const SizedBox(height: 14),
-          Row(children: [
-            chiffre('Moyenne', _parAcquis ? '—' : noteLisible(st.moy)),
-            const SizedBox(width: 8),
-            chiffre('Saisies', '${st.saisies} / ${eleves.length}', couleur: st.saisies >= eleves.length ? Couleurs.regle : Couleurs.attente),
-          ]),
-          if (!_parAcquis) ...[
-            const SizedBox(height: 8),
-            Row(children: [
-              chiffre('Plus haute', st.haut == null ? '—' : nb(st.haut!)),
-              const SizedBox(width: 8),
-              chiffre('Plus basse', st.bas == null ? '—' : nb(st.bas!)),
-            ]),
-          ],
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: st.manquent.isEmpty ? Couleurs.regleFond : Couleurs.attenteFond, borderRadius: BorderRadius.circular(8)),
-            child: Text(
-                st.manquent.isEmpty
-                    ? 'Toutes les notes sont saisies.'
-                    : st.manquent.length <= 3
-                        ? 'Il manque la note de ${st.manquent.join(', ')}.'
-                        : 'Il manque ${st.manquent.length} notes (${st.manquent.take(2).join(', ')}…).',
-                style: TextStyle(fontSize: 13, color: st.manquent.isEmpty ? Couleurs.regle : Couleurs.attente)),
-          ),
-          if (ferme) ...[
-            const SizedBox(height: 8),
-            const Etat('Session clôturée : correction avec motif', icone: Icons.lock_outline),
-          ],
-          const SizedBox(height: 14),
-          if (ev['remise_le'] != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Etat('Notes remises le ${_dateLisible(ev['remise_le'])}', ton: Ton.regle, icone: Icons.task_alt),
-            ),
-          if (saisir)
-            FilledButton(
-              onPressed: () => db.execute('UPDATE evaluations SET remise_le = ?, remise_par = ?, updated_at = ? WHERE id = ?',
-                  [ev['remise_le'] == null ? _maintenant() : null, ev['remise_le'] == null ? monId : null, _maintenant(), ev['id']]),
-              child: Text(ev['remise_le'] == null ? 'J\'ai terminé : remettre les notes' : 'Annuler la remise'),
-            ),
-          const SizedBox(height: 6),
-          TextButton.icon(
-            style: TextButton.styleFrom(alignment: Alignment.centerLeft),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => _SaisieNotesScreen(espace: widget.espace, evaluationId: ev['id'] as String))),
-            icon: const Icon(Icons.history, size: 18),
-            label: Text(ferme ? 'Corriger (motif), historique' : 'Historique, saisie détaillée'),
-          ),
-          if (saisir && !ferme)
-            TextButton.icon(
-              style: TextButton.styleFrom(alignment: Alignment.centerLeft, foregroundColor: Couleurs.retard),
-              onPressed: () async {
-                if (await _confirmer(context, 'Supprimer cette épreuve et toutes ses notes ?')) {
-                  await _supprimer('evaluations', ev['id'] as String);
-                  if (mounted) setState(() => _epreuveId = null);
-                }
-              },
-              icon: const Icon(Icons.delete_outline, size: 18),
-              label: const Text('Supprimer l\'épreuve'),
-            ),
-        ]),
-      );
-    }
-
     final enTeteMatiere = Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -714,15 +637,35 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           Text('${matiere['matiere']}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -.3)),
         ]),
       ),
-      // Les épreuves viennent du calendrier (Évaluations › Calendrier) : ici, on remplit les notes.
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.event_note_outlined, size: 16, color: gris),
-        const SizedBox(width: 6),
-        Text('Épreuves programmées dans Évaluations › Calendrier', style: TextStyle(fontSize: 13, color: gris)),
-      ]),
+      // Les épreuves viennent du programme de la classe : ici, on remplit les notes.
+      if (_planifie)
+        TextButton.icon(
+          onPressed: _programme,
+          icon: const Icon(Icons.view_list_outlined, size: 16),
+          label: const Text('Programme de la classe'),
+        ),
     ]);
 
+    // Toutes les matières programmées et complètes (jusqu'à aujourd'hui) : on le dit.
+    final aJour = services.isNotEmpty &&
+        services.every((m) => (m['epreuves'] as int? ?? 0) > 0 && (m['manquantes'] as int? ?? 0) == 0);
     final centre = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (aJour && widget.cours == null) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: Couleurs.regleFond, borderRadius: BorderRadius.circular(8)),
+          child: Row(children: [
+            const Icon(Icons.check_circle_outline, size: 18, color: Couleurs.regle),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                  'Toutes les notes ${widget.session == null ? 'de la période' : 'de « ${widget.session!['libelle']} »'} sont saisies pour la ${_classe['nom']}.',
+                  style: const TextStyle(color: Couleurs.regle, fontWeight: FontWeight.w500)),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 14),
+      ],
       enTeteMatiere,
       const SizedBox(height: 14),
       if (epreuves.isEmpty)
@@ -730,12 +673,17 @@ class _CarnetNotesState extends State<_CarnetNotes> {
           padding: const EdgeInsets.all(28),
           decoration: BoxDecoration(color: schema.surface, borderRadius: BorderRadius.circular(10), border: Border.all(color: bordure)),
           child: Column(children: [
-            Icon(Icons.edit_note, size: 32, color: gris),
+            Icon(Icons.event_note_outlined, size: 32, color: gris),
             const SizedBox(height: 8),
-            Text('Aucune évaluation programmée en ${matiere['matiere']} ${widget.session == null ? 'sur cette période' : 'dans cette session'}.',
+            Text(
+                'Aucune épreuve programmée en ${matiere['matiere']} '
+                '${widget.session == null ? 'sur cette période' : 'pour « ${widget.session!['libelle']} »'} en ${_classe['nom']}.',
+                textAlign: TextAlign.center,
                 style: TextStyle(color: gris)),
-            const SizedBox(height: 4),
-            Text('Les épreuves se programment dans Évaluations › Calendrier ; elles apparaissent ici.', style: TextStyle(fontSize: 12, color: gris)),
+            if (_planifie) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(onPressed: _programme, icon: const Icon(Icons.view_list_outlined, size: 16), label: const Text('Programme de la classe')),
+            ],
           ]),
         )
       else
@@ -768,11 +716,29 @@ class _CarnetNotesState extends State<_CarnetNotes> {
       rail,
       const SizedBox(width: 16),
       Expanded(child: centre),
-      if (choisie != null) ...[
-        const SizedBox(width: 16),
-        panneau(choisie),
-      ],
     ]);
+  }
+
+  bool get _planifie => widget.espace.fondateur || widget.espace.droits.contains('planifier_evaluations');
+
+  /// Le programme de la classe pour l'évaluation choisie (ou la période).
+  void _programme() => Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ProgrammeClasseScreen(espace: widget.espace, classeId: _classe['id'] as String, sessionId: widget.session?['id'] as String?)));
+
+  Future<void> _actionEpreuve(BuildContext context, String action, Map<String, Object?> ev) async {
+    switch (action) {
+      case 'historique':
+        await Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => _SaisieNotesScreen(espace: widget.espace, evaluationId: ev['id'] as String)));
+      case 'remise':
+        await db.execute('UPDATE evaluations SET remise_le = ?, remise_par = ?, updated_at = ? WHERE id = ?',
+            [ev['remise_le'] == null ? _maintenant() : null, ev['remise_le'] == null ? monId : null, _maintenant(), ev['id']]);
+      case 'supprimer':
+        if (await _confirmer(context, "Supprimer l'épreuve du ${_dateLisible(ev['date_evaluation'])} et toutes ses notes ?")) {
+          await _supprimer('evaluations', ev['id'] as String);
+          if (mounted) setState(() => _epreuveId = null);
+        }
+    }
   }
 }
 
