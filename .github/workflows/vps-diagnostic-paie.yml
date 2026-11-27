@@ -35,4 +35,4 @@ jobs:
         env:
           VPS: ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}
         run: |
-          ssh -o ConnectTimeout=20 "$VPS" 'for c in $(sudo -n docker ps --format "{{.Names}}" | grep -i essai | grep -i powersync); do echo "$c : $(sudo -n docker logs --since 24h $c 2>&1 | grep -ciE "error") erreur(s) en 24 h, dont $(sudo -n docker logs --since 24h $c 2>&1 | grep -iE "error" | grep -ciE "paie|remuneration|avance|grille_taux|taux_horaire") sur la paie"; done'
+          ssh -o ConnectTimeout=20 "$VPS" 'for c in $(sudo -n docker ps --format "{{.Names}}" | grep -i essai | grep -i powersync); do echo "$c : $(sudo -n docker logs --since 24h $c 2>&1 | grep -ciE "error") erreur(s) en 24 h, dont $(sudo -n docker logs --since 24h $c 2>&1 | grep -iE "error" | grep -ciE "paie|remuneration|avance|grille_taux|taux_horaire") sur la paie"; echo "  codes d'erreur (nombre) :"; sudo -n docker logs --since 24h $c 2>&1 | grep -iE "error" | grep -oE "PSYNC_[A-Z0-9]+" | sort | uniq -c | sort -rn | head -10; done'
