@@ -318,12 +318,26 @@ if (etape === 'connexion') {
     await aller('Calendrier', 'Calendrier des évaluations'); await pause(3500); await semantique(); await photo('70-calendrier');
     const suivant = page.getByRole('button', { name: 'Suivant' });
     if (await suivant.count()) { await suivant.first().click(); await pause(2500); await semantique(); await photo('70a-calendrier-mois-suivant'); }
-    const ajouter = page.getByRole('button', { name: /Ajouter une évaluation/ });
+    const ajouter = page.getByRole('button', { name: /Ajouter une épreuve/ });
     if (await ajouter.count()) {
       await ajouter.first().click(); await pause(2500); await semantique(); await photo('70b-ajouter-evaluation');
       const annuler = page.getByRole('button', { name: 'Annuler' });
       if (await annuler.count()) await annuler.first().click(); else await page.keyboard.press('Escape');
       await pause(1000);
+    }
+    // Le programme de la classe : toutes les matières en lignes, puis une case ouverte.
+    const programme = page.getByRole('button', { name: /Programme de la classe/ });
+    if (await programme.count()) {
+      await programme.first().click(); await pause(3500); await semantique(); await photo('70c-programme-classe');
+      const fixer = page.getByRole('button', { name: /Fixer la date/ });
+      if (await fixer.count()) {
+        await fixer.first().click(); await pause(2000); await photo('70d-programme-fixer');
+        const annuler = page.getByRole('button', { name: 'Annuler' });
+        if (await annuler.count()) await annuler.first().click(); else await page.keyboard.press('Escape');
+        await pause(800);
+      }
+      const retour = page.getByRole('button', { name: 'Retour' });
+      if (await retour.count()) { await retour.first().click(); await pause(1500); }
     }
   });
   // La paie : le mois (préparer), puis les avances.

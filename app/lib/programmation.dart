@@ -199,10 +199,16 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
           onChanged: (v) => setState(() => _cycle = v),
         ),
       if (modifie)
-        FilledButton.icon(
+        OutlinedButton.icon(
           onPressed: () => ajouterEvaluation(context, _e, d, classeId: _classe.isEmpty ? null : _classe),
           icon: const Icon(Icons.add, size: 18),
-          label: const Text('Ajouter une évaluation'),
+          label: const Text('Ajouter une épreuve'),
+        ),
+      if (modifie)
+        FilledButton.icon(
+          onPressed: () => _programme(_classe.isEmpty ? null : _classe, _sessionId),
+          icon: const Icon(Icons.view_list_outlined, size: 18),
+          label: const Text('Programme de la classe'),
         ),
     ]);
 
@@ -653,10 +659,7 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
                         ),
                         if (modifie && s['statut'] == 'ouverte')
                           TextButton(
-                            onPressed: () => ajouterEvaluation(context, _e, d,
-                                classeId: r['classe_id'] as String,
-                                matiereId: r['matiere_id'] as String,
-                                date: _dateDans(s)),
+                            onPressed: () => _programme(r['classe_id'] as String, s['id'] as String),
                             child: const Text('Programmer'),
                           ),
                       ]),
@@ -686,12 +689,9 @@ class _CalendrierEvaluationsScreenState extends State<CalendrierEvaluationsScree
     );
   }
 
-  /// Une date dans la session : aujourd'hui s'il y est, sinon son premier jour.
-  DateTime _dateDans(Map<String, Object?> s) {
-    final debut = DateTime.parse('${s['debut']}'), fin = DateTime.parse('${s['fin']}');
-    final auj = DateTime.now();
-    return auj.isBefore(debut) || auj.isAfter(fin) ? debut : DateTime(auj.year, auj.month, auj.day);
-  }
+  /// Le programme d'une classe pour une évaluation : toutes ses matières en lignes.
+  void _programme(String? classeId, String? sessionId) => Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => ProgrammeClasseScreen(espace: _e, classeId: classeId, sessionId: sessionId)));
 
   Future<void> _publier(Map<String, Object?> s, int manquantes) async {
     final ok = await _confirmer(

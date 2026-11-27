@@ -52,6 +52,7 @@ part 'paie.dart';
 part 'personnel.dart';
 part 'photo.dart';
 part 'programmation.dart';
+part 'programme_classe.dart';
 part 'poste.dart';
 part 'recouvrement.dart';
 part 'reductions.dart';
