@@ -6,7 +6,14 @@ on:
       - "app/**"
       - ".github/workflows/app.yml"
   workflow_dispatch:
+    inputs:
+      tout:
+        description: "Compiler aussi Windows et Android (essai)"
+        type: boolean
+        default: false
 
+# Essai : seulement le site web (rapide) ; Windows et Android à la demande (« tout »).
+# Production : tout (web, Windows, Android).
 # Branche principale : app reliée à la production (variables du repo
 # SUPABASE_URL, SUPABASE_ANON_KEY, POWERSYNC_URL).
 # Autres branches : app reliée à l'environnement d'essai ; sa clé publique
@@ -50,6 +57,7 @@ jobs:
 
   windows:
     needs: config
+    if: needs.config.outputs.environnement == 'prod' || inputs.tout
     runs-on: windows-latest
     env:
       DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || '' }}
@@ -93,6 +101,7 @@ jobs:
 
   android:
     needs: config
+    if: needs.config.outputs.environnement == 'prod' || inputs.tout
     runs-on: ubuntu-latest
     env:
       DART_DEFINES: ${{ needs.config.outputs.environnement == 'prod' && format('--dart-define=SCOLAGRID_ENV=prod --dart-define=SUPABASE_URL={0} --dart-define=SUPABASE_ANON_KEY={1} --dart-define=POWERSYNC_URL={2}', vars.SUPABASE_URL, vars.SUPABASE_ANON_KEY, vars.POWERSYNC_URL) || '' }}
@@ -207,6 +216,9 @@ jobs:
       - run: flutter pub get
       - name: Bibliothèques SQLite (téléchargées avec nouvelles tentatives)
         run: bash plateformes/sqlite3_binaires.sh libsqlite3.x64.linux.so && flutter pub get
+      # Le contrôle du code et les tests : ici, puisque l'essai ne compile que le web.
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
       - name: Fichiers web de PowerSync (SQLite dans le navigateur)
         run: dart run powersync:setup_web
       - name: Titre et langue de la page
@@ -227,21 +239,31 @@ jobs:
   # ou app-essai.<hôte> (essai), téléchargements dans /telechargements/.
   publier:
     needs: [config, web, windows, android]
+    # Windows et Android sautés (essai) : on publie quand même le web.
+    if: >-
+      always() && needs.web.result == 'success'
+      && contains(fromJSON('["success","skipped"]'), needs.windows.result)
+      && contains(fromJSON('["success","skipped"]'), needs.android.result)
     runs-on: ubuntu-latest
+    env:
+      INSTALLABLES: ${{ needs.windows.result == 'success' && needs.android.result == 'success' }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: scolagrid-web-${{ needs.config.outputs.environnement }}
           path: site
-      - uses: actions/download-artifact@v4
+      - if: env.INSTALLABLES == 'true'
+        uses: actions/download-artifact@v4
         with:
           name: scolagrid-windows-${{ needs.config.outputs.environnement }}
           path: windows
-      - uses: actions/download-artifact@v4
+      - if: env.INSTALLABLES == 'true'
+        uses: actions/download-artifact@v4
         with:
           name: scolagrid-android-${{ needs.config.outputs.environnement }}
           path: android
       - name: Préparer les téléchargements
+        if: env.INSTALLABLES == 'true'
         run: |
           mkdir -p site/telechargements
           (cd windows && zip -qr ../site/telechargements/scolagrid-windows.zip .)
@@ -263,12 +285,18 @@ jobs:
           suffixe=$([ "$ENVIRONNEMENT" = essai ] && echo -essai || true)
           ssh "$VPS" 'rm -rf /tmp/scolagrid-web && mkdir -p /tmp/scolagrid-web'
           scp -q -r site/. "$VPS":/tmp/scolagrid-web/
+          # Web seul : on garde les installables déjà en ligne.
+          if [ "$INSTALLABLES" != true ]; then
+            ssh "$VPS" "[ -d /opt/scolagrid/web/$ENVIRONNEMENT/telechargements ] && cp -r /opt/scolagrid/web/$ENVIRONNEMENT/telechargements /tmp/scolagrid-web/ || true"
+          fi
           # Remplacement d'un bloc : le site n'est jamais à moitié copié.
           ssh "$VPS" "cd /opt/scolagrid/web && sudo rm -rf $ENVIRONNEMENT.ancien \
             && { sudo mv $ENVIRONNEMENT $ENVIRONNEMENT.ancien || true; } \
             && sudo mv /tmp/scolagrid-web $ENVIRONNEMENT && sudo chmod -R a+rX $ENVIRONNEMENT \
             && sudo rm -rf $ENVIRONNEMENT.ancien"
-          for chemin in / /telechargements/scolagrid-windows.zip /telechargements/scolagrid-android.apk; do
+          chemins="/"
+          [ "$INSTALLABLES" = true ] && chemins="/ /telechargements/scolagrid-windows.zip /telechargements/scolagrid-android.apk"
+          for chemin in $chemins; do
             code=$(curl -s -o /dev/null -w '%{http_code}' "https://app$suffixe.$host$chemin")
             echo "$code https://app$suffixe.$host$chemin"
             [ "$code" = 200 ] || exit 1
