@@ -658,9 +658,9 @@ class _FamillesScreenState extends State<FamillesScreen> {
           hoverColor: Couleurs.doux(context).withValues(alpha: .5),
           child: Container(
             decoration: BoxDecoration(border: Border(bottom: BorderSide(color: bordure))),
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: 4),
             child: Row(children: [
-              Padding(padding: const EdgeInsets.only(left: 8), child: Initiales('${f['nom_complet']}', taille: 56)),
+              Padding(padding: const EdgeInsets.only(left: 8), child: Initiales('${f['nom_complet']}', taille: 64)),
               cellule(
                 null,
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -768,7 +768,7 @@ class _FamillesScreenState extends State<FamillesScreen> {
             child: Padding(
               padding: const EdgeInsets.all(10),
               child: Row(children: [
-                Initiales('${f['nom_complet']}', taille: 44),
+                Initiales('${f['nom_complet']}', taille: 48),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1011,7 +1011,7 @@ class FicheFamille extends StatelessWidget {
       padding: EdgeInsets.all(telephone ? 12 : 16),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Initiales('${c['nom_complet']}', taille: telephone ? 52 : 72),
+        Initiales('${c['nom_complet']}', taille: telephone ? 72 : 80),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1067,7 +1067,7 @@ class FicheFamille extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
               child: Row(children: [
-                PhotoEleve(eleveId: e['id'] as String, nom: nom, version: e['photo_maj'] as String?, taille: 40),
+                PhotoEleve(eleveId: e['id'] as String, nom: nom, version: e['photo_maj'] as String?, taille: 48),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

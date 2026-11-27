@@ -854,7 +854,7 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
               ],
             ),
             body: Requete(
-              '''SELECT e.id, e.nom, e.prenoms, e.matricule, n.valeur, n.etat, n.acquis
+              '''SELECT e.id, e.nom, e.prenoms, e.matricule, e.photo_maj, n.valeur, n.etat, n.acquis
                  FROM inscriptions i JOIN eleves e ON e.id = i.eleve_id
                  LEFT JOIN notes n ON n.eleve_id = e.id AND n.evaluation_id = ?
                  WHERE i.classe_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
@@ -1044,7 +1044,7 @@ class _SaisieNotesScreenState extends State<_SaisieNotesScreen> {
                     ),
                     child: Row(children: [
                       SizedBox(width: 26, child: Text('${i + 1}', style: TextStyle(fontSize: 12, color: gris))),
-                      Initiales('${e['nom']} ${e['prenoms']}', taille: 32),
+                      PhotoEleve(eleveId: e['id'] as String, nom: '${e['nom']} ${e['prenoms']}', version: e['photo_maj'] as String?, taille: 48),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

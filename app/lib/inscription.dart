@@ -432,7 +432,7 @@ class _InscrireScreenState extends State<InscrireScreen> {
           child: Column(children: [
             for (final e in _trouves)
               ListTile(
-                leading: PhotoEleve(eleveId: e['id'] as String, nom: _nomEleve(e), version: e['photo_maj'] as String?),
+                leading: PhotoEleve(eleveId: e['id'] as String, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: 48),
                 title: Text(_nomEleve(e)),
                 subtitle: Text('${e['matricule']}'
                     '${e['date_naissance'] == null ? '' : ' · né(e) le ${_dateLisible(e['date_naissance'])}'}'

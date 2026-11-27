@@ -1034,7 +1034,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       child: Row(children: [
-                        PhotoEleve(eleveId: e['id'] as String, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: 36),
+                        PhotoEleve(eleveId: e['id'] as String, nom: _nomEleve(e), version: e['photo_maj'] as String?, taille: 48),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1060,7 +1060,7 @@ class _EncaisserScreenState extends State<EncaisserScreen> {
         decoration: BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            PhotoEleve(eleveId: l.eleve['id'] as String, nom: _nomEleve(l.eleve), version: l.eleve['photo_maj'] as String?, taille: 56),
+            PhotoEleve(eleveId: l.eleve['id'] as String, nom: _nomEleve(l.eleve), version: l.eleve['photo_maj'] as String?, taille: 64),
             const SizedBox(width: 12),
             Expanded(
               child: Padding(

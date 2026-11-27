@@ -105,7 +105,7 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                ORDER BY ev.date_evaluation, ev.created_at''',
             parametres: [_classe['id'], _periode['id'], matiere['matiere_id'], widget.session?['id'], widget.session?['id']],
             builder: (context, epreuves) => Requete(
-              '''SELECT e.id, e.nom, e.prenoms, e.matricule FROM inscriptions i JOIN eleves e ON e.id = i.eleve_id
+              '''SELECT e.id, e.nom, e.prenoms, e.matricule, e.photo_maj FROM inscriptions i JOIN eleves e ON e.id = i.eleve_id
                  WHERE i.classe_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant') ORDER BY e.nom, e.prenoms''',
               parametres: [_classe['id']],
               builder: (context, eleves) => Requete(
@@ -554,7 +554,11 @@ class _CarnetNotesState extends State<_CarnetNotes> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       child: Row(children: [
-                        Initiales('${eleves[i]['nom']} ${eleves[i]['prenoms']}', taille: 32),
+                        PhotoEleve(
+                            eleveId: eleves[i]['id'] as String,
+                            nom: '${eleves[i]['nom']} ${eleves[i]['prenoms']}',
+                            version: eleves[i]['photo_maj'] as String?,
+                            taille: 48),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text('${eleves[i]['nom']} ${eleves[i]['prenoms']}',
@@ -768,7 +772,7 @@ class _SaisiePaveScreenState extends State<_SaisiePaveScreen> {
           if (l.isEmpty) return const Scaffold(body: Center(child: Text('Épreuve introuvable.')));
           final ev = l.first;
           return Requete(
-            '''SELECT e.id, e.nom, e.prenoms, e.matricule, n.valeur, n.etat, n.acquis
+            '''SELECT e.id, e.nom, e.prenoms, e.matricule, e.photo_maj, n.valeur, n.etat, n.acquis
                FROM inscriptions i JOIN eleves e ON e.id = i.eleve_id
                LEFT JOIN notes n ON n.eleve_id = e.id AND n.evaluation_id = ?
                WHERE i.classe_id = ? AND i.statut NOT IN ('annule', 'exclu', 'transfert_sortant')
@@ -931,7 +935,7 @@ class _SaisiePaveScreenState extends State<_SaisiePaveScreen> {
                       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                         Text('${_index + 1} / ${eleves.length}', style: TextStyle(fontSize: 13, color: gris)),
                         const SizedBox(height: 8),
-                        Initiales('${el['nom']} ${el['prenoms']}', taille: 56),
+                        PhotoEleve(eleveId: el['id'] as String, nom: '${el['nom']} ${el['prenoms']}', version: el['photo_maj'] as String?, taille: 80),
                         const SizedBox(height: 10),
                         Text('${el['nom']} ${el['prenoms']}',
                             textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),

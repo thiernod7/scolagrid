@@ -430,9 +430,10 @@ class _ListePersonnelState extends State<_ListePersonnel> {
       ]),
       const SizedBox(height: 12),
       Tableau(
+        margeLigne: 4,
         vide: widget.personnes.isEmpty ? 'Aucune fiche pour le moment.' : 'Personne ne correspond.',
         colonnes: [
-          ColonneTableau('', largeur: telephone ? 56 : 72),
+          ColonneTableau('', largeur: telephone ? 64 : 80),
           const ColonneTableau('Nom', flex: 3),
           if (!telephone && !panneau) const ColonneTableau('Fonction', flex: 3),
           if (largeur >= 1024 && !panneau) const ColonneTableau('Site', largeur: 160),
@@ -442,7 +443,7 @@ class _ListePersonnelState extends State<_ListePersonnel> {
         lignes: [
           for (final p in liste)
             [
-              Initiales('${p['nom_complet']}', taille: telephone ? 40 : 56),
+              Initiales('${p['nom_complet']}', taille: telephone ? 48 : 64),
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('${p['nom_complet']}',
                     overflow: TextOverflow.ellipsis,
@@ -660,7 +661,7 @@ class FichePersonnel extends StatelessWidget {
       padding: EdgeInsets.all(telephone ? 12 : 16),
       decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Initiales('${fiche['nom_complet']}', taille: telephone ? 56 : 64),
+        Initiales('${fiche['nom_complet']}', taille: telephone ? 72 : 80),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

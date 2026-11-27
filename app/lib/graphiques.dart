@@ -747,7 +747,10 @@ class ColonneTableau {
 
 /// Tableau fin : en-tête de 36 px, lignes séparées d'un trait, survol gris.
 class Tableau extends StatelessWidget {
-  const Tableau({super.key, required this.colonnes, required this.lignes, this.onTap, this.vide = 'Aucune ligne.'});
+  const Tableau({super.key, required this.colonnes, required this.lignes, this.onTap, this.vide = 'Aucune ligne.', this.margeLigne = 8});
+
+  /// Marge au-dessus et au-dessous de chaque ligne (4 avec une photo de 64 : même hauteur que la liste des élèves).
+  final double margeLigne;
 
   final List<ColonneTableau> colonnes;
   final List<List<Widget>> lignes;
@@ -791,7 +794,7 @@ class Tableau extends StatelessWidget {
             hoverColor: Couleurs.doux(context).withValues(alpha: .5),
             child: Container(
               constraints: const BoxConstraints(minHeight: 52),
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: EdgeInsets.symmetric(vertical: margeLigne),
               decoration: i == lignes.length - 1
                   ? null
                   : BoxDecoration(border: Border(bottom: BorderSide(color: schema.outlineVariant))),
