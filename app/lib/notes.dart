@@ -180,6 +180,7 @@ List<(String, DateTime, DateTime, bool)> _sessionsParDefaut(String periode, Date
 
 /// Crée les sessions par défaut des périodes ouvertes qui n'en ont pas encore.
 Future<void> _preparerSessions(dynamic tx, String orgId, Iterable<Map<String, Object?>> periodes) async {
+  await _typesParDefaut(tx, orgId);
   final eval = await tx.getOptional("SELECT id FROM types_evaluation WHERE organisation_id = ? AND actif = 1 AND libelle = 'Évaluation'", [orgId]);
   if (eval == null) return;
   final compo = await tx.getOptional("SELECT id FROM types_evaluation WHERE organisation_id = ? AND actif = 1 AND libelle = 'Composition'", [orgId]);
@@ -203,23 +204,29 @@ Future<void> _preparerSessions(dynamic tx, String orgId, Iterable<Map<String, Ob
   }
 }
 
+/// Les types proposés (Évaluation ×1, Composition ×2 une par période, Examen blanc hors
+/// moyenne), si l'école n'a encore aucun type.
+Future<void> _typesParDefaut(dynamic tx, String orgId) async {
+  final types = await tx.getAll('SELECT id FROM types_evaluation WHERE organisation_id = ?', [orgId]);
+  if (types.isNotEmpty) return;
+  final m0 = _maintenant();
+  for (final (libelle, poids, compte, unique, ordre) in const [
+    ('Évaluation', 1, 1, 0, 1),
+    ('Composition', 2, 1, 1, 2),
+    ('Examen blanc', 1, 0, 0, 3),
+  ]) {
+    await tx.execute(
+        '''INSERT INTO types_evaluation (id, organisation_id, libelle, poids, compte, unique_par_periode, ordre, actif, created_at, updated_at)
+           VALUES (uuid(), ?, ?, ?, ?, ?, ?, 1, ?, ?)''',
+        [orgId, libelle, poids, compte, unique, ordre, m0, m0]);
+  }
+}
+
 /// Premier usage : les types d'évaluation de l'école et les périodes des cycles de l'année.
 Future<void> _preparerNotes(String orgId, Map<String, Object?> annee) async {
   final m0 = _maintenant();
   await db.writeTransaction((tx) async {
-    final types = await tx.getAll('SELECT id FROM types_evaluation WHERE organisation_id = ?', [orgId]);
-    if (types.isEmpty) {
-      for (final (libelle, poids, compte, unique, ordre) in const [
-        ('Évaluation', 1, 1, 0, 1),
-        ('Composition', 2, 1, 1, 2),
-        ('Examen blanc', 1, 0, 0, 3),
-      ]) {
-        await tx.execute(
-            '''INSERT INTO types_evaluation (id, organisation_id, libelle, poids, compte, unique_par_periode, ordre, actif, created_at, updated_at)
-               VALUES (uuid(), ?, ?, ?, ?, ?, ?, 1, ?, ?)''',
-            [orgId, libelle, poids, compte, unique, ordre, m0, m0]);
-      }
-    }
+    await _typesParDefaut(tx, orgId);
     final debut = DateTime.parse('${annee['debut']}');
     final fin = DateTime.parse('${annee['fin']}');
     final cycles = await tx.getAll(
@@ -2135,8 +2142,25 @@ class _ReglagesNotesScreen extends StatelessWidget {
       ...enTete,
       Text('Ce que pèse chaque note dans la moyenne de sa matière.', style: TextStyle(fontSize: 13, color: gris)),
       const SizedBox(height: 10),
+      if (types.isEmpty && modifiable) ...[
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Couleurs.infoFond, borderRadius: BorderRadius.circular(8)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text("Les types proposés : Évaluation (compte une fois), Composition (compte double, une par période), "
+                'Examen blanc (ne compte pas). Tout reste modifiable.'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () => db.writeTransaction((tx) => _typesParDefaut(tx, espace.orgId)),
+              icon: const Icon(Icons.auto_awesome, size: 16),
+              label: const Text('Utiliser les types proposés'),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 10),
+      ],
       Tableau(
-        vide: "Aucun type : ils se créent avec les périodes (modèle guinéen).",
+        vide: "Aucun type d'évaluation pour le moment.",
         colonnes: [
           const ColonneTableau('Type', flex: 3),
           const ColonneTableau('Compte', largeur: 120),
